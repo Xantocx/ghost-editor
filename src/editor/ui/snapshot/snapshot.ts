@@ -88,14 +88,14 @@ export class GhostSnapshot implements PositionProvider {
 
         this.locator = new LineLocator(editor, this)
 
-        this.display()
+        this.display(true)
     }
 
-    private display(): void {
+    private display(viewZonesOnly: boolean): void {
 
         const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
 
-        this.header    = new GhostSnapshotHeader(this, this.locator, false)
+        this.header    = new GhostSnapshotHeader(this, this.locator, viewZonesOnly)
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
 
         const changeSubscription = this.highlight.onDidChange((event) => {
@@ -107,7 +107,9 @@ export class GhostSnapshot implements PositionProvider {
             }
         })
 
-        this.setupHeaderHiding()
+        if (!viewZonesOnly) {
+            this.setupHeaderHiding()
+        }
     }
 
     private setupHeaderHiding(): void {
