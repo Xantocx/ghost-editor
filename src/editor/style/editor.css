@@ -1,0 +1,21 @@
+.ghostHighlightTop {
+    border-top: 1px solid;
+}
+
+.ghostHighlightMid {
+    margin-right: -3px;
+    border-left: 1px solid;
+    border-right: 1px solid;
+}
+
+.ghostHighlightBottom {
+    border-bottom: 1px solid;
+}
+
+.ghostHighlightRed {
+    background: rgba(255, 50, 50, 0.2);
+}
+
+.ghostHighlightGreen {
+    background: rgba(50, 255, 50, 0.2);
+}
