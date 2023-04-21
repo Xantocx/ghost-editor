@@ -1,6 +1,6 @@
 import { ipcMain } from "electron"
 import { IRange } from "monaco-editor"
-import { VCSSnapshot, VCSAdapterSnapshot } from "./utils/snapshot"
+import { VCSAdapterSnapshot } from "./utils/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "./utils/change"
 
 export interface VCSAdapterClass<Adapter extends VCSAdapter> {
@@ -12,7 +12,7 @@ export interface VCSAdapter {
     // versions interface
     createSnapshot(range: IRange): Promise<VCSAdapterSnapshot>
     getSnapshots(): Promise<VCSAdapterSnapshot[]>
-    updateSnapshot(snapshot: VCSSnapshot): void
+    updateSnapshot(snapshot: VCSAdapterSnapshot): void
 
     // modification interface
     lineChanged(change: LineChange): void
@@ -117,7 +117,7 @@ export class GhostVCSProvider<Adapter extends VCSAdapter> implements IGhostVCSPr
         return this.adapter!.getSnapshots()
     }
 
-    public updateSnapshot(snapshot: VCSSnapshot): void {
+    public updateSnapshot(snapshot: VCSAdapterSnapshot): void {
         return this.adapter?.updateSnapshot(snapshot)
     }
 

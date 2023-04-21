@@ -33,8 +33,8 @@ contextBridge.exposeInMainWorld("vcs", {
         return invoke(GhostVCSProvider.getSnapshotsChannel)
     },
     
-    updateSnapshot(snapshot: VCSSnapshot): void {
-        invoke(GhostVCSProvider.updateSnapshotChannel, snapshot.compress())
+    updateSnapshot(snapshot: VCSAdapterSnapshot): void {
+        invoke(GhostVCSProvider.updateSnapshotChannel, snapshot)
     },
 
     lineChanged(change: LineChange): void {

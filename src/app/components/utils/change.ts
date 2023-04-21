@@ -37,8 +37,12 @@ export abstract class Change {
     public readonly isFlushing: boolean
 
     static create(timestamp: number, event: ContentChangedEvent, change: ContentChange): AnyChange {
-        // TODO: VALIDATE THIS CHECK!
-        if (change.rangeLength === 1 && !change.text.includes("\n")) {
+        
+        const start = Math.min(change.range.startColumn, change.range.endColumn)
+        const end   = Math.max(change.range.startColumn, change.range.endColumn)
+        const count = end - start + 1
+
+        if (count === 1) {
             return LineChange.create(timestamp, event, change)
         } else {
             return MultiLineChange.create(timestamp, event, change)
@@ -96,7 +100,7 @@ export class MultiLineChange extends Change {
     }
 
     constructor(timestamp: number, event: ContentChangedEvent, range: Range, length: number, offset: number, newText: string) {
-        super(timestamp, event, ChangeBehaviour.Line, newText)
+        super(timestamp, event, ChangeBehaviour.MultiLine, newText)
         this.range = range
         this.length = length
         this.offset = offset

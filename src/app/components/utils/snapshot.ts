@@ -44,7 +44,7 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
     public set startLine(line: number) {
         if (this._startLine !== line) {
             this._startLine = line
-            this.adapter.updateSnapshot(this)
+            this.updateAdapter()
         }
     }
 
@@ -55,7 +55,7 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
     public set endLine(line: number) {
         if (this._endLine !== line) {
             this._endLine = line
-            this.adapter.updateSnapshot(this)
+            this.updateAdapter()
         }
     }
 
@@ -69,7 +69,7 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
 
     public set range(range: IRange) {
         if (this.update(range)) {
-            this.adapter.updateSnapshot(this)
+            this.updateAdapter()
         }
     }
 
@@ -84,6 +84,10 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
         
         this._startLine = Math.min(range.startLineNumber, range.endLineNumber)
         this._endLine   = Math.max(range.startLineNumber, range.endLineNumber)
+    }
+
+    private updateAdapter(): void {
+        this.adapter.updateSnapshot(this.compress())
     }
 
     public compress(): VCSAdapterSnapshot {
