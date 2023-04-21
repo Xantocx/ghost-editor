@@ -2,10 +2,10 @@
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625
 import { contextBridge, ipcRenderer } from "electron"
 
-import { GhostVCSProvider } from "./components/vcs-provider"
 import { IRange } from "monaco-editor"
+import { GhostVCSProvider } from "./components/vcs-provider"
 import { Change, ChangeSet, LineChange, MultiLineChange } from "./components/utils/change"
-import { VCSAdapterSnapshot, VCSSnapshot } from "./components/utils/snapshot"
+import { VCSAdapterSnapshot } from "./components/utils/snapshot"
 
 function invoke<Type>(channel: string, ...args: any): Promise<Type> {
     return ipcRenderer.invoke(channel, ...args)
