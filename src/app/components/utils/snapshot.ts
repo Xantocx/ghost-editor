@@ -1,6 +1,5 @@
 import { VCSAdapter } from "../vcs-provider"
 import { PositionProvider } from "../../../editor/utils/line-locator"
-import * as crypto from "crypto"
 
 export interface IRange {
     startLineNumber: number
@@ -24,13 +23,19 @@ export class Range implements IRange {
     }
 }
 
-export class VCSSnapshot implements PositionProvider {
+export interface VCSAdapterSnapshot {
+    uuid: string
+    _startLine: number
+    _endLine: number
+}
 
-    public readonly uuid = crypto.randomUUID()
+export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
+
+    public readonly uuid: string
     public readonly adapter: VCSAdapter
 
-    private _startLine: number
-    private _endLine: number
+    public _startLine: number
+    public _endLine: number
 
     public get startLine(): number {
         return this._startLine
@@ -68,18 +73,35 @@ export class VCSSnapshot implements PositionProvider {
         }
     }
 
-    constructor(adapter: VCSAdapter, range: IRange) {
+    public static recover(adapter: VCSAdapter, snapshot: VCSAdapterSnapshot): VCSSnapshot {
+        const range = new Range(snapshot._startLine, 1, snapshot._endLine, Number.MAX_SAFE_INTEGER)
+        return new VCSSnapshot(snapshot.uuid, adapter, range)
+    }
+
+    constructor(uuid: string, adapter: VCSAdapter, range: IRange) {
+        this.uuid = uuid
         this.adapter = adapter
         
         this._startLine = Math.min(range.startLineNumber, range.endLineNumber)
         this._endLine   = Math.max(range.startLineNumber, range.endLineNumber)
     }
 
+    public compress(): VCSAdapterSnapshot {
+
+        const parent = this
+
+        return {
+            uuid: parent.uuid,
+            _startLine: parent.startLine,
+            _endLine: parent.endLine
+        }
+    }
+
     public update(range: IRange): boolean {
         const start = Math.min(range.startLineNumber, range.endLineNumber)
         const end   = Math.max(range.startLineNumber, range.endLineNumber)
 
-        const updated = this._startLine !== start || this._startLine !== end
+        const updated = this._startLine !== start || this._endLine !== end
 
         if (updated) {
             this._startLine = start

@@ -12,5 +12,5 @@
 		"typeRoots": ["node_modules/@types"]
 	},
 	"include": ["**/*"],
-	"exclude": ["node_modules", "**/*.spec.ts", "src/editor/**/*"]
+	"exclude": ["node_modules", "**/*.spec.ts", "src/editor/**/*"],
 }

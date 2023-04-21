@@ -6,6 +6,7 @@ import { LoadFileEvent } from "./utils/events"
 import { GhostSnapshot } from "./ui/snapshot/snapshot"
 import { ReferenceProvider } from "./utils/line-locator"
 import { ChangeSet } from "../app/components/utils/change"
+import { VCSSnapshot } from "../app/components/utils/snapshot"
 
 export class GhostEditor implements ReferenceProvider {
 
@@ -120,7 +121,7 @@ export class GhostEditor implements ReferenceProvider {
         this.core.setValue(text)
     }
 
-    loadFile(filePath: string, content: string): void {
+    async loadFile(filePath: string, content: string): Promise<void> {
 
         this.vcs.dispose()
 
@@ -130,7 +131,7 @@ export class GhostEditor implements ReferenceProvider {
         this.replaceText(content)
 
         this.vcs.createAdapter(filePath, content)
-        const snapshots = this.vcs.getSnapshots()
+        const snapshots = await this.vcs.getSnapshots()
 
         this.snapshots = snapshots.map(snapshot => {
             return new GhostSnapshot(this, snapshot)
@@ -147,10 +148,10 @@ export class GhostEditor implements ReferenceProvider {
         return this.core.getSelection()
     }
 
-    highlightSelection(): void {
+    async highlightSelection(): Promise<void> {
         const selection = this.getSelection()
         if (selection) {
-            const snapshot = GhostSnapshot.create(this, selection)
+            const snapshot = await GhostSnapshot.create(this, selection)
             this.snapshots.push(snapshot)
         }
     }

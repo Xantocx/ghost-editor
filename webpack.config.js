@@ -3,7 +3,34 @@ const CopyPlugin = require("copy-webpack-plugin");
 const HtmlWebPackPlugin = require('html-webpack-plugin');
 const HtmlWebpackTagsPlugin = require('html-webpack-tags-plugin');
 
-module.exports = {
+const preloadConfig = {
+	name: 'preload',
+	mode: 'development',
+    target: 'electron-preload',
+	entry: {
+		preload: './src/app/preload.ts',
+	},
+	resolve: {
+		extensions: ['.ts', '.js'],
+	},
+	output: {
+		globalObject: 'self',
+		filename: '[name].bundle.js',
+		path: path.resolve(__dirname, 'dist/electron/src/app'),
+	},
+	module: {
+		rules: [
+			{
+				test: /\.ts?$/,
+				use: 'ts-loader',
+				exclude: /node_modules/
+			}
+		]
+	},
+}
+
+const rendererConfig = {
+	name: 'renderer',
 	mode: 'development',
     target: 'electron-renderer',
 	entry: {
@@ -52,6 +79,11 @@ module.exports = {
             template: 'src/index.html'
 		}),
         // https://github.com/jharris4/html-webpack-tags-plugin
-        new HtmlWebpackTagsPlugin({ tags: ["style/index.css", "style/editor.css"], append: true })
+        new HtmlWebpackTagsPlugin({ 
+			tags: ["style/index.css", "style/editor.css"], 
+			append: true 
+		})
 	]
-};
+}
+
+module.exports = [preloadConfig, rendererConfig]

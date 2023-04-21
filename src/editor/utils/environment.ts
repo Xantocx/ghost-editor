@@ -1,4 +1,4 @@
-import { GhostApp } from "../../app/app"
+import { IGhostVCSProvider } from "../../app/components/vcs-provider"
 
 // see preload
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625
@@ -10,7 +10,7 @@ interface CustomIPCRenderer {
 declare global {
     interface Window {
         ipcRenderer: CustomIPCRenderer
-		vcs: typeof GhostApp.vcs
+		vcs: IGhostVCSProvider
     }
 }
 

@@ -4,6 +4,11 @@ type Range = monaco.IRange
 type ContentChange = monaco.editor.IModelContentChange
 type ContentChangedEvent = monaco.editor.IModelContentChangedEvent
 
+export enum ChangeBehaviour {
+    Line,
+    MultiLine
+}
+
 enum ChangeType {
     Modification,
     Undo,
@@ -20,14 +25,18 @@ function extractChangeType(event: ContentChangedEvent): ChangeType {
     }
 }
 
+export type AnyChange = LineChange | MultiLineChange
+
 export abstract class Change {
+
+    public readonly changeBehaviour: ChangeBehaviour
 
     public readonly timestamp: number
     public readonly changeType: ChangeType
     public readonly newText: string
     public readonly isFlushing: boolean
 
-    static create(timestamp: number, event: ContentChangedEvent, change: ContentChange): Change {
+    static create(timestamp: number, event: ContentChangedEvent, change: ContentChange): AnyChange {
         // TODO: VALIDATE THIS CHECK!
         if (change.rangeLength === 1 && !change.text.includes("\n")) {
             return LineChange.create(timestamp, event, change)
@@ -36,15 +45,16 @@ export abstract class Change {
         }
     }
 
-    constructor(timestamp: number, event: ContentChangedEvent, newText: string) {
-        this.newText = newText
-        this.changeType = extractChangeType(event)
+    constructor(timestamp: number, event: ContentChangedEvent, changeBehaviour: ChangeBehaviour, newText: string) {
         this.timestamp = timestamp
+        this.changeType = extractChangeType(event)
+        this.changeBehaviour = changeBehaviour
+        this.newText = newText
         this.isFlushing = event.isFlush
     }
 }
 
-export class ChangeSet extends Array<Change> {
+export class ChangeSet extends Array<AnyChange> {
 
     public readonly timestamp: number
     public readonly event: ContentChangedEvent
@@ -70,7 +80,7 @@ export class LineChange extends Change {
     }
 
     constructor(timestamp: number, event: ContentChangedEvent, lineNumber: number, newText: string) {
-        super(timestamp, event, newText)
+        super(timestamp, event, ChangeBehaviour.Line, newText)
         this.lineNumber = lineNumber
     }
 }
@@ -86,7 +96,7 @@ export class MultiLineChange extends Change {
     }
 
     constructor(timestamp: number, event: ContentChangedEvent, range: Range, length: number, offset: number, newText: string) {
-        super(timestamp, event, newText)
+        super(timestamp, event, ChangeBehaviour.Line, newText)
         this.range = range
         this.length = length
         this.offset = offset

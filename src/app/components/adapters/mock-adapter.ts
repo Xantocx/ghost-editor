@@ -1,14 +1,15 @@
 import { LineChange, MultiLineChange } from "../utils/change";
-import { IRange, Range, VCSSnapshot } from "../utils/snapshot";
+import { IRange, Range, VCSAdapterSnapshot, VCSSnapshot } from "../utils/snapshot";
 import { VCSAdapter } from "../vcs-provider"
+import * as crypto from "crypto"
 
 export class MockAdapter implements VCSAdapter {
 
     private snapshots: VCSSnapshot[] = [
-        new VCSSnapshot(this, new Range(3, 1, 6, Number.MAX_SAFE_INTEGER)),
-        new VCSSnapshot(this, new Range(9, 1, 14, Number.MAX_SAFE_INTEGER)),
-        new VCSSnapshot(this, new Range(31, 1, 37, Number.MAX_SAFE_INTEGER)),
-        new VCSSnapshot(this, new Range(45, 1, 40, Number.MAX_SAFE_INTEGER))
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(3, 1, 6, Number.MAX_SAFE_INTEGER)),
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(9, 1, 14, Number.MAX_SAFE_INTEGER)),
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(31, 1, 37, Number.MAX_SAFE_INTEGER)),
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(45, 1, 40, Number.MAX_SAFE_INTEGER))
     ]
 
     private _filePath: string | null
@@ -24,17 +25,22 @@ export class MockAdapter implements VCSAdapter {
         this.filePath = filePath
     }
 
-    createSnapshot(range: IRange): VCSSnapshot {
-        const snapshot = new VCSSnapshot(this, range)
+    async createSnapshot(range: IRange): Promise<VCSAdapterSnapshot> {
+        const snapshot = new VCSSnapshot(crypto.randomUUID(), this, range)
+        console.log(snapshot)
         this.snapshots.push(snapshot)
         return snapshot
     }
 
-    getSnapshots(): VCSSnapshot[] {
+    async getSnapshots(): Promise<VCSAdapterSnapshot[]> {
         return this.snapshots
     }
 
-    updateSnapshot(snapshot: VCSSnapshot): void {
+    updateSnapshot(adapterSnapshot: VCSAdapterSnapshot): void {
+        const snapshot = VCSSnapshot.recover(this, adapterSnapshot)
+
+        console.log(snapshot)
+
         const oldSnapshot = this.snapshots.find(existingSnapshot => {
             return existingSnapshot.uuid === snapshot.uuid
         })

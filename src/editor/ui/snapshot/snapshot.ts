@@ -3,7 +3,7 @@ import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { PositionProvider, LineLocator } from "../../utils/line-locator"
-import { VCSSnapshot } from "../../../app/components/utils/snapshot"
+import { VCSAdapterSnapshot, VCSSnapshot } from "../../../app/components/utils/snapshot"
 
 export class GhostSnapshot implements PositionProvider {
 
@@ -81,14 +81,14 @@ export class GhostSnapshot implements PositionProvider {
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
-    public static create(editor: GhostEditor, range: IRange): GhostSnapshot {
-        const snapshot = editor.vcs.createSnapshot(range)
+    public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot> {
+        const snapshot = await editor.vcs.createSnapshot(range)
         return new GhostSnapshot(editor, snapshot)
     }
 
-    constructor(editor: GhostEditor, snapshot: VCSSnapshot) {
+    constructor(editor: GhostEditor, snapshot: VCSAdapterSnapshot) {
         this.editor = editor
-        this.snapshot = snapshot
+        this.snapshot = VCSSnapshot.recover(editor.vcs, snapshot)
 
         this.locator = new LineLocator(editor, this.snapshot)
 
