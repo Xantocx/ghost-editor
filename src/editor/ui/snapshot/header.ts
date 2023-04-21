@@ -1,4 +1,4 @@
-import { Range, Editor } from "../../utils/types"
+import { IRange, Editor } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshot } from "./snapshot"
 import { MouseTracker } from "../basic/mouse-tracker"
@@ -33,7 +33,7 @@ export class GhostSnapshotHeader extends MouseTracker {
     }
 
     private get viewZoneMode(): boolean {
-        return this.alwaysUseViewZones || this.snapshot.start <= this.lineCount
+        return this.alwaysUseViewZones || this.snapshot.startLine <= this.lineCount
     }
 
     private get displayModeMismatch(): boolean {
@@ -47,7 +47,7 @@ export class GhostSnapshotHeader extends MouseTracker {
     }
 
     private get lineNumber(): number {
-        return this.snapshot.start
+        return this.snapshot.startLine
     }
 
     private get lineCount(): number {
@@ -64,7 +64,7 @@ export class GhostSnapshotHeader extends MouseTracker {
         if (!this._contentLocator) {
             const parent = this
             return new LineLocator(this.locator.reference, {
-                get range(): Range {
+                get range(): IRange {
                     return parent.locator.range.delta(-parent.lineCount)
                 }
             })

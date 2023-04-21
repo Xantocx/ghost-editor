@@ -1,27 +1,18 @@
-import * as monaco from "monaco-editor"
-import { Range, Editor, Model, LayoutInfo } from "../../utils/types"
+import { IRange, Editor, Model, LayoutInfo } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { PositionProvider, LineLocator } from "../../utils/line-locator"
+import { VCSSnapshot } from "../../../app/components/utils/snapshot"
 
 export class GhostSnapshot implements PositionProvider {
 
     public readonly editor: GhostEditor
+    private readonly snapshot: VCSSnapshot
     private readonly locator: LineLocator
 
     private header: GhostSnapshotHeader
     private highlight: GhostSnapshotHighlight
-
-    private _range: Range
-    public get range(): Range {
-        return this._range
-    }
-
-    public set range(new_range: Range) {
-        const lastColumn = this.model ? this.model.getLineMaxColumn(new_range.endLineNumber) : Number.MAX_SAFE_INTEGER
-        this._range = new monaco.Range(new_range.startLineNumber, 1, new_range.endLineNumber, lastColumn)
-    }
 
     public get core(): Editor {
         return this.editor.core
@@ -31,16 +22,24 @@ export class GhostSnapshot implements PositionProvider {
         return this.editor.model
     }
 
-    public get start(): number {
-        return Math.min(this.range.startLineNumber, this.range.endLineNumber)
+    public get range(): IRange {
+        return this.snapshot.range
     }
 
-    public get end(): number {
-        return Math.max(this.range.startLineNumber, this.range.endLineNumber)
+    public set range(range: IRange) {
+        this.snapshot.range = range
+    }
+
+    public get startLine(): number {
+        return this.snapshot.startLine
+    }
+
+    public get endLine(): number {
+        return this.snapshot.endLine
     }
 
     public get lineCount(): number {
-        return this.end - this.start + 1
+        return this.snapshot.lineCount
     }
 
     public get layoutInfo(): LayoutInfo {
@@ -58,7 +57,7 @@ export class GhostSnapshot implements PositionProvider {
         const model = this.editor.model
         const tabSize = this.editor.tabSize
         if (model) {
-            for (let line = this.start; line <= this.end; line++) {
+            for (let line = this.startLine; line <= this.endLine; line++) {
 
                 // what a pain...
                 const content = model.getLineContent(line)
@@ -82,11 +81,16 @@ export class GhostSnapshot implements PositionProvider {
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
-    constructor(editor: GhostEditor, selection: Range) {
-        this.editor = editor
-        this.range = selection
+    public static create(editor: GhostEditor, range: IRange): GhostSnapshot {
+        const snapshot = editor.vcs.createSnapshot(range)
+        return new GhostSnapshot(editor, snapshot)
+    }
 
-        this.locator = new LineLocator(editor, this)
+    constructor(editor: GhostEditor, snapshot: VCSSnapshot) {
+        this.editor = editor
+        this.snapshot = snapshot
+
+        this.locator = new LineLocator(editor, this.snapshot)
 
         this.display(true)
     }
@@ -99,9 +103,9 @@ export class GhostSnapshot implements PositionProvider {
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
 
         const changeSubscription = this.highlight.onDidChange((event) => {
-            const new_range = this.highlight.range
-            if (new_range) {
-                this.range = new_range
+            const newRange = this.highlight.range
+            if (newRange) {
+                this.range = newRange
                 this.header.update()
                 this.highlight.update()
             }

@@ -60,6 +60,10 @@ export class GhostEditor implements ReferenceProvider {
         return this.modelOptions?.tabSize
     }
 
+    get vcs(): typeof window.vcs {
+        return window.vcs
+    }
+
     constructor(rootElement: HTMLElement) {
         this.root = rootElement
         this.core = monaco.editor.create(rootElement, {
@@ -108,7 +112,7 @@ export class GhostEditor implements ReferenceProvider {
     setupContentEvents(): void {
         const contentSubscription = this.core.onDidChangeModelContent(event => {
             const changeSet = new ChangeSet(Date.now(), event)
-            window.vcs.applyChanges(changeSet)
+            this.vcs.applyChanges(changeSet)
         })
     }
 
@@ -118,15 +122,15 @@ export class GhostEditor implements ReferenceProvider {
 
     loadFile(filePath: string, content: string): void {
 
-        window.vcs.dispose()
+        this.vcs.dispose()
 
         const uri = monaco.Uri.file(filePath)
         const model = monaco.editor.createModel('', undefined, uri)
         this.core.setModel(model)
         this.replaceText(content)
 
-        window.vcs.createAdapter(filePath, content)
-        const snapshots = window.vcs.getSnapshots()
+        this.vcs.createAdapter(filePath, content)
+        const snapshots = this.vcs.getSnapshots()
 
         this.snapshots = snapshots.map(snapshot => {
             return new GhostSnapshot(this, snapshot)
@@ -136,7 +140,7 @@ export class GhostEditor implements ReferenceProvider {
     save(): void {
         // TODO: make sure files without a path can be saved at new path!
         window.ipcRenderer.invoke('save-file', { path: this.path, content: this.value })
-        if (this.path) window.vcs.update(this.path)
+        if (this.path) this.vcs.update(this.path)
     }
 
     getSelection(): Selection | null  {
@@ -146,7 +150,8 @@ export class GhostEditor implements ReferenceProvider {
     highlightSelection(): void {
         const selection = this.getSelection()
         if (selection) {
-            this.snapshots.push(new GhostSnapshot(this, selection))
+            const snapshot = GhostSnapshot.create(this, selection)
+            this.snapshots.push(snapshot)
         }
     }
 }

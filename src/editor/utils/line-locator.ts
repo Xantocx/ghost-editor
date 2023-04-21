@@ -1,11 +1,12 @@
-import { Range } from "../utils/types"
+import { IRange } from "../utils/types"
+import { Range } from "monaco-editor"
 
 export interface ReferenceProvider {
     topLine: number
 }
 
 export interface PositionProvider {
-    range: Range
+    range: IRange
 }
 
 export class LineLocator {
@@ -18,11 +19,12 @@ export class LineLocator {
     }
 
     public get range(): Range {
-        return this.position.range
+        const range = this.position.range
+        return new Range(range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn)
     }
 
-    public set range(new_range) {
-        this.position.range = new_range
+    public set range(range: IRange) {
+        this.position.range = range
     }
 
     public get startLine(): number {

@@ -1,3 +1,4 @@
+import { IRange } from "monaco-editor"
 import { VCSSnapshot } from "./utils/snapshot"
 import { Change, ChangeSet, LineChange, MultiLineChange } from "./utils/change"
 
@@ -10,8 +11,8 @@ export interface VCSAdapter {
     get filePath(): string | null
 
     // versions interface
+    createSnapshot(range: IRange): VCSSnapshot
     getSnapshots(): VCSSnapshot[]
-    addSnapshot(snapshot: VCSSnapshot): void
     updateSnapshot(snapshot: VCSSnapshot): void
 
     // modification interface
@@ -53,12 +54,12 @@ export class GhostVCSProvider<Adapter extends VCSAdapter> implements VCSAdapter 
         this.adapter = null
     }
 
-    public getSnapshots(): VCSSnapshot[] {
-        return this.adapter!.getSnapshots()
+    public createSnapshot(range: IRange): VCSSnapshot {
+        return this.adapter?.createSnapshot(range)
     }
 
-    public addSnapshot(snapshot: VCSSnapshot): void {
-        return this.adapter?.addSnapshot(snapshot)
+    public getSnapshots(): VCSSnapshot[] {
+        return this.adapter!.getSnapshots()
     }
 
     public updateSnapshot(snapshot: VCSSnapshot): void {

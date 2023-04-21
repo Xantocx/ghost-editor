@@ -12,5 +12,6 @@ export type Decoration = monaco.editor.IModelDeltaDecoration
 export type Decorations = monaco.editor.IEditorDecorationsCollection
 export type ViewZone = monaco.editor.IViewZone
 export type Range = monaco.Range
+export type IRange = monaco.IRange
 export type Selection = monaco.Selection
 export type DecorationsChangedEvent = monaco.editor.IModelDecorationsChangedEvent

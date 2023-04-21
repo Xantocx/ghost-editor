@@ -1,18 +1,18 @@
 import { App, BrowserWindow } from "electron"
 import { GhostMenu } from "./components/menu"
-import { GhostVCSProvider, VCSAdapter, VCSAdapterClass } from "./components/vcs-provider"
-import { SomeAdapter } from "./components/adapters/some-adapter"
+import { GhostVCSProvider } from "./components/vcs-provider"
+import { MockAdapter } from "./components/adapters/mock-adapter"
 import * as path from "path"
 
 export class GhostApp {
 
-    public static readonly adapterClass = SomeAdapter
+    public static readonly adapterClass = MockAdapter
 
     private static app: App
     private static BrowserWindow: typeof BrowserWindow
 
     private static window: BrowserWindow
-    public static readonly vcs = new GhostVCSProvider(this.adapterClass)
+    public  static readonly vcs = new GhostVCSProvider(this.adapterClass)
 
     public static start(app: App, browserWindow: typeof BrowserWindow): void {
         this.app = app
