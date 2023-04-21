@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor"
-import { Range, Selection, Editor, Model, LayoutInfo } from "../../utils/types"
+import { Range, Editor, Model, LayoutInfo } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
@@ -82,7 +82,7 @@ export class GhostSnapshot implements PositionProvider {
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
-    constructor(editor: GhostEditor, selection: Selection) {
+    constructor(editor: GhostEditor, selection: Range) {
         this.editor = editor
         this.range = selection
 

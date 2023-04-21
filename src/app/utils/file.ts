@@ -1,7 +1,7 @@
 import { dialog } from "electron"
 import * as fs from "fs"
 
-function openFileDialog(browserWindow) {
+export function openFileDialog(browserWindow) {
     return dialog.showOpenDialog(browserWindow, {
         title: 'Open File...',
         buttonLabel: 'Open',
@@ -14,7 +14,7 @@ function openFileDialog(browserWindow) {
     })
 }
 
-function openFile(browserWindow) {
+export function openFile(browserWindow) {
     return openFileDialog(browserWindow)
         .then(response => {
             if (!response.canceled && response.filePaths.length >= 1) {
@@ -29,12 +29,10 @@ function openFile(browserWindow) {
         })  
 }
 
-function saveFile(filePath, content) {
+export function saveFile(filePath, content) {
     if (filePath) {
         return fs.promises.writeFile(filePath, content)
     } else {
         console.log('NO FILE PATH! PATH SELECTOR MISSING!')
     }
 }
-
-module.exports = { openFileDialog, openFile, saveFile }

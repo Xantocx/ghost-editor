@@ -1,3 +1,5 @@
+import { GhostApp } from "../../app/app"
+
 // see preload
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625
 interface CustomIPCRenderer {
@@ -5,11 +7,12 @@ interface CustomIPCRenderer {
     on(channel: string, func: (...args: any) => void): void
 }
 
-//declare global {
+declare global {
     interface Window {
         ipcRenderer: CustomIPCRenderer
+		vcs: typeof GhostApp.vcs
     }
-//}
+}
 
 // required for electron + webpack + monaco
 self.MonacoEnvironment = {

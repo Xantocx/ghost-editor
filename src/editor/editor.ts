@@ -5,6 +5,7 @@ import { Editor, Disposable, Model, URI, Selection } from "./utils/types"
 import { LoadFileEvent } from "./utils/events"
 import { GhostSnapshot } from "./ui/snapshot/snapshot"
 import { ReferenceProvider } from "./utils/line-locator"
+import { ChangeSet } from "../app/components/utils/change"
 
 export class GhostEditor implements ReferenceProvider {
 
@@ -70,10 +71,11 @@ export class GhostEditor implements ReferenceProvider {
     }
 
     setup(): void {
-        this.setup_shortcuts()
+        this.setupShortcuts()
+        this.setupContentEvents()
 
         window.ipcRenderer.on('load-file' , (response: LoadFileEvent) => {
-            this.load_file(response.path, response.content)
+            this.loadFile(response.path, response.content)
         })
 
         window.ipcRenderer.on('save' , () => {
@@ -81,14 +83,14 @@ export class GhostEditor implements ReferenceProvider {
         })
     }
 
-    setup_shortcuts(): void {
+    setupShortcuts(): void {
 
         const parent = this
 
         // https://microsoft.github.io/monaco-editor/playground.html?source=v0.37.1#example-interacting-with-the-editor-adding-an-action-to-an-editor-instance
         this.keybindings.push(this.core.addAction({
-            id: "ghost-activation",
-            label: "Activate Ghost",
+            id: "ghost-tracking",
+            label: "Track with Ghost",
             keybindings: [
                 monaco.KeyMod.Alt | monaco.KeyCode.KeyY,
             ],
@@ -98,32 +100,51 @@ export class GhostEditor implements ReferenceProvider {
             contextMenuOrder: 1,
         
             run: function (core) {
-                parent.highlight_selection()
+                parent.highlightSelection()
             },
         }));
     }
 
-    replace_text(text): void {
+    setupContentEvents(): void {
+        const contentSubscription = this.core.onDidChangeModelContent(event => {
+            const changeSet = new ChangeSet(Date.now(), event)
+            window.vcs.applyChanges(changeSet)
+        })
+    }
+
+    replaceText(text: string): void {
         this.core.setValue(text)
     }
 
-    load_file(filePath: string, content: string): void {
+    loadFile(filePath: string, content: string): void {
+
+        window.vcs.dispose()
+
         const uri = monaco.Uri.file(filePath)
         const model = monaco.editor.createModel('', undefined, uri)
         this.core.setModel(model)
-        this.replace_text(content)
+        this.replaceText(content)
+
+        window.vcs.createAdapter(filePath, content)
+        const snapshots = window.vcs.getSnapshots()
+
+        this.snapshots = snapshots.map(snapshot => {
+            return new GhostSnapshot(this, snapshot)
+        })
     }
 
     save(): void {
+        // TODO: make sure files without a path can be saved at new path!
         window.ipcRenderer.invoke('save-file', { path: this.path, content: this.value })
+        if (this.path) window.vcs.update(this.path)
     }
 
-    get_selection(): Selection | null  {
+    getSelection(): Selection | null  {
         return this.core.getSelection()
     }
 
-    highlight_selection(): void {
-        const selection = this.get_selection()
+    highlightSelection(): void {
+        const selection = this.getSelection()
         if (selection) {
             this.snapshots.push(new GhostSnapshot(this, selection))
         }
