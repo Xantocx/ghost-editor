@@ -2,18 +2,17 @@ import * as path from "path"
 import { App, BrowserWindow } from "electron"
 import { GhostMenu } from "./components/interface/menu"
 import { VCSServer } from "./components/vcs/vcs-provider"
-import { ElectronVCSServer } from "./components/vcs/implementations"
-import { MockAdapter } from "./components/vcs/adapters/mock-adapter"
+import { LocalGhostVCSServer } from "./components/vcs/implementations"
 
 export class GhostApp {
 
-    public static readonly adapterClass = MockAdapter
+    // public static readonly adapterClass = MockAdapter
 
     private static app: App
     private static BrowserWindow: typeof BrowserWindow
 
     private static window: BrowserWindow
-    public  static readonly vcs: VCSServer = ElectronVCSServer.create(this.adapterClass)
+    public  static readonly vcs: VCSServer = new LocalGhostVCSServer()
 
     public static start(app: App, browserWindow: typeof BrowserWindow): void {
         this.app = app

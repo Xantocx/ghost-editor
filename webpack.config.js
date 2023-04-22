@@ -3,6 +3,32 @@ const CopyPlugin = require("copy-webpack-plugin");
 const HtmlWebPackPlugin = require('html-webpack-plugin');
 const HtmlWebpackTagsPlugin = require('html-webpack-tags-plugin');
 
+const mainConfig = {
+	name: 'main',
+	mode: 'development',
+    target: 'electron-main',
+	entry: {
+		main: './main.ts',
+	},
+	resolve: {
+		extensions: ['.ts', '.js'],
+	},
+	output: {
+		globalObject: 'self',
+		filename: '[name].bundle.js',
+		path: path.resolve(__dirname, 'dist/electron'),
+	},
+	module: {
+		rules: [
+			{
+				test: /\.ts?$/,
+				use: 'ts-loader',
+				exclude: /node_modules/
+			}
+		]
+	},
+}
+
 const preloadConfig = {
 	name: 'preload',
 	mode: 'development',
@@ -16,7 +42,7 @@ const preloadConfig = {
 	output: {
 		globalObject: 'self',
 		filename: '[name].bundle.js',
-		path: path.resolve(__dirname, 'dist/electron/src/app'),
+		path: path.resolve(__dirname, 'dist/electron'),
 	},
 	module: {
 		rules: [
@@ -86,4 +112,4 @@ const rendererConfig = {
 	]
 }
 
-module.exports = [preloadConfig, rendererConfig]
+module.exports = [mainConfig, preloadConfig, rendererConfig]

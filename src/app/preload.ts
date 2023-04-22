@@ -1,7 +1,7 @@
 // ContextBridge: https://github.com/electron/electron/issues/9920#issuecomment-468323625
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625
 import { contextBridge, ipcRenderer } from "electron"
-import { ElectronVCSClient } from "./components/vcs/implementations"
+import { LocalGhostVCSClient } from "./components/vcs/implementations"
 
 // set ipc renderer for render environment
 contextBridge.exposeInMainWorld("ipcRenderer", {
@@ -10,4 +10,4 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
 })
 
 // set vcs for render environment
-contextBridge.exposeInMainWorld("vcs", ElectronVCSClient)
+contextBridge.exposeInMainWorld("vcs", LocalGhostVCSClient)
