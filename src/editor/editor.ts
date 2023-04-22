@@ -5,8 +5,8 @@ import { Editor, Disposable, Model, URI, Selection } from "./utils/types"
 import { LoadFileEvent } from "./utils/events"
 import { GhostSnapshot } from "./ui/snapshot/snapshot"
 import { ReferenceProvider } from "./utils/line-locator"
-import { ChangeSet } from "../app/components/utils/change"
-import { VCSSnapshot } from "../app/components/utils/snapshot"
+import { ChangeSet } from "../app/components/data/change"
+import { VCSClient } from "../app/components/vcs/vcs-provider"
 
 export class GhostEditor implements ReferenceProvider {
 
@@ -61,7 +61,7 @@ export class GhostEditor implements ReferenceProvider {
         return this.modelOptions?.tabSize
     }
 
-    get vcs(): typeof window.vcs {
+    get vcs(): VCSClient {
         return window.vcs
     }
 
@@ -123,14 +123,14 @@ export class GhostEditor implements ReferenceProvider {
 
     async loadFile(filePath: string, content: string): Promise<void> {
 
-        this.vcs.dispose()
+        this.vcs.unloadFile()
 
         const uri = monaco.Uri.file(filePath)
         const model = monaco.editor.createModel('', undefined, uri)
         this.core.setModel(model)
         this.replaceText(content)
 
-        this.vcs.createAdapter(filePath, content)
+        this.vcs.loadFile(filePath, content)
         const snapshots = await this.vcs.getSnapshots()
 
         this.snapshots = snapshots.map(snapshot => {
@@ -141,7 +141,7 @@ export class GhostEditor implements ReferenceProvider {
     save(): void {
         // TODO: make sure files without a path can be saved at new path!
         window.ipcRenderer.invoke('save-file', { path: this.path, content: this.value })
-        if (this.path) this.vcs.update(this.path)
+        if (this.path) this.vcs.updatePath(this.path)
     }
 
     getSelection(): Selection | null  {

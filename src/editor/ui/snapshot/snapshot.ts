@@ -3,7 +3,7 @@ import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { PositionProvider, LineLocator } from "../../utils/line-locator"
-import { VCSAdapterSnapshot, VCSSnapshot } from "../../../app/components/utils/snapshot"
+import { VCSSnapshotData, VCSSnapshot } from "../../../app/components/data/snapshot"
 
 export class GhostSnapshot implements PositionProvider {
 
@@ -86,9 +86,9 @@ export class GhostSnapshot implements PositionProvider {
         return new GhostSnapshot(editor, snapshot)
     }
 
-    constructor(editor: GhostEditor, snapshot: VCSAdapterSnapshot) {
+    constructor(editor: GhostEditor, snapshot: VCSSnapshotData) {
         this.editor = editor
-        this.snapshot = VCSSnapshot.recover(editor.vcs, snapshot)
+        this.snapshot = VCSSnapshot.create(editor.vcs, snapshot)
 
         this.locator = new LineLocator(editor, this.snapshot)
 

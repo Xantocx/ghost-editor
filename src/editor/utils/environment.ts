@@ -1,4 +1,4 @@
-import { VCSProvider } from "../../app/components/vcs/vcs-provider"
+import { VCSClient } from "../../app/components/vcs/vcs-provider"
 
 // see preload
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625
@@ -10,7 +10,7 @@ interface IPCRenderer {
 declare global {
     interface Window {
         ipcRenderer: IPCRenderer
-		vcs: VCSProvider
+		vcs: VCSClient
     }
 }
 

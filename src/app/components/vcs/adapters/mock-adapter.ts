@@ -1,9 +1,9 @@
-import { LineChange, MultiLineChange } from "../../utils/change";
-import { IRange, Range, VCSAdapterSnapshot, VCSSnapshot } from "../../utils/snapshot";
-import { VCSAdapter } from "../vcs-provider"
 import * as crypto from "crypto"
+import { BasicVCSAdapter } from "../vcs-provider"
+import { LineChange, MultiLineChange } from "../../data/change";
+import { IRange, Range, VCSSnapshotData, VCSSnapshot } from "../../data/snapshot";
 
-export class MockAdapter implements VCSAdapter {
+export class MockAdapter extends BasicVCSAdapter {
 
     private snapshots: VCSSnapshot[] = [
         new VCSSnapshot(crypto.randomUUID(), this, new Range(3, 1, 6, Number.MAX_SAFE_INTEGER)),
@@ -21,23 +21,39 @@ export class MockAdapter implements VCSAdapter {
         this._filePath = path
     }
 
-    constructor(filePath: string | null, content: string | null) {
+    constructor() {
+        super()
+    }
+
+    public loadFile(filePath: string | null, content: string | null): void {
         this.filePath = filePath
     }
 
-    async createSnapshot(range: IRange): Promise<VCSAdapterSnapshot> {
+    public unloadFile(): void {
+        this.filePath = null
+    }
+
+    public updatePath(filePath: string): void {
+        this.filePath = filePath
+    }
+
+    public cloneToPath(filePath: string): void {
+        throw new Error("Method not implemented.")
+    }
+
+    async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
         const snapshot = new VCSSnapshot(crypto.randomUUID(), this, range)
         console.log(snapshot)
         this.snapshots.push(snapshot)
         return snapshot
     }
 
-    async getSnapshots(): Promise<VCSAdapterSnapshot[]> {
+    async getSnapshots(): Promise<VCSSnapshotData[]> {
         return this.snapshots
     }
 
-    updateSnapshot(adapterSnapshot: VCSAdapterSnapshot): void {
-        const snapshot = VCSSnapshot.recover(this, adapterSnapshot)
+    updateSnapshot(adapterSnapshot: VCSSnapshotData): void {
+        const snapshot = VCSSnapshot.create(this, adapterSnapshot)
 
         console.log(snapshot)
 
@@ -62,13 +78,7 @@ export class MockAdapter implements VCSAdapter {
         console.log(change)
     }
 
-    update(filePath: string): void {
-        // throw new Error("Method not implemented.");
-        console.log("New File Path: " + filePath)
-    }
-
-    dispose(): void {
-        // throw new Error("Method not implemented.");
-        console.log("Disposed.")
+    public getVersions(snapshot: VCSSnapshotData): void {
+        throw new Error("Method not implemented.")
     }
 }

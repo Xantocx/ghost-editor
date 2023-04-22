@@ -1,4 +1,4 @@
-import { VCSAdapter } from "../vcs/vcs-provider"
+import { VCSProvider } from "../vcs/vcs-provider"
 import { PositionProvider } from "../../../editor/utils/line-locator"
 
 export interface IRange {
@@ -23,16 +23,16 @@ export class Range implements IRange {
     }
 }
 
-export interface VCSAdapterSnapshot {
+export interface VCSSnapshotData {
     uuid: string
     _startLine: number
     _endLine: number
 }
 
-export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
+export class VCSSnapshot implements VCSSnapshotData, PositionProvider {
 
     public readonly uuid: string
-    public readonly adapter: VCSAdapter
+    public readonly provider: VCSProvider
 
     public _startLine: number
     public _endLine: number
@@ -44,7 +44,7 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
     public set startLine(line: number) {
         if (this._startLine !== line) {
             this._startLine = line
-            this.updateAdapter()
+            this.updateServer()
         }
     }
 
@@ -55,7 +55,7 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
     public set endLine(line: number) {
         if (this._endLine !== line) {
             this._endLine = line
-            this.updateAdapter()
+            this.updateServer()
         }
     }
 
@@ -69,28 +69,28 @@ export class VCSSnapshot implements VCSAdapterSnapshot, PositionProvider {
 
     public set range(range: IRange) {
         if (this.update(range)) {
-            this.updateAdapter()
+            this.updateServer()
         }
     }
 
-    public static recover(adapter: VCSAdapter, snapshot: VCSAdapterSnapshot): VCSSnapshot {
+    public static create(provider: VCSProvider, snapshot: VCSSnapshotData): VCSSnapshot {
         const range = new Range(snapshot._startLine, 1, snapshot._endLine, Number.MAX_SAFE_INTEGER)
-        return new VCSSnapshot(snapshot.uuid, adapter, range)
+        return new VCSSnapshot(snapshot.uuid, provider, range)
     }
 
-    constructor(uuid: string, adapter: VCSAdapter, range: IRange) {
+    constructor(uuid: string, provider: VCSProvider, range: IRange) {
         this.uuid = uuid
-        this.adapter = adapter
+        this.provider = provider
         
         this._startLine = Math.min(range.startLineNumber, range.endLineNumber)
         this._endLine   = Math.max(range.startLineNumber, range.endLineNumber)
     }
 
-    private updateAdapter(): void {
-        this.adapter.updateSnapshot(this.compress())
+    private updateServer(): void {
+        this.provider.updateSnapshot(this.compress())
     }
 
-    public compress(): VCSAdapterSnapshot {
+    public compress(): VCSSnapshotData {
 
         const parent = this
 

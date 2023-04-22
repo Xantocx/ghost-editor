@@ -1,80 +1,66 @@
 import { IRange } from "monaco-editor"
-import { VCSAdapterSnapshot } from "../utils/snapshot"
-import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../utils/change"
+import { VCSSnapshotData } from "../data/snapshot"
+import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 
-// support interface to allow for constructor typing of adapters
-export interface VCSServerClass<Adapter extends VCSServer> {
-    new(filePath: string | null, content: string | null): Adapter
-}
+// functionality that the VCS needs to provide
+export interface VCSProvider {
+    // file handling
+    loadFile(filePath: string | null, content: string | null): void
+    unloadFile(): void
+    updatePath(filePath: string): void
+    cloneToPath(filePath: string): void
 
-// server-side interface interacting with databases, etc. and providing an interface for ghost
-export interface VCSServer {
-
-    // versions interface
-    createSnapshot(range: IRange): Promise<VCSAdapterSnapshot>
-    getSnapshots(): Promise<VCSAdapterSnapshot[]>
-    updateSnapshot(snapshot: VCSAdapterSnapshot): void
+    // snapshot interface
+    createSnapshot(range: IRange): Promise<VCSSnapshotData>
+    getSnapshots(): Promise<VCSSnapshotData[]>
+    updateSnapshot(snapshot: VCSSnapshotData): void
 
     // modification interface
     lineChanged(change: LineChange): void
     linesChanged(change: MultiLineChange): void
-
-    update(filePath: string): void  // update path of the file handled by this adapter
-    dispose(): void                 // won't capture any changes anymore
-}
-
-// client-side interface allowing the client to call server-side functions + some convenience
-export interface VCSClient extends VCSServer {
-    createAdapter(filePath: string | null, content: string | null): void
     applyChange(change: AnyChange): void
     applyChanges(changes: ChangeSet): void
+
+    // version interface
+    getVersions(snapshot: VCSSnapshotData): void
 }
 
-export class GhostVCSProvider<Adapter extends VCSServer> implements VCSClient {
+export abstract class BasicVCSProvider implements VCSProvider {
 
-    private readonly adapterClass: VCSServerClass<Adapter>
-    
-    private _adapter: Adapter | null = null
-    public get adapter(): Adapter | null {
-        return this._adapter
+    public loadFile(filePath: string | null, content: string | null): void {
+        throw new Error("Method not implemented.")
     }
 
-    private set adapter(adapter: Adapter | null) {
-        this._adapter = adapter
+    public unloadFile(): void {
+        throw new Error("Method not implemented.")
     }
 
-    constructor(adaptorClass: VCSServerClass<Adapter>) {
-        this.adapterClass = adaptorClass
+    public updatePath(filePath: string): void {
+        throw new Error("Method not implemented.")
     }
 
-    public createAdapter(filePath: string | null, content: string | null): void {
-        this.dispose()
-        this.adapter = new this.adapterClass(filePath, content)
+    public cloneToPath(filePath: string): void {
+        throw new Error("Method not implemented.")
     }
 
-    public dispose() {
-        this.adapter?.dispose()
-        this.adapter = null
+    public createSnapshot(range: IRange): Promise<VCSSnapshotData> {
+        throw new Error("Method not implemented.")
     }
 
-    public createSnapshot(range: IRange): Promise<VCSAdapterSnapshot> {
-        return this.adapter?.createSnapshot(range)
+    public getSnapshots(): Promise<VCSSnapshotData[]> {
+        throw new Error("Method not implemented.")
     }
 
-    public getSnapshots(): Promise<VCSAdapterSnapshot[]> {
-        return this.adapter!.getSnapshots()
-    }
-
-    public updateSnapshot(snapshot: VCSAdapterSnapshot): void {
-        return this.adapter?.updateSnapshot(snapshot)
+    public updateSnapshot(snapshot: VCSSnapshotData): void {
+        throw new Error("Method not implemented.")
     }
 
     public lineChanged(change: LineChange): void {
-        this.adapter?.lineChanged(change)
+        throw new Error("Method not implemented.")
     }
 
     public linesChanged(change: MultiLineChange): void {
-        this.adapter?.linesChanged(change)
+        throw new Error("Method not implemented.")
     }
 
     public applyChange(change: AnyChange): void {
@@ -93,7 +79,80 @@ export class GhostVCSProvider<Adapter extends VCSServer> implements VCSClient {
         })
     }
 
-    public update(filePath: string): void {
-        this.adapter?.update(filePath)
+    public getVersions(snapshot: VCSSnapshotData): void {
+        throw new Error("Method not implemented.")
+    }
+}
+
+// server-side interface on which end-points may be mapped
+export interface VCSServer extends VCSProvider {}
+export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServer {}
+
+// client-side interface which may call server end-points
+export interface VCSClient extends VCSProvider {}
+export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {}
+
+// adapter that allows to build an adaptable server with varying backend
+export interface VCSAdapter extends VCSProvider {}
+export abstract class BasicVCSAdapter extends BasicVCSProvider implements VCSAdapter {}
+
+// support interface to allow for constructor typing of adapters
+export interface VCSAdapterClass<Adapter extends VCSAdapter> {
+    new(): Adapter
+}
+
+// adaptable server with varying backend implemented as an adapter
+export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProvider implements VCSServer {
+    
+    public readonly adapter: Adapter
+
+    public static create<Adapter extends VCSAdapter>(adapterClass: VCSAdapterClass<Adapter>): AdaptableVCSServer<Adapter> {
+        const adapter = new adapterClass()
+        return new this(adapter)
+    }
+
+    constructor(adapter: Adapter) {
+        super()
+        this.adapter = adapter
+    }
+
+    public loadFile(filePath: string | null, content: string | null): void {
+        this.adapter.loadFile(filePath, content)
+    }
+
+    public unloadFile(): void {
+        this.adapter.unloadFile()
+    }
+
+    public updatePath(filePath: string): void {
+        this.adapter.updatePath(filePath)
+    }
+
+    public cloneToPath(filePath: string): void {
+        this.adapter.cloneToPath(filePath)
+    }
+
+    public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
+        return this.adapter.createSnapshot(range)
+    }
+
+    public async getSnapshots(): Promise<VCSSnapshotData[]> {
+        return this.adapter.getSnapshots()
+    }
+
+    public updateSnapshot(snapshot: VCSSnapshotData): void {
+        this.adapter.updateSnapshot(snapshot)
+    }
+
+    public lineChanged(change: LineChange): void {
+        this.adapter.lineChanged(change)
+    }
+
+    public linesChanged(change: MultiLineChange): void {
+        this.adapter.linesChanged(change)
+    }
+
+    public getVersions(snapshot: VCSSnapshotData): void {
+        this.adapter.getVersions(snapshot)
     }
 }
