@@ -1,7 +1,7 @@
 import { App, BrowserWindow } from "electron"
-import { GhostMenu } from "./components/menu"
-import { GhostVCSProvider } from "./components/vcs-provider"
-import { MockAdapter } from "./components/adapters/mock-adapter"
+import { GhostMenu } from "./components/interface/menu"
+import { VCSProvider, ElectronVCSProvider } from "./components/vcs/vcs-provider"
+import { MockAdapter } from "./components/vcs/adapters/mock-adapter"
 import * as path from "path"
 
 export class GhostApp {
@@ -12,7 +12,7 @@ export class GhostApp {
     private static BrowserWindow: typeof BrowserWindow
 
     private static window: BrowserWindow
-    public  static readonly vcs = new GhostVCSProvider(this.adapterClass)
+    public  static readonly vcs: VCSProvider = new ElectronVCSProvider(this.adapterClass)
 
     public static start(app: App, browserWindow: typeof BrowserWindow): void {
         this.app = app

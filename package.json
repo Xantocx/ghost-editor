@@ -14,7 +14,7 @@
     "@types/electron": "^1.6.10",
     "copy-webpack-plugin": "^11.0.0",
     "css-loader": "^5.2.7",
-    "electron": "^23.2.2",
+    "electron": "^23.2.4",
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
     "html-webpack-tags-plugin": "^3.0.2",

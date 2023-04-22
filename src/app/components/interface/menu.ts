@@ -1,5 +1,5 @@
 import { Menu, MenuItem, ipcMain } from "electron"
-import * as file from "../utils/file"
+import * as file from "../../utils/file"
 
 export class GhostMenu {
 

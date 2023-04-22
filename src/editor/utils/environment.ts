@@ -1,16 +1,16 @@
-import { IGhostVCSProvider } from "../../app/components/vcs-provider"
+import { VCSProvider } from "../../app/components/vcs/vcs-provider"
 
 // see preload
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625
-interface CustomIPCRenderer {
+interface IPCRenderer {
     invoke(channel: string, ...args: any): void
     on(channel: string, func: (...args: any) => void): void
 }
 
 declare global {
     interface Window {
-        ipcRenderer: CustomIPCRenderer
-		vcs: IGhostVCSProvider
+        ipcRenderer: IPCRenderer
+		vcs: VCSProvider
     }
 }
 

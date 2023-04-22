@@ -1,5 +1,5 @@
-import { LineChange, MultiLineChange } from "../utils/change";
-import { IRange, Range, VCSAdapterSnapshot, VCSSnapshot } from "../utils/snapshot";
+import { LineChange, MultiLineChange } from "../../utils/change";
+import { IRange, Range, VCSAdapterSnapshot, VCSSnapshot } from "../../utils/snapshot";
 import { VCSAdapter } from "../vcs-provider"
 import * as crypto from "crypto"
 

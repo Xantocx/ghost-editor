@@ -1,4 +1,4 @@
-import { VCSAdapter } from "../vcs-provider"
+import { VCSAdapter } from "../vcs/vcs-provider"
 import { PositionProvider } from "../../../editor/utils/line-locator"
 
 export interface IRange {
