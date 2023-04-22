@@ -1,27 +1,6 @@
+import { IRange, Range } from "../utils/range"
 import { VCSProvider } from "../vcs/vcs-provider"
 import { PositionProvider } from "../../../editor/utils/line-locator"
-
-export interface IRange {
-    startLineNumber: number
-    startColumn: number
-    endLineNumber: number
-    endColumn: number
-}
-
-export class Range implements IRange {
-
-    public startLineNumber: number
-    public startColumn: number
-    public endLineNumber: number
-    public endColumn: number
-
-    constructor(startLineNumber: number, startColumn: number, endLineNumber: number, endColumn: number) {
-        this.startLineNumber = startLineNumber
-        this.startColumn = startColumn
-        this.endLineNumber = endLineNumber
-        this.endColumn = endColumn
-    }
-}
 
 export interface VCSSnapshotData {
     uuid: string

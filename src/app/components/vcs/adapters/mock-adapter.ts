@@ -1,7 +1,8 @@
 import * as crypto from "crypto"
+import { Range, IRange } from "../../utils/range";
 import { BasicVCSAdapter } from "../vcs-provider"
 import { LineChange, MultiLineChange } from "../../data/change";
-import { IRange, Range, VCSSnapshotData, VCSSnapshot } from "../../data/snapshot";
+import { VCSSnapshotData, VCSSnapshot } from "../../data/snapshot";
 
 export class MockAdapter extends BasicVCSAdapter {
 

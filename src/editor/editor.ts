@@ -16,24 +16,31 @@ export class GhostEditor implements ReferenceProvider {
     private keybindings: Disposable[] = []
     private snapshots: GhostSnapshot[] = []
 
-    get model(): Model | null {
-        return this.core.getModel()
+    get model(): Model {
+        let model = this.core.getModel()
+
+        if (!model) {
+            model = monaco.editor.createModel("")
+            this.core.setModel(model)
+        }
+
+        return model
     }
 
-    get uri(): URI | null {
-        return this.model ? this.model.uri : null
+    get uri(): URI {
+        return this.model.uri
     }
 
     get path(): string | null {
-        return this.uri && this.uri.scheme === 'file' ? this.uri.fsPath : null
+        return this.uri.scheme === 'file' ? this.uri.fsPath : null
     }
 
     get value(): string {
         return this.core.getValue()
     }
 
-    get modelOptions(): monaco.editor.TextModelResolvedOptions | undefined {
-        return this.model?.getOptions()
+    get modelOptions(): monaco.editor.TextModelResolvedOptions {
+        return this.model.getOptions()
     }
 
     get topLine() : number {
@@ -57,8 +64,8 @@ export class GhostEditor implements ReferenceProvider {
         return this.fontInfo.spaceWidth
     }
 
-    get tabSize(): number | undefined {
-        return this.modelOptions?.tabSize
+    get tabSize(): number {
+        return this.modelOptions.tabSize
     }
 
     get vcs(): VCSClient {
@@ -112,7 +119,7 @@ export class GhostEditor implements ReferenceProvider {
 
     setupContentEvents(): void {
         const contentSubscription = this.core.onDidChangeModelContent(event => {
-            const changeSet = new ChangeSet(Date.now(), event)
+            const changeSet = new ChangeSet(Date.now(), this.model, event)
             this.vcs.applyChanges(changeSet)
         })
     }
@@ -126,9 +133,8 @@ export class GhostEditor implements ReferenceProvider {
         this.vcs.unloadFile()
 
         const uri = monaco.Uri.file(filePath)
-        const model = monaco.editor.createModel('', undefined, uri)
+        const model = monaco.editor.createModel(content, undefined, uri)
         this.core.setModel(model)
-        this.replaceText(content)
 
         this.vcs.loadFile(filePath, content)
         const snapshots = await this.vcs.getSnapshots()

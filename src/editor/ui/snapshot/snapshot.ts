@@ -18,7 +18,7 @@ export class GhostSnapshot implements PositionProvider {
         return this.editor.core
     }
 
-    public get model(): Model | null {
+    public get model(): Model {
         return this.editor.model
     }
 
@@ -56,18 +56,19 @@ export class GhostSnapshot implements PositionProvider {
 
         const model = this.editor.model
         const tabSize = this.editor.tabSize
-        if (model) {
-            for (let line = this.startLine; line <= this.endLine; line++) {
+        const spaceWidth = this.editor.spaceWidth
+        const characterWidth = this.editor.characterWidth
 
-                // what a pain...
-                const content = model.getLineContent(line)
-                const tabCount = content.split("\t").length - 1
-                const tabLength = (tabSize ? (tabCount) * tabSize : 0) * this.editor.spaceWidth
-                const contentLength = (content.length - tabCount) * this.editor.characterWidth
-                const lineLength = contentLength + tabLength
+        for (let line = this.startLine; line <= this.endLine; line++) {
 
-                longestLine = Math.max(longestLine, lineLength)
-            }
+            // what a pain...
+            const content = model.getLineContent(line)
+            const tabCount = content.split("\t").length - 1
+            const tabLength = tabCount * tabSize * spaceWidth
+            const contentLength = (content.length - tabCount) * characterWidth
+            const lineLength = contentLength + tabLength
+
+            longestLine = Math.max(longestLine, lineLength)
         }
 
         return longestLine
