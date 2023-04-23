@@ -1,5 +1,5 @@
 import { ElectronVCSServer } from "./electron-server"
-import { GhostVCSServer } from "../../../../../../ghost-vcs/src/vcs"
+import { GhostVCSServer } from "../../../../../vcs-test"
 
 export class LocalGhostVCSServer extends ElectronVCSServer<GhostVCSServer> {
     constructor() {

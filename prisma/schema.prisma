@@ -1,0 +1,70 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DBTrackedFile {
+  id Int @id @default(autoincrement())
+
+  filePath String?
+
+  lines     DBTrackedLine[]
+  snapshots DBSnapshot[]
+}
+
+model DBTrackedLine {
+  id Int @id @default(autoincrement())
+
+  fileId Int
+  file   DBTrackedFile @relation(fields: [fileId], references: [id])
+
+  lineNumber Int
+  history    DBLineHistory?
+}
+
+model DBLineHistory {
+  id Int @id @default(autoincrement())
+
+  lineId Int           @unique
+  line   DBTrackedLine @relation(fields: [lineId], references: [id])
+
+  versions DBLineVersion[] @relation("VersionsRelation")
+}
+
+model DBLineVersion {
+  id Int @id @default(autoincrement())
+
+  isHead  Boolean
+  
+  timestamp Int
+  content String
+
+  previousId Int?           @unique
+  previous   DBLineVersion? @relation("LineHistory", fields: [previousId], references: [id])
+  next       DBLineVersion? @relation("LineHistory")
+
+  originId Int?            @unique
+  origin   DBLineVersion?  @relation("OriginRelation", fields: [originId], references: [id])
+  clones   DBLineVersion[] @relation("OriginRelation")
+
+  historyId Int           @unique
+  history   DBLineHistory @relation("VersionsRelation", fields: [historyId], references: [id])
+}
+
+model DBSnapshot {
+  id   Int    @id @default(autoincrement())
+  uuid String
+
+  fileId Int
+  file   DBTrackedFile @relation(fields: [fileId], references: [id])
+
+  startLine Int
+  endLine   Int
+}
