@@ -1,18 +1,19 @@
 import { Prisma, PrismaClient, DBTrackedFile } from '@prisma/client'
 import { VCSSnapshotData } from '../../src/app/components/data/snapshot'
 
-// Define a type that includes relations
-const fullSnapshot = Prisma.validator<Prisma.DBSnapshotArgs>()({
-    include: { file: true },
-})
-
 // This type will include a user and all their posts
-type SnapshotData = Prisma.DBSnapshotGetPayload<typeof fullSnapshot>
+type SnapshotData = Prisma.DBSnapshotGetPayload<typeof Snapshot.args>
 
 export class Snapshot implements SnapshotData {
 
-    private readonly client: PrismaClient
-    private readonly data: SnapshotData
+    static readonly include = Prisma.validator<Prisma.DBSnapshotInclude>()({
+        file: true
+    })
+
+    // Define a type that includes relations
+    static readonly args = Prisma.validator<Prisma.DBSnapshotArgs>()({
+        include: this.include
+    })
 
     public static async create(client: PrismaClient, fileConnector: Prisma.DBTrackedFileCreateNestedOneWithoutSnapshotsInput, snapshot: VCSSnapshotData): Promise<Snapshot> {
         /*
@@ -31,11 +32,17 @@ export class Snapshot implements SnapshotData {
         }
 
         const dbSnapshot: SnapshotData = await client.dBSnapshot.create({
-            data: data
+            data: data,
+            include: this.include
         })
 
-        return dbSnapshot
+        return new Snapshot(dbSnapshot)
     }
+
+
+
+    private readonly client: PrismaClient
+    public readonly data: SnapshotData
 
     constructor(data: SnapshotData) {
         this.data = data
@@ -45,7 +52,7 @@ export class Snapshot implements SnapshotData {
         this.updateSelected(this.data)
     }
 
-    private updateSelected(data: Prisma.DBSnapshotUncheckedUpdateInput | Prisma.DBSnapshotUncheckedUpdateInput) {
+    private updateSelected(data: Prisma.DBSnapshotUpdateInput | Prisma.DBSnapshotUncheckedUpdateInput) {
 
         const parent = this
 
@@ -81,6 +88,12 @@ export class Snapshot implements SnapshotData {
         return this.data.startLine
     }
 
+    public set file(file: DBTrackedFile) {
+        this.data.fileId = file.id
+        this.data.file = file
+        this.updateSelected({ fileId: this.file.id })
+    }
+
     public set startLine(line: number) {
         this.data.startLine = line
         this.updateSelected({ startLine: this.startLine })
@@ -89,5 +102,29 @@ export class Snapshot implements SnapshotData {
     public set endLine(line: number) {
         this.data.endLine = line
         this.updateSelected({ endLine: this.endLine })
+    }
+}
+
+export class SnapshotArray extends Array<Snapshot> {
+
+    constructor(...snapshots: SnapshotData[]) {
+
+        const snapshotData = snapshots.map(data => {
+            return new Snapshot(data)
+        })
+
+        super(...snapshotData)
+    }
+
+    public asRawData(): SnapshotData[] {
+        return this.map(snapshot => { 
+            return snapshot.data
+         })
+    }
+
+    public update(): void {
+        this.forEach(snapshot => {
+            snapshot.update()
+        })
     }
 }
