@@ -96,10 +96,13 @@ const rendererConfig = {
         // https://webpack.js.org/plugins/copy-webpack-plugin/
         new CopyPlugin({
             patterns: [
-              { from: "src/style/index.css", to: "style" },
-              { from: "src/editor/style/editor.css", to: "style" },
+              	{ from: "src/style/index.css", to: "style" },
+              	{ from: "src/editor/style/editor.css", to: "style" },
+				{ from: "src/libs/p5js/p5.min.js", to: "libs/p5js" },
+				{ from: "node_modules/iframe-resizer/js/iframeResizer.contentWindow.min.js", to: "libs/iframe-resizer" },
+				{ from: "node_modules/iframe-resizer/js/iframeResizer.contentWindow.map", to: "libs/iframe-resizer" }
             ],
-          }),
+        }),
 		new HtmlWebPackPlugin({
 			title: 'Ghost Editor',
             template: 'src/index.html'

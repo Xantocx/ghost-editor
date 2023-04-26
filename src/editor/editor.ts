@@ -7,11 +7,15 @@ import { GhostSnapshot } from "./ui/snapshot/snapshot"
 import { ReferenceProvider } from "./utils/line-locator"
 import { ChangeSet } from "../app/components/data/change"
 import { VCSClient } from "../app/components/vcs/vcs-provider"
+import { P5JSPreview } from "./ui/code-previews/ps5js-preview"
+import { Preview } from "./ui/code-previews/preview"
 
 export class GhostEditor implements ReferenceProvider {
 
     readonly root: HTMLElement
     readonly core: Editor
+
+    private readonly preview: Preview
 
     private keybindings: Disposable[] = []
     private snapshots: GhostSnapshot[] = []
@@ -79,6 +83,9 @@ export class GhostEditor implements ReferenceProvider {
             automaticLayout: true
         });
 
+        const previewContainer = document.getElementById("preview")!
+        this.preview = new P5JSPreview(previewContainer)
+
         this.setup()
     }
 
@@ -113,6 +120,23 @@ export class GhostEditor implements ReferenceProvider {
         
             run: function (core) {
                 parent.highlightSelection()
+            },
+        }));
+
+        let render = false
+        this.keybindings.push(this.core.addAction({
+            id: "p5-preview",
+            label: "P5 Preview",
+            keybindings: [
+                monaco.KeyMod.Alt | monaco.KeyCode.KeyP,
+            ],
+            precondition: undefined, // maybe add condition for selection
+            keybindingContext: undefined,
+            contextMenuGroupId: "z_p5_preview", // z for last spot in order
+            contextMenuOrder: 2,
+        
+            run: function (core) {
+                parent.preview.update(parent.value)
             },
         }));
     }

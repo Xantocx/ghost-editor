@@ -4,10 +4,18 @@ body, html {
     margin: 0;
 }
 
-#editor {
+.container {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     height: 100vh;
-	width: 100vw;
-    margin: 0; 
+}
+
+#editor {
+    flex: 1;
+    height: 100%;
+}
+
+#preview {
+    flex: 1;
+    height: 100%;
 }

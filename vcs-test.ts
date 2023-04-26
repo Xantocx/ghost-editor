@@ -1,5 +1,5 @@
 import { LineChange, MultiLineChange, AnyChange, ChangeSet } from "./src/app/components/data/change";
-import { VCSSnapshotData } from "./src/app/components/data/snapshot";
+import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot";
 import { IRange } from "./src/app/components/utils/range";
 import { VCSServer } from "./src/app/components/vcs/vcs-provider";
 
@@ -14,15 +14,16 @@ export class GhostVCSServer {
     }
 
     updatePath(filePath: string): void {
-        throw new Error("Method not implemented.");
+        console.log("UPDATE PATH")
     }
 
     cloneToPath(filePath: string): void {
-        throw new Error("Method not implemented.");
+        console.log("CLONE TO PATH")
     }
 
     async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        throw new Error("Method not implemented.");
+        console.log("CREATE SNAPSHOT")
+        return new VCSSnapshot(crypto.randomUUID(), this, range)
     }
 
     async getSnapshots(): Promise<VCSSnapshotData[]> {
@@ -30,26 +31,26 @@ export class GhostVCSServer {
     }
 
     updateSnapshot(snapshot: VCSSnapshotData): void {
-        throw new Error("Method not implemented.");
+        console.log("UPDATE SNAPSHOT")
     }
 
     lineChanged(change: LineChange): void {
-        throw new Error("Method not implemented.");
+        console.log("LINE CHANGED")
     }
 
     linesChanged(change: MultiLineChange): void {
-        throw new Error("Method not implemented.");
+        console.log("LINES CHANGED")
     }
 
     applyChange(change: AnyChange): void {
-        throw new Error("Method not implemented.");
+        console.log("APPLY CHANGE")
     }
 
     applyChanges(changes: ChangeSet): void {
-        throw new Error("Method not implemented.");
+        console.log("APPLY CHANGES")
     }
 
     getVersions(snapshot: VCSSnapshotData): void {
-        throw new Error("Method not implemented.");
+        console.log("GET VERSION")
     }
 }

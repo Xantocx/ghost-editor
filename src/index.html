@@ -1,18 +1,22 @@
 <!DOCTYPE html>
 <html>
-  <head>
+    <head>
 
-    <meta charset="UTF-8">
+        <meta charset="UTF-8">
 
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">  -->
+        <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">  -->
 
-    <title><%= htmlWebpackPlugin.options.title %></title>
+        <title><%= htmlWebpackPlugin.options.title %></title>
 
-  </head>
-  <body>
+    </head>
+    <body>
 
-    <div id="editor"></div>
-
-  </body>
+        <div class="container">
+            <div id="editor"></div>
+            <div id="preview"></div>
+            <!-- <iframe id="preview" src="preview/p5-preview.html"></iframe> -->
+        </div>
+        
+    </body>
 </html>
