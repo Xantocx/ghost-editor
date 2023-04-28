@@ -3,6 +3,22 @@ import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot
 import { IRange } from "./src/app/components/utils/range";
 import { VCSServer } from "./src/app/components/vcs/vcs-provider";
 
+interface LineRange {
+    start: number,
+    end: number
+}
+
+interface TrackedLineRelation {
+    previous?: TrackedLine | undefined
+    next?: TrackedLine | undefined
+}
+
+interface LineVersionRelation {
+    origin?: LineVersion | undefined
+    previous?: LineVersion | undefined
+    next?: LineVersion | undefined
+}
+
 class TrackedBlock {
 
     protected eol: string
@@ -65,9 +81,18 @@ class TrackedBlock {
         return this.stringLines.join(this.eol)
     }
 
-    public getLine(lineNumber: number): TrackedLine | null {
-        const lineCount = this.lineCount
-        if (lineNumber < 1 || lineNumber > lineCount) { return null }
+    public validLineNumber(lineNumber: number): boolean {
+        return lineNumber >= 1 && lineNumber <= this.lineCount
+    }
+
+    public validRange(range: LineRange): boolean {
+        const startValid = this.validLineNumber(range.start)
+        const endValid   = this.validLineNumber(range.end)
+        return startValid && endValid && range.start <= range.end
+    }
+
+    public getLine(lineNumber: number): TrackedLine {
+        if (!this.validLineNumber(lineNumber)) { throw new Error(`Cannot read line for invalid line number ${lineNumber}!`) }
 
         let line = this.firstLine
         for (let i = 1; i < lineNumber; i++) {
@@ -75,6 +100,23 @@ class TrackedBlock {
         }
 
         return line
+    }
+
+    public getLines(range: LineRange): TrackedLine[] {
+        if (!this.validRange(range)) { throw new Error(`Cannot read lines for invalid range ${range}`) }
+        
+        const lines = []
+
+        let current = this.getLine(range.start)
+        let end     = this.getLine(range.end)
+
+        while (current !== end) {
+            lines.push(current)
+            current = current.next
+        }
+        lines.push(end)
+
+        return lines
     }
 }
 
@@ -92,11 +134,6 @@ class ArchivedBlock extends TrackedBlock {
             this.next = relations.next
         }
     }
-}
-
-interface LineRange {
-    start: number,
-    end: number
 }
 
 class TrackedFile extends TrackedBlock {
@@ -154,10 +191,9 @@ class TrackedFile extends TrackedBlock {
         }
     }
 
-    public insertLines(lineNumber: number, contents: string[]): TrackedLine[] {
-        let offset = 0
-        return contents.map(line => {
-            return this.insertLine(lineNumber + offset++, line)
+    public insertLines(lineNumber: number, content: string[]): TrackedLine[] {
+        return content.map((line, index) => {
+            return this.insertLine(lineNumber + index, line)
         })
     }
 
@@ -166,12 +202,10 @@ class TrackedFile extends TrackedBlock {
     }
 
     public deleteLines(range: LineRange): ArchivedBlock {
-        if (range.start > range.end) { throw new Error(`Start of range cannot be smaller than end: ${range}`) }
+        if (!this.validRange(range)) { throw new Error(`Cannot delete invalid range ${range}`) }
 
         const start = this.getLine(range.start)
         const end   = this.getLine(range.end)
-
-        if (!start || !end) { throw new Error(`Cannot delete invalid range ${range}!`) }
 
         const previous = start.previous
         const next     = end.next
@@ -190,11 +224,22 @@ class TrackedFile extends TrackedBlock {
         this.archivedBlocks.push(archivedBlock)
         return archivedBlock
     }
-}
 
-interface TrackedLineRelation {
-    previous?: TrackedLine | undefined
-    next?: TrackedLine | undefined
+    public updateLine(lineNumber: number, content: string): TrackedLine {
+        const line = this.getLine(lineNumber)
+        line.update(this.getTimestamp(), content)
+        return line
+    }
+
+    public updateLines(lineNumber, content: string[]): TrackedLine[] {
+        const count = content.length
+        const timestamp = this.getTimestamp()
+        const lines = this.getLines({ start: lineNumber, end: lineNumber + count - 1 })
+        return lines.map((line, index) => {
+            line.update(timestamp, content[index])
+            return line
+        })
+    }
 }
 
 class TrackedLine {
@@ -229,6 +274,10 @@ class TrackedLine {
             if (this.next)     { this.next.previous = this }
         }
     }
+
+    public update(timestamp: number, content: string): LineVersion {
+        return this.history.createNewVersion(timestamp, content)
+    }
 }
 
 class LineHistory {
@@ -245,17 +294,29 @@ class LineHistory {
     }
 
     constructor(line: TrackedLine, initialTimestamp: number, initialContent: string) {
-        this.line = line
+        this.line  = line
         this.start = new LineVersion(this, initialTimestamp, initialContent)
-        this.head = this.start
+        this.end   = this.start
+        this.head  = this.start
     }
 
-}
+    private cloneHeadToEnd(timestamp: number): LineVersion {
+        this.end = this.head.clone(timestamp, { previous: this.end })
+        this.head = this.end
+        return this.head
+    }
 
-interface LineVersionRelation {
-    origin?: LineVersion | undefined
-    previous?: LineVersion | undefined
-    next?: LineVersion | undefined
+    public createNewVersion(timestamp: number, content: string): LineVersion {
+        if (this.head !== this.end) {
+            this.cloneHeadToEnd(timestamp)
+        }
+
+        this.end = new LineVersion(this, timestamp, content, { previous: this.end })
+        this.head = this.end
+
+        return this.head
+    }
+
 }
 
 class LineVersion {
@@ -268,8 +329,8 @@ class LineVersion {
     public readonly origin: LineVersion | undefined
     private clones: LineVersion[] = []
 
-    private previous: LineVersion | undefined
-    private next: LineVersion | undefined
+    public previous: LineVersion | undefined
+    public next: LineVersion | undefined
 
     constructor(history: LineHistory, timestamp: number, content: string, relations?: LineVersionRelation) {
         this.histoy = history
@@ -280,7 +341,16 @@ class LineVersion {
             this.origin = relations.origin
             this.previous = relations.previous
             this.next = relations.next
+
+            if (this.origin)   { this.origin.clones.push(this) }
+            if (this.previous) { this.previous.next = this }
+            if (this.next)     { this.next.previous = this }
         }
+    }
+
+    public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
+        if (!relations?.origin) { relations.origin = this }
+        return new LineVersion(this.histoy, timestamp, this.content, relations)
     }
 }
 
