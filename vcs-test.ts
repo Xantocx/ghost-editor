@@ -289,6 +289,19 @@ class LineHistory {
     private start: LineVersion
     private end: LineVersion
 
+    public get versionCount(): number {
+
+        let count = 0
+        let version = this.start
+
+        while (version) {
+            count++
+            version = version.next
+        }
+
+        return count
+    }
+
     public get currentContent(): string {
         return this.head.content
     }
@@ -370,7 +383,11 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     private updatePreview() {
-        this.browserWindow?.webContents.send("update-vcs-preview", this.file.currentText)
+        const versionCounts = this.file.lines.map(line => {
+            return line.history.versionCount
+        })
+
+        this.browserWindow?.webContents.send("update-vcs-preview", this.file.currentText, versionCounts)
     }
 
     public loadFile(filePath: string | null, eol: string, content: string | null): void {

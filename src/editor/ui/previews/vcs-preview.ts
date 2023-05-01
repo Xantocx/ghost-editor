@@ -8,19 +8,23 @@ export class VCSPreview extends Preview {
     private vcsModel: Model
 
     private readonly diffEditor: monaco.editor.IStandaloneDiffEditor
+    private readonly decorations: monaco.editor.IEditorDecorationsCollection
 
-    constructor(root: HTMLElement, editorModel: Model, vcsCode?: string) {
+    constructor(root: HTMLElement, editorModel: Model) {
         super(root)
 
         this.diffEditor = monaco.editor.createDiffEditor(this.root, {
             enableSplitViewResizing: true,
             automaticLayout: true,
+            originalEditable: false,
         });
+
+        this.decorations = this.diffEditor.createDecorationsCollection()
 
         this.updateEditor(editorModel)
 
-        window.ipcRenderer.on("update-vcs-preview", code => {
-            this.updateVCS(code)
+        window.ipcRenderer.on("update-vcs-preview", (code: string, versionCounts: number[]) => {
+            this.updateVCS(code, versionCounts)
         })
     }
 
@@ -35,7 +39,29 @@ export class VCSPreview extends Preview {
          })
     }
 
-    public updateVCS(code: string): void {
+    public updateVCS(code: string, versionCounts: number[]): void {
         this.vcsModel.setValue(code)
+        
+        const newDecorations: monaco.editor.IModelDeltaDecoration[] = versionCounts.map((versionCount: number, index: number) => {
+
+            const lineNumber = index + 1
+            let   versionCountText = `${versionCount} versions:\t`
+
+            while (versionCountText.length < 14) {
+                versionCountText = " " + versionCountText
+            }
+
+            return {
+                range: new monaco.Range(lineNumber, 0, lineNumber, 3),
+                options: {
+                    before: {
+                        content: versionCountText,
+                        inlineClassName: "ghostHighlightBlue"
+                    },
+                },
+            };
+        })
+
+        this.decorations.set(newDecorations)
     }
 }
