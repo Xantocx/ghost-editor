@@ -26,7 +26,7 @@ export class MockAdapter extends BasicVCSAdapter {
         super()
     }
 
-    public loadFile(filePath: string | null, content: string | null): void {
+    public loadFile(filePath: string | null, eol: string, content: string | null): void {
         this.filePath = filePath
     }
 

@@ -11,8 +11,8 @@ function invoke<Type>(channel: string, ...args: any): Promise<Type> {
 }
 
 export const ElectronVCSClient: VCSClient = {
-    loadFile(filePath: string | null, content: string | null): void {
-        invoke(ElectronVCSServer.loadFileChannel, filePath, content)
+    loadFile(filePath: string | null, eol: string, content: string | null): void {
+        invoke(ElectronVCSServer.loadFileChannel, filePath, eol, content)
     },
 
     unloadFile(): void {

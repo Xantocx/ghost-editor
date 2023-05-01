@@ -5,17 +5,18 @@ import { Editor, Disposable, Model, URI, Selection } from "./utils/types"
 import { LoadFileEvent } from "./utils/events"
 import { GhostSnapshot } from "./ui/snapshot/snapshot"
 import { ReferenceProvider } from "./utils/line-locator"
-import { ChangeSet } from "../app/components/data/change"
+import { ChangeBehaviour, ChangeSet, LineChange } from "../app/components/data/change"
 import { VCSClient } from "../app/components/vcs/vcs-provider"
-import { P5JSPreview } from "./ui/code-previews/ps5js-preview"
-import { Preview } from "./ui/code-previews/preview"
+import { P5JSPreview } from "./ui/previews/ps5js-preview"
+import { Preview } from "./ui/previews/preview"
+import { VCSPreview } from "./ui/previews/vcs-preview"
 
 export class GhostEditor implements ReferenceProvider {
 
     readonly root: HTMLElement
     readonly core: Editor
 
-    private readonly preview: Preview
+    private readonly preview: VCSPreview
 
     private keybindings: Disposable[] = []
     private snapshots: GhostSnapshot[] = []
@@ -72,6 +73,15 @@ export class GhostEditor implements ReferenceProvider {
         return this.modelOptions.tabSize
     }
 
+    get eol(): string {
+        const EOL = this.model.getEndOfLineSequence()
+        switch(EOL) {
+            case 0: return "\n"
+            case 1: return "\r\n"
+            default: throw new Error(`Unknown end of line sequence! Got ${EOL}`)
+        }
+    }
+
     get vcs(): VCSClient {
         return window.vcs
     }
@@ -84,7 +94,8 @@ export class GhostEditor implements ReferenceProvider {
         });
 
         const previewContainer = document.getElementById("preview")!
-        this.preview = new P5JSPreview(previewContainer)
+        //this.preview = new P5JSPreview(previewContainer)
+        this.preview = new VCSPreview(previewContainer, this.model)
 
         this.setup()
     }
@@ -100,6 +111,8 @@ export class GhostEditor implements ReferenceProvider {
         window.ipcRenderer.on('save' , () => {
             this.save()
         })
+
+        this.vcs.loadFile(null, this.eol, this.value)
     }
 
     setupShortcuts(): void {
@@ -123,7 +136,7 @@ export class GhostEditor implements ReferenceProvider {
             },
         }));
 
-        let render = false
+        /*
         this.keybindings.push(this.core.addAction({
             id: "p5-preview",
             label: "P5 Preview",
@@ -139,28 +152,57 @@ export class GhostEditor implements ReferenceProvider {
                 parent.preview.update(parent.value)
             },
         }));
+        */
+    }
+
+    private cachedLineChange: LineChange | null = null
+    private flushCachedChanges(): void {
+        if (this.cachedLineChange) {
+            this.vcs.applyChange(this.cachedLineChange)
+            this.cachedLineChange = null
+        }
     }
 
     setupContentEvents(): void {
+
         const contentSubscription = this.core.onDidChangeModelContent(event => {
-            const changeSet = new ChangeSet(Date.now(), this.model, event)
+
+            const changeSet = new ChangeSet(Date.now(), this.model, this.eol, event)
+
+            /*
+            // TODO: this mechanism for eliminating minimal changes and summarizing them may be optimized
+            if (changeSet.length === 1 && changeSet[0].changeBehaviour === ChangeBehaviour.Line) {
+                const change = changeSet[0] as LineChange
+                if (!this.cachedLineChange || this.cachedLineChange?.lineNumber === change.lineNumber) {
+                    this.cachedLineChange = change
+                    return
+                } else {
+                    this.flushCachedChanges()
+                }
+            }
+            */
+
             this.vcs.applyChanges(changeSet)
         })
     }
 
     replaceText(text: string): void {
+        this.flushCachedChanges()
         this.core.setValue(text)
     }
 
     async loadFile(filePath: string, content: string): Promise<void> {
 
+        this.flushCachedChanges()
         this.vcs.unloadFile()
 
         const uri = monaco.Uri.file(filePath)
         const model = monaco.editor.createModel(content, undefined, uri)
         this.core.setModel(model)
 
-        this.vcs.loadFile(filePath, content)
+        this.preview.updateEditor(model)
+
+        this.vcs.loadFile(filePath, this.eol, content)
         const snapshots = await this.vcs.getSnapshots()
 
         this.snapshots = snapshots.map(snapshot => {
@@ -169,6 +211,8 @@ export class GhostEditor implements ReferenceProvider {
     }
 
     save(): void {
+        this.flushCachedChanges()
+
         // TODO: make sure files without a path can be saved at new path!
         window.ipcRenderer.invoke('save-file', { path: this.path, content: this.value })
         if (this.path) this.vcs.updatePath(this.path)
@@ -181,6 +225,7 @@ export class GhostEditor implements ReferenceProvider {
     async highlightSelection(): Promise<void> {
         const selection = this.getSelection()
         if (selection) {
+            this.flushCachedChanges()
             const snapshot = await GhostSnapshot.create(this, selection)
             this.snapshots.push(snapshot)
         }

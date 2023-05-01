@@ -5,7 +5,7 @@ import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } fr
 // functionality that the VCS needs to provide
 export interface VCSProvider {
     // file handling
-    loadFile(filePath: string | null, content: string | null): void
+    loadFile(filePath: string | null, eol: string, content: string | null): void
     unloadFile(): void
     updatePath(filePath: string): void
     cloneToPath(filePath: string): void
@@ -27,7 +27,7 @@ export interface VCSProvider {
 
 export abstract class BasicVCSProvider implements VCSProvider {
 
-    public loadFile(filePath: string | null, content: string | null): void {
+    public loadFile(filePath: string | null, eol: string, content: string | null): void {
         throw new Error("Method not implemented.")
     }
 
@@ -116,8 +116,8 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         this.adapter = adapter
     }
 
-    public loadFile(filePath: string | null, content: string | null): void {
-        this.adapter.loadFile(filePath, content)
+    public loadFile(filePath: string | null, eol: string, content: string | null): void {
+        this.adapter.loadFile(filePath, eol, content)
     }
 
     public unloadFile(): void {

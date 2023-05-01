@@ -36,15 +36,6 @@ function extractChangeType(event: ContentChangedEvent): ChangeType {
     }
 }
 
-function extractEndOfLineSequence(model: TextModel): string {
-    const EOF = model.getEndOfLineSequence()
-    switch(EOF) {
-        case 0: return "\n"
-        case 1: return "\r\n"
-        default: throw new Error(`Unknown end of line sequence! Got ${EOF}`)
-    }
-}
-
 export type AnyChange = LineChange | MultiLineChange
 
 export abstract class Change {
@@ -61,19 +52,17 @@ export abstract class Change {
     public readonly lineRange: LineRange
     public readonly fullText: string
 
-    static create(timestamp: number, model: TextModel, event: ContentChangedEvent, change: ContentChange): AnyChange {
-
-        const EOF = extractEndOfLineSequence(model)
+    static create(timestamp: number, model: TextModel, eol: string, event: ContentChangedEvent, change: ContentChange): AnyChange {
         
         // should be unnecessary (min/max), but let's be safe for now
         const start = Math.min(change.range.startLineNumber, change.range.endLineNumber)
         const end   = Math.max(change.range.startLineNumber, change.range.endLineNumber)
         const count = end - start + 1
 
-        if (count === 1 && !change.text.includes(EOF)) {
-            return LineChange.create(timestamp, model, event, change)
+        if (count === 1 && !change.text.includes(eol)) {
+            return LineChange.create(timestamp, model, eol, event, change)
         } else {
-            return MultiLineChange.create(timestamp, model, event, change)
+            return MultiLineChange.create(timestamp, model, eol, event, change)
         }
     }
 
@@ -97,9 +86,9 @@ export class ChangeSet extends Array<AnyChange> {
     public readonly timestamp: number
     public readonly event: ContentChangedEvent
 
-    constructor(timestamp: number, model: TextModel, event: ContentChangedEvent) {
+    constructor(timestamp: number, model: TextModel, eol: string, event: ContentChangedEvent) {
         const changes = event.changes.map(change => {
-            return Change.create(timestamp, model, event, change)
+            return Change.create(timestamp, model, eol, event, change)
         })
 
         super(...changes)
@@ -113,7 +102,7 @@ export class LineChange extends Change {
 
     public readonly lineNumber: number
 
-    static override create(timestamp: number, model: TextModel, event: ContentChangedEvent, change: ContentChange): LineChange {
+    static override create(timestamp: number, model: TextModel, eol: string, event: ContentChangedEvent, change: ContentChange): LineChange {
         const lineNumber = change.range.startLineNumber
         const fullText   = model.getLineContent(lineNumber)
         return new LineChange(timestamp, event, change.range, lineNumber, change.text, fullText)
@@ -131,15 +120,14 @@ export class MultiLineChange extends Change {
     public readonly length: number
     public readonly offset: number
 
-    static override create(timestamp: number, model: TextModel, event: ContentChangedEvent, change: ContentChange): MultiLineChange {
-        const EOF = extractEndOfLineSequence(model)
-        const EOFRegex = new RegExp(EOF, "g")
+    static override create(timestamp: number, model: TextModel, eol: string, event: ContentChangedEvent, change: ContentChange): MultiLineChange {
+        const EOLRegex = new RegExp(eol, "g")
 
         const insertedText = change.text
-        const eofCount     = (insertedText.match(EOFRegex)  || []).length
+        const eolCount     = (insertedText.match(EOLRegex)  || []).length
 
         const range     = change.range
-        const lineRange = new LineRange(range.startLineNumber, range.startLineNumber + eofCount)
+        const lineRange = new LineRange(range.startLineNumber, range.startLineNumber + eolCount)
 
         const fullRange = new Range(lineRange.startLine, 1, lineRange.endLine, Number.MAX_SAFE_INTEGER)
         const fullText  = model.getValueInRange(fullRange)

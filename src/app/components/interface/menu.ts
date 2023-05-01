@@ -14,7 +14,7 @@ export class GhostMenu {
                         file.openFile(browserWindow)
                         .then(response => {
                             if (response) {
-                            browserWindow.webContents.send('load-file', response)
+                                browserWindow.webContents.send('load-file', response)
                             }
                         })
                     }

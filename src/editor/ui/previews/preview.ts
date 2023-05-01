@@ -2,10 +2,21 @@ export abstract class Preview {
 
     public readonly root: HTMLElement
 
+    constructor(root: HTMLElement) {
+        this.root = root
+    }
+
+    public remove(): void {
+        this.root.remove()
+    }
+}
+
+export abstract class CodePreview extends Preview {
+
     protected code: string | undefined
 
     constructor(root: HTMLElement, code?: string) {
-        this.root = root
+        super(root)
         this.code = code
     }
 
@@ -16,9 +27,5 @@ export abstract class Preview {
     public update(code: string): void {
         this.code = code
         this.render()
-    }
-
-    public remove(): void {
-        this.root.remove()
     }
 }

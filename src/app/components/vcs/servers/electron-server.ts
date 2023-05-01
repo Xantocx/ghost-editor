@@ -23,8 +23,8 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     private mapChannels() {
 
-        const loadFileSubscription = ipcMain.handle(ElectronVCSServer.loadFileChannel, (event, filePath, content) => {
-            this.loadFile(filePath, content)
+        const loadFileSubscription = ipcMain.handle(ElectronVCSServer.loadFileChannel, (event, filePath, eol, content) => {
+            this.loadFile(filePath, eol, content)
         })
 
         const unloadFileSubscription = ipcMain.handle(ElectronVCSServer.unloadFileChannel, (event) => {

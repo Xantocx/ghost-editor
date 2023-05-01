@@ -1,10 +1,9 @@
-import { disconnect } from "process";
 import { uuid } from "../../utils/uuid";
-import { Preview } from "./preview";
+import { CodePreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
 import { sleep } from "../../utils/helpers"
 
-export class P5JSPreview extends Preview {
+export class P5JSPreview extends CodePreview {
 
     private static p5jsScript = new URL("./libs/p5js/p5.min.js", document.baseURI).href
     private static iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href

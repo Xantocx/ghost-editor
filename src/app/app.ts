@@ -12,7 +12,7 @@ export class GhostApp {
     private static BrowserWindow: typeof BrowserWindow
 
     private static window: BrowserWindow
-    public  static readonly vcs: VCSServer = new LocalGhostVCSServer()
+    public  static vcs: VCSServer
 
     public static start(app: App, browserWindow: typeof BrowserWindow): void {
         this.app = app
@@ -50,6 +50,6 @@ export class GhostApp {
         this.window.loadFile("dist/renderer/index.html")
         this.window.webContents.openDevTools()
 
-        this.vcs.loadFile(null, null)
+        this.vcs = new LocalGhostVCSServer(this.window)
     }
 }

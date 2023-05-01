@@ -1,7 +1,8 @@
-import { LineChange, MultiLineChange, AnyChange, ChangeSet } from "./src/app/components/data/change";
+import { BrowserWindow } from "electron";
+import { LineChange, MultiLineChange } from "./src/app/components/data/change";
 import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot";
 import { IRange } from "./src/app/components/utils/range";
-import { VCSServer } from "./src/app/components/vcs/vcs-provider";
+import { BasicVCSServer, VCSServer } from "./src/app/components/vcs/vcs-provider";
 
 interface LineRange {
     start: number,
@@ -38,12 +39,12 @@ class TrackedBlock {
 
     public get lines(): TrackedLine[] {
 
-        const lines = []
         let   line  = this.firstLine
+        const lines = [line]
 
         while (line !== this.lastLine) {
-            lines.push(line)
             line = line.next
+            lines.push(line)
         }
 
         return lines
@@ -60,7 +61,7 @@ class TrackedBlock {
             this.lastLine  = lines[lineCount - 1]
 
             let previous: TrackedLine | undefined = undefined
-            for (let i = 0; i <= lineCount; i++) {
+            for (let i = 0; i < lineCount; i++) {
                 const current = lines[i]
 
                 current.previous = previous
@@ -149,12 +150,11 @@ class TrackedFile extends TrackedBlock {
         })
 
         file.lines = trackedLines
-        console.log(file.currentText)
 
         return file
     }
 
-    private filePath: string | null
+    public filePath: string | null
     private archivedBlocks: ArchivedBlock[] = []
     private snapshots: Snapshot[] = []
 
@@ -359,28 +359,38 @@ class Snapshot {
 }
 
 
-export class GhostVCSServer {
+export class GhostVCSServer extends BasicVCSServer {
 
-    private filePath: string | null
+    private file: TrackedFile | null = null
+    private browserWindow: BrowserWindow | undefined
 
-    public loadFile(filePath: string | null, content: string | null): void {
-        this.filePath = filePath
+    constructor(browserWindow?: BrowserWindow) {
+        super()
+        this.browserWindow = browserWindow
+    }
+
+    private updatePreview() {
+        this.browserWindow?.webContents.send("update-vcs-preview", this.file.currentText)
+    }
+
+    public loadFile(filePath: string | null, eol: string, content: string | null): void {
+        this.file = TrackedFile.create(filePath, eol, content)
+        this.updatePreview()
     }
 
     public unloadFile(): void {
-        console.log("UNLOADED")
+        this.file = null
     }
 
     public updatePath(filePath: string): void {
-        console.log("UPDATE PATH")
+        this.file.filePath = filePath
     }
 
     public cloneToPath(filePath: string): void {
-        console.log("CLONE TO PATH")
+        console.log("CLONE TO PATH NOT IMPLEMENTED")
     }
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        console.log("CREATE SNAPSHOT")
         return new VCSSnapshot(crypto.randomUUID(), this, range)
     }
 
@@ -389,26 +399,20 @@ export class GhostVCSServer {
     }
 
     public updateSnapshot(snapshot: VCSSnapshotData): void {
-        console.log("UPDATE SNAPSHOT")
+        console.log("UPDATE SNAPSHOT NOT IMPLEMENTED")
     }
 
     public lineChanged(change: LineChange): void {
-        console.log("LINE CHANGED")
+        this.file.updateLine(change.lineNumber, change.fullText)
+        this.updatePreview()
     }
 
     public linesChanged(change: MultiLineChange): void {
         console.log("LINES CHANGED")
-    }
-
-    public applyChange(change: AnyChange): void {
-        console.log("APPLY CHANGE")
-    }
-
-    public applyChanges(changes: ChangeSet): void {
-        console.log("APPLY CHANGES")
+        this.updatePreview()
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {
-        console.log("GET VERSION")
+        console.log("GET VERSION NOT IMPLEMENTED")
     }
 }
