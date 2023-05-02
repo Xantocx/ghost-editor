@@ -50,6 +50,8 @@ export abstract class Change {
     public readonly insertedText: string
 
     public readonly lineRange: LineRange
+    public readonly lineText: string
+
     public readonly fullText: string
 
     static create(timestamp: number, model: TextModel, eol: string, event: ContentChangedEvent, change: ContentChange): AnyChange {
@@ -66,7 +68,7 @@ export abstract class Change {
         }
     }
 
-    constructor(timestamp: number, event: ContentChangedEvent, changeBehaviour: ChangeBehaviour, modifiedRange: IRange, insertedText: string, lineRange: LineRange, fullText: string) {
+    constructor(timestamp: number, event: ContentChangedEvent, changeBehaviour: ChangeBehaviour, modifiedRange: IRange, insertedText: string, lineRange: LineRange, lineText: string, fullText: string) {
         this.timestamp = timestamp
         
         this.changeBehaviour = changeBehaviour
@@ -77,6 +79,8 @@ export abstract class Change {
         this.insertedText = insertedText
 
         this.lineRange = lineRange
+        this.lineText = lineText
+
         this.fullText = fullText
     }
 }
@@ -104,13 +108,13 @@ export class LineChange extends Change {
 
     static override create(timestamp: number, model: TextModel, eol: string, event: ContentChangedEvent, change: ContentChange): LineChange {
         const lineNumber = change.range.startLineNumber
-        const fullText   = model.getLineContent(lineNumber)
-        return new LineChange(timestamp, event, change.range, lineNumber, change.text, fullText)
+        const lineText   = model.getLineContent(lineNumber)
+        return new LineChange(timestamp, event, change.range, lineNumber, change.text, lineText, model.getValue())
     }
 
-    constructor(timestamp: number, event: ContentChangedEvent, range: IRange, lineNumber: number, insertedText: string, fullText: string) {
+    constructor(timestamp: number, event: ContentChangedEvent, range: IRange, lineNumber: number, insertedText: string, lineText: string, fullText: string) {
         const lineRange = new LineRange(lineNumber, lineNumber)
-        super(timestamp, event, ChangeBehaviour.Line, range, insertedText, lineRange, fullText)
+        super(timestamp, event, ChangeBehaviour.Line, range, insertedText, lineRange, lineText, fullText)
         this.lineNumber = lineNumber
     }
 }
@@ -130,13 +134,13 @@ export class MultiLineChange extends Change {
         const lineRange = new LineRange(range.startLineNumber, range.startLineNumber + eolCount)
 
         const fullRange = new Range(lineRange.startLine, 1, lineRange.endLine, Number.MAX_SAFE_INTEGER)
-        const fullText  = model.getValueInRange(fullRange)
+        const lineText  = model.getValueInRange(fullRange)
 
-        return new MultiLineChange(timestamp, event, range, change.rangeLength, change.rangeOffset, insertedText, lineRange, fullText)
+        return new MultiLineChange(timestamp, event, range, change.rangeLength, change.rangeOffset, insertedText, lineRange, lineText, model.getValue())
     }
 
-    constructor(timestamp: number, event: ContentChangedEvent, range: IRange, length: number, offset: number, insertedText: string, lineRange: LineRange, fullText: string) {
-        super(timestamp, event, ChangeBehaviour.MultiLine, range, insertedText, lineRange, fullText)
+    constructor(timestamp: number, event: ContentChangedEvent, range: IRange, length: number, offset: number, insertedText: string, lineRange: LineRange, lineText: string, fullText: string) {
+        super(timestamp, event, ChangeBehaviour.MultiLine, range, insertedText, lineRange, lineText, fullText)
         this.length = length
         this.offset = offset
     }

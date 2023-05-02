@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@prisma/client": "^4.13.0",
+    "diff": "^5.1.0",
     "iframe-resizer": "^4.3.6"
   }
 }

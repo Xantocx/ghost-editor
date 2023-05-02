@@ -1,3 +1,4 @@
+const Diff = require('diff');
 import { BrowserWindow } from "electron";
 import { LineChange, MultiLineChange } from "./src/app/components/data/change";
 import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot";
@@ -5,8 +6,8 @@ import { IRange } from "./src/app/components/utils/range";
 import { BasicVCSServer, VCSServer } from "./src/app/components/vcs/vcs-provider";
 
 interface LineRange {
-    start: number,
-    end: number
+    startLine: number,
+    endLine: number
 }
 
 interface TrackedLineRelation {
@@ -37,7 +38,7 @@ class TrackedBlock {
         return this.lines.length
     }
 
-    public get lines(): TrackedLine[] {
+    public get lines(): TrackedLines {
 
         let   line  = this.firstLine
         const lines = [line]
@@ -47,10 +48,10 @@ class TrackedBlock {
             lines.push(line)
         }
 
-        return lines
+        return new TrackedLines(this.eol, ...lines)
     }
 
-    protected set lines(lines: TrackedLine[]) {
+    protected set lines(lines: TrackedLines | TrackedLine[]) {
         const lineCount = lines.length
 
         if (lineCount === 0) {
@@ -73,13 +74,11 @@ class TrackedBlock {
     }
 
     public get stringLines(): string[] {
-        return this.lines.map(line => {
-            return line.currentContent
-        })
+        return this.lines.stringLines
     }
 
     public get currentText(): string {
-        return this.stringLines.join(this.eol)
+        return this.lines.text
     }
 
     public validLineNumber(lineNumber: number): boolean {
@@ -87,9 +86,9 @@ class TrackedBlock {
     }
 
     public validRange(range: LineRange): boolean {
-        const startValid = this.validLineNumber(range.start)
-        const endValid   = this.validLineNumber(range.end)
-        return startValid && endValid && range.start <= range.end
+        const startValid = this.validLineNumber(range.startLine)
+        const endValid   = this.validLineNumber(range.endLine)
+        return startValid && endValid && range.startLine <= range.endLine
     }
 
     public getLine(lineNumber: number): TrackedLine {
@@ -103,13 +102,13 @@ class TrackedBlock {
         return line
     }
 
-    public getLines(range: LineRange): TrackedLine[] {
+    public getLines(range: LineRange): TrackedLines {
         if (!this.validRange(range)) { throw new Error(`Cannot read lines for invalid range ${range}`) }
         
         const lines = []
 
-        let current = this.getLine(range.start)
-        let end     = this.getLine(range.end)
+        let current = this.getLine(range.startLine)
+        let end     = this.getLine(range.endLine)
 
         while (current !== end) {
             lines.push(current)
@@ -117,7 +116,7 @@ class TrackedBlock {
         }
         lines.push(end)
 
-        return lines
+        return new TrackedLines(this.eol, ...lines)
     }
 }
 
@@ -155,7 +154,7 @@ class TrackedFile extends TrackedBlock {
     }
 
     public filePath: string | null
-    private archivedBlocks: ArchivedBlock[] = []
+    //private archivedBlocks: ArchivedBlock[] = []
     private snapshots: Snapshot[] = []
 
     constructor(filePath: string | null, eol: string) {
@@ -191,21 +190,36 @@ class TrackedFile extends TrackedBlock {
         }
     }
 
-    public insertLines(lineNumber: number, content: string[]): TrackedLine[] {
-        return content.map((line, index) => {
+    public insertLines(lineNumber: number, content: string[]): TrackedLines{
+        return new TrackedLines(this.eol, ...content.map((line, index) => {
             return this.insertLine(lineNumber + index, line)
+        }))
+    }
+
+    public deleteLine(lineNumber: number): TrackedLine {
+        //return this.deleteLines({ startLine: lineNumber, endLine: lineNumber })
+        
+        const line = this.getLine(lineNumber)
+        line.delete(this.getTimestamp())
+        return line
+    }
+
+    public deleteLines(range: LineRange): TrackedLines {
+
+        const timestamp = this.getTimestamp()
+        const lines = this.getLines(range)
+
+        lines.forEach(line => {
+            line.delete(timestamp)
         })
-    }
 
-    public deleteLine(lineNumber: number): ArchivedBlock {
-        return this.deleteLines({ start: lineNumber, end: lineNumber })
-    }
+        return lines
 
-    public deleteLines(range: LineRange): ArchivedBlock {
+        /*
         if (!this.validRange(range)) { throw new Error(`Cannot delete invalid range ${range}`) }
 
-        const start = this.getLine(range.start)
-        const end   = this.getLine(range.end)
+        const start = this.getLine(range.startLine)
+        const end   = this.getLine(range.endLine)
 
         const previous = start.previous
         const next     = end.next
@@ -223,6 +237,7 @@ class TrackedFile extends TrackedBlock {
 
         this.archivedBlocks.push(archivedBlock)
         return archivedBlock
+        */
     }
 
     public updateLine(lineNumber: number, content: string): TrackedLine {
@@ -231,14 +246,16 @@ class TrackedFile extends TrackedBlock {
         return line
     }
 
-    public updateLines(lineNumber, content: string[]): TrackedLine[] {
+    public updateLines(lineNumber: number, content: string[]): TrackedLines {
         const count = content.length
         const timestamp = this.getTimestamp()
-        const lines = this.getLines({ start: lineNumber, end: lineNumber + count - 1 })
-        return lines.map((line, index) => {
+        const lines = this.getLines({ startLine: lineNumber, endLine: lineNumber + count - 1 })
+
+        lines.forEach((line, index) => {
             line.update(timestamp, content[index])
-            return line
         })
+
+        return lines
     }
 }
 
@@ -250,12 +267,41 @@ class TrackedLine {
     public previous: TrackedLine | undefined
     public next: TrackedLine | undefined
 
+    public get activePrevious(): TrackedLine | undefined {
+
+        let previous = this.previous
+
+        while (!previous?.currentlyActive) {
+            if (!previous) { return undefined }
+            previous = previous.previous
+        }
+
+        return previous
+    }
+
+    public get activeNext(): TrackedLine | undefined {
+
+        let next = this.next
+
+        while (!next?.currentlyActive) {
+            if (!next) { return undefined }
+            next = next.next
+        }
+
+        return next
+    }
+
     public get lineNumber() {
-        if (this.previous) {
-            return this.previous.lineNumber + 1
+        const activePrevious = this.activePrevious
+        if (activePrevious) {
+            return activePrevious.lineNumber + 1
         } else {
             return 1
         }
+    }
+
+    public get currentlyActive(): boolean {
+        return this.history.currentlyActive
     }
 
     public get currentContent(): string {
@@ -276,7 +322,45 @@ class TrackedLine {
     }
 
     public update(timestamp: number, content: string): LineVersion {
-        return this.history.createNewVersion(timestamp, content)
+        return this.history.createNewVersion(timestamp, true, content)
+    }
+
+    public delete(timestamp: number): LineVersion {
+        return this.history.deleteLine(timestamp)
+    }
+}
+
+class TrackedLines {
+
+    public readonly lines: TrackedLine[]
+    public readonly eol: string = "\n"
+
+    constructor(eol: string, ...lines: TrackedLine[]) {
+        this.lines = lines
+        this.eol = eol
+    }
+
+    public get length(): number {
+        return this.lines.length
+    }
+
+    public get stringLines(): string[] {
+        return this.map(line => {
+            return line.currentlyActive ? line.currentContent : null
+        }).filter(string => string)
+    }
+
+    public get text(): string {
+        return this.stringLines.join(this.eol)
+    }
+
+    public map<ReturnType>(callback: (line: TrackedLine) => ReturnType): ReturnType[] {
+        return this.lines.map(callback)
+    }
+
+
+    public forEach(callback: (line: TrackedLine, index: number) => void): void {
+        this.lines.forEach(callback)
     }
 }
 
@@ -302,15 +386,19 @@ class LineHistory {
         return count
     }
 
+    public get currentlyActive(): boolean {
+        return this.head.active
+    }
+
     public get currentContent(): string {
         return this.head.content
     }
 
     constructor(line: TrackedLine, initialTimestamp: number, initialContent: string) {
         this.line  = line
-        this.start = new LineVersion(this, initialTimestamp, initialContent)
-        this.end   = this.start
-        this.head  = this.start
+        this.start = new LineVersion(this, initialTimestamp, false, "")
+        this.end   = new LineVersion(this, initialTimestamp, true, initialContent, { previous: this.start })
+        this.head  = this.end
     }
 
     private cloneHeadToEnd(timestamp: number): LineVersion {
@@ -319,15 +407,19 @@ class LineHistory {
         return this.head
     }
 
-    public createNewVersion(timestamp: number, content: string): LineVersion {
+    public createNewVersion(timestamp: number, active: boolean, content: string): LineVersion {
         if (this.head !== this.end) {
             this.cloneHeadToEnd(timestamp)
         }
 
-        this.end = new LineVersion(this, timestamp, content, { previous: this.end })
+        this.end = new LineVersion(this, timestamp, active, content, { previous: this.end })
         this.head = this.end
 
         return this.head
+    }
+
+    public deleteLine(timestamp: number): LineVersion {
+        return this.createNewVersion(timestamp, false, "")
     }
 
 }
@@ -337,6 +429,7 @@ class LineVersion {
     public readonly histoy: LineHistory
 
     public readonly timestamp: number
+    public readonly active: boolean
     public readonly content: string
 
     public readonly origin: LineVersion | undefined
@@ -345,9 +438,10 @@ class LineVersion {
     public previous: LineVersion | undefined
     public next: LineVersion | undefined
 
-    constructor(history: LineHistory, timestamp: number, content: string, relations?: LineVersionRelation) {
+    constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
         this.histoy = history
         this.timestamp = timestamp
+        this.active = active
         this.content = content
 
         if (relations) {
@@ -363,7 +457,7 @@ class LineVersion {
 
     public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
         if (!relations?.origin) { relations.origin = this }
-        return new LineVersion(this.histoy, timestamp, this.content, relations)
+        return new LineVersion(this.histoy, timestamp, this.active, this.content, relations)
     }
 }
 
@@ -380,6 +474,31 @@ export class GhostVCSServer extends BasicVCSServer {
     constructor(browserWindow?: BrowserWindow) {
         super()
         this.browserWindow = browserWindow
+    }
+
+    private computeDiff(vcsText: string, modifiedText: string): any {
+        return Diff.diffLines(vcsText, modifiedText)
+    }
+
+    private calculateDiff(vcsText: string, modifiedText: string) {
+        const diffResult = Diff.diffLines(vcsText, modifiedText);
+      
+        let lineNumber = 1;
+        diffResult.forEach((part) => {
+            const lines = part.value.split('\n');
+            lines.pop(); // Remove the last empty element
+        
+            lines.forEach((line) => {
+                if (part.added) {
+                console.log(`Line ${lineNumber}: New line: ${line}`);
+                } else if (part.removed) {
+                console.log(`Line ${lineNumber}: Deleted line: ${line}`);
+                } else {
+                console.log(`Line ${lineNumber}: Unchanged line: ${line}`);
+                }
+                lineNumber++;
+            });
+        });
     }
 
     private updatePreview() {
@@ -420,12 +539,18 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public lineChanged(change: LineChange): void {
-        this.file.updateLine(change.lineNumber, change.fullText)
+        this.file.updateLine(change.lineNumber, change.lineText)
         this.updatePreview()
     }
 
     public linesChanged(change: MultiLineChange): void {
-        console.log("LINES CHANGED")
+
+        const vcsText = this.file.currentText
+        const modifiedText = change.fullText
+
+        this.calculateDiff(vcsText, modifiedText)
+        console.log("------------------------------------------")
+
         this.updatePreview()
     }
 
