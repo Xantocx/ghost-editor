@@ -46,6 +46,10 @@ class TrackedBlock {
         return this.lastActiveLine.lineNumber
     }
 
+    public get activeLines(): TrackedLines {
+        return this.lines.filter(line => { return line.currentlyActive })
+    }
+
     public get lines(): TrackedLines {
 
         let   line  = this.firstLine
@@ -309,6 +313,7 @@ class TrackedLine {
     }
 
     public update(timestamp: number, content: string): LineVersion {
+        if (content === this.currentContent) { return this.history.head }
         return this.history.createNewVersion(timestamp, true, content)
     }
 
@@ -333,12 +338,17 @@ class TrackedLines {
 
     public get stringLines(): string[] {
         return this.map(line => {
-            return line.currentlyActive ? line.currentContent : null
+            // return line.currentlyActive ? line.currentContent : null
+            return line.currentlyActive ? (line.currentContent ? line.currentContent : "//") : null // temporary fix to see version count for emty lines in preview
         }).filter(string => string !== null)
     }
 
     public get text(): string {
         return this.stringLines.join(this.eol)
+    }
+
+    public at(index: number): TrackedLine {
+        return this.lines[index]
     }
 
     public map<ReturnType>(callback: (line: TrackedLine) => ReturnType): ReturnType[] {
@@ -349,13 +359,17 @@ class TrackedLines {
     public forEach(callback: (line: TrackedLine, index: number) => void): void {
         this.lines.forEach(callback)
     }
+
+    public filter(callback: (line: TrackedLine) => boolean): TrackedLines {
+        return new TrackedLines(this.eol, ...this.lines.filter(callback))
+    }
 }
 
 class LineHistory {
 
     public readonly line: TrackedLine
     
-    private head: LineVersion
+    public head: LineVersion
 
     private start: LineVersion
     private end: LineVersion
@@ -489,7 +503,7 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     private updatePreview() {
-        const versionCounts = this.file.lines.map(line => {
+        const versionCounts = this.file.activeLines.map(line => {
             return line.history.versionCount
         })
 
@@ -532,22 +546,112 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public linesChanged(change: MultiLineChange): void {
 
-        const modifiedRange: LineRange = {
-            startLine: change.modifiedRange.startLineNumber,
-            endLine: change.modifiedRange.endLineNumber
+        function countStartingChars(line: string, character: string): number {
+            let count = 0
+            while(line[count] === character) { count++ }
+            return count
         }
 
+        function countEndingChars(line: string, character: string): number {
+            let index = line.length - 1
+            while(index >= 0 && line[index] === character) { index-- }
+            return line.length - 1 - index
+        }
+
+        const startsWithEol = change.insertedText[0] === this.file.eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
+
+        const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
+        const insertedAtEnd   = change.modifiedRange.endColumn > this.file.getLine(change.modifiedRange.endLineNumber).currentContent.length
+
+        const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
+        const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
+        
+        /*
+        if (insertOnly) {
+            // line === startLine === endLine, no code overwritten, but line may be split
+            if (insertedAtStartOfStartLine) {
+                if (endsWithEol) {
+                    // we insert above line
+                } else {
+                    // line is def modified, every newline is inserted above
+                }
+            } else if (insertedAtEnd) {
+                if (startsWithEol) {
+                    // we insert below line
+                } else {
+                    // line is def modified, every newline is inserted below
+                }
+            } else {
+                // line is modified, we insert newlines below
+            }
+        } else if (oneLineModification) {
+            // line === startLine === endLine, overwrite some code
+            // line is modified, we insert newlines below
+        } else {
+            // startLine !== endLine
+            if (!insertedAtStartOfStartLine) {
+                // modify startLine
+            }
+
+            // overwrite all lines between startLine and endLine
+            // delete lines if less were written
+            // insert lines if more were written
+            
+            if (!insertedAtEnd) {
+                // modify endLine
+            }
+        }
+        */
+
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > this.file.getLine(change.modifiedRange.startLineNumber).currentContent.length
+        const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
+        const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
+        const modifyStartLine = !insertOnly || !(pushStartLineDown) && !(pushStartLineUp)
+
         const timestamp = this.file.getTimestamp()
-        const vcsLines = this.file.getLines(modifiedRange)
         const modifiedLines = change.lineText.split(this.file.eol)
+
+        const modifiedRange = {
+            startLine: change.modifiedRange.startLineNumber,
+            endLine:   change.modifiedRange.endLineNumber
+        }
+
+        let vcsLines: TrackedLines = new TrackedLines(this.file.eol)
+        if (modifyStartLine) {
+            vcsLines = this.file.getLines(modifiedRange)
+            vcsLines.at(0).update(timestamp, modifiedLines[0])
+        } else {
+            if (pushStartLineUp) { 
+                modifiedRange.startLine--
+                modifiedRange.endLine--
+            }
+        }
+
+        const linesToConsider = Math.max(vcsLines.length, modifiedLines.length)
+
+        for (let i = 1; i < linesToConsider; i++) {
+            if (i < vcsLines.length) {
+                if (i < modifiedLines.length) {
+                    vcsLines.at(i).update(timestamp, modifiedLines[i])
+                } else {
+                    vcsLines.at(i).delete(timestamp)
+                }
+            } else {
+                this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i])
+            }
+        }
+
+
+
+
+        /*
+        console.log(modifiedLines)
 
         vcsLines.forEach((line, index) => {
             console.log("VCS: " + line.currentContent)
 
             if (index < modifiedLines.length) {
-
-
-
                 const modifiedText = modifiedLines[index]
                 if (line.currentContent !== modifiedText) {
                     line.update(timestamp, modifiedText)
@@ -557,6 +661,11 @@ export class GhostVCSServer extends BasicVCSServer {
                 line.delete(timestamp)
             }
         })
+
+        if (vcsLines.length < modifiedLines.length) {
+            this.file.insertLines(modifiedRange.endLine + 1, modifiedLines.slice(vcsLines.length, -1))
+        }
+        */
 
         this.updatePreview()
     }
