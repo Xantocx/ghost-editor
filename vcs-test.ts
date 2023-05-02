@@ -23,10 +23,18 @@ interface LineVersionRelation {
 
 class TrackedBlock {
 
-    protected eol: string
+    public eol: string
 
     protected firstLine: TrackedLine | undefined
     protected lastLine:  TrackedLine | undefined
+
+    public get firstActiveLine(): TrackedLine | undefined {
+        return this.firstLine.currentlyActive ? this.firstLine : this.firstLine.nextActive
+    }
+
+    public get lastActiveLine(): TrackedLine | undefined {
+        return this.lastLine.currentlyActive ? this.lastLine : this.lastLine.previousActive
+    }
 
     constructor(eol: string, firstLine?: TrackedLine | undefined, lastLine?: TrackedLine | undefined) {
         this.eol = eol
@@ -35,7 +43,7 @@ class TrackedBlock {
     }
 
     public get lineCount(): number {
-        return this.lines.length
+        return this.lastActiveLine.lineNumber
     }
 
     public get lines(): TrackedLines {
@@ -94,10 +102,12 @@ class TrackedBlock {
     public getLine(lineNumber: number): TrackedLine {
         if (!this.validLineNumber(lineNumber)) { throw new Error(`Cannot read line for invalid line number ${lineNumber}!`) }
 
-        let line = this.firstLine
-        for (let i = 1; i < lineNumber; i++) {
-            line = line.next
+        let line = this.firstActiveLine
+        while (line && line.lineNumber !== lineNumber) {
+            line = line.nextActive
         }
+
+        if (!line) { throw new Error(`Could not find line for valid line number ${lineNumber}!`) }
 
         return line
     }
@@ -112,27 +122,11 @@ class TrackedBlock {
 
         while (current !== end) {
             lines.push(current)
-            current = current.next
+            current = current.nextActive
         }
         lines.push(end)
 
         return new TrackedLines(this.eol, ...lines)
-    }
-}
-
-class ArchivedBlock extends TrackedBlock {
-
-    // used to determine original location in the code
-    public readonly previous: TrackedLine | undefined
-    public readonly next: TrackedLine | undefined
-
-    constructor(eol: string, firstLine: TrackedLine, lastLine: TrackedLine, relations?: TrackedLineRelation) {
-        super(eol, firstLine, lastLine)
-
-        if (relations) {
-            this.previous = relations.previous
-            this.next = relations.next
-        }
     }
 }
 
@@ -154,7 +148,6 @@ class TrackedFile extends TrackedBlock {
     }
 
     public filePath: string | null
-    //private archivedBlocks: ArchivedBlock[] = []
     private snapshots: Snapshot[] = []
 
     constructor(filePath: string | null, eol: string) {
@@ -175,16 +168,34 @@ class TrackedFile extends TrackedBlock {
         const timestamp = this.getTimestamp()
 
         if (adjustedLineNumber === 1) {
-            this.firstLine = new TrackedLine(this, timestamp, content, { next:    this.firstLine })
-            return this.firstLine
+            const firstActive = this.firstActiveLine
+            const insertedLine = new TrackedLine(this, timestamp, content, { 
+                previous: firstActive.previous,
+                next:     firstActive
+            })
+
+            if (!insertedLine.previous) { 
+                this.firstLine = insertedLine
+            }
+
+            return insertedLine
         } else if (adjustedLineNumber === newLastLine) {
-            this.lastLine  = new TrackedLine(this, timestamp, content, { previous: this.lastLine })
-            return this.lastLine
+            const lastActive  = this.lastActiveLine
+            const insertedLine = new TrackedLine(this, timestamp, content, { 
+                previous: lastActive,
+                next:     lastActive.next
+            })
+
+            if (!insertedLine.next) { 
+                this.lastLine = insertedLine
+            }
+
+            return insertedLine
         } else {
             const currentLine = this.getLine(adjustedLineNumber)
             const newLine  = new TrackedLine(this, timestamp, content, { 
                 previous: currentLine.previous, 
-                next: currentLine 
+                next:     currentLine 
             })
             return newLine
         }
@@ -197,8 +208,6 @@ class TrackedFile extends TrackedBlock {
     }
 
     public deleteLine(lineNumber: number): TrackedLine {
-        //return this.deleteLines({ startLine: lineNumber, endLine: lineNumber })
-        
         const line = this.getLine(lineNumber)
         line.delete(this.getTimestamp())
         return line
@@ -214,30 +223,6 @@ class TrackedFile extends TrackedBlock {
         })
 
         return lines
-
-        /*
-        if (!this.validRange(range)) { throw new Error(`Cannot delete invalid range ${range}`) }
-
-        const start = this.getLine(range.startLine)
-        const end   = this.getLine(range.endLine)
-
-        const previous = start.previous
-        const next     = end.next
-
-        const archivedBlock = new ArchivedBlock(this.eol, start, end, {
-            previous: previous,
-            next: next
-        })
-
-        if (previous) { previous.next = next }
-        if (next)     { next.previous = previous }
-
-        start.previous = undefined
-        end.next       = undefined
-
-        this.archivedBlocks.push(archivedBlock)
-        return archivedBlock
-        */
     }
 
     public updateLine(lineNumber: number, content: string): TrackedLine {
@@ -267,7 +252,7 @@ class TrackedLine {
     public previous: TrackedLine | undefined
     public next: TrackedLine | undefined
 
-    public get activePrevious(): TrackedLine | undefined {
+    public get previousActive(): TrackedLine | undefined {
 
         let previous = this.previous
 
@@ -279,7 +264,7 @@ class TrackedLine {
         return previous
     }
 
-    public get activeNext(): TrackedLine | undefined {
+    public get nextActive(): TrackedLine | undefined {
 
         let next = this.next
 
@@ -291,8 +276,10 @@ class TrackedLine {
         return next
     }
 
-    public get lineNumber() {
-        const activePrevious = this.activePrevious
+    public get lineNumber(): number | null {
+        if (!this.currentlyActive) { return null }
+
+        const activePrevious = this.previousActive
         if (activePrevious) {
             return activePrevious.lineNumber + 1
         } else {
@@ -347,7 +334,7 @@ class TrackedLines {
     public get stringLines(): string[] {
         return this.map(line => {
             return line.currentlyActive ? line.currentContent : null
-        }).filter(string => string)
+        }).filter(string => string !== null)
     }
 
     public get text(): string {
@@ -545,11 +532,31 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public linesChanged(change: MultiLineChange): void {
 
-        const vcsText = this.file.currentText
-        const modifiedText = change.fullText
+        const modifiedRange: LineRange = {
+            startLine: change.modifiedRange.startLineNumber,
+            endLine: change.modifiedRange.endLineNumber
+        }
 
-        this.calculateDiff(vcsText, modifiedText)
-        console.log("------------------------------------------")
+        const timestamp = this.file.getTimestamp()
+        const vcsLines = this.file.getLines(modifiedRange)
+        const modifiedLines = change.lineText.split(this.file.eol)
+
+        vcsLines.forEach((line, index) => {
+            console.log("VCS: " + line.currentContent)
+
+            if (index < modifiedLines.length) {
+
+
+
+                const modifiedText = modifiedLines[index]
+                if (line.currentContent !== modifiedText) {
+                    line.update(timestamp, modifiedText)
+                }
+
+            } else {
+                line.delete(timestamp)
+            }
+        })
 
         this.updatePreview()
     }
