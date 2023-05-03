@@ -1,4 +1,5 @@
 const Diff = require('diff');
+import * as crypto from "crypto"
 import { BrowserWindow } from "electron";
 import { LineChange, MultiLineChange } from "./src/app/components/data/change";
 import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot";
@@ -477,10 +478,8 @@ export class GhostVCSServer extends BasicVCSServer {
         this.browserWindow = browserWindow
     }
 
-    private computeDiff(vcsText: string, modifiedText: string): any {
-        return Diff.diffLines(vcsText, modifiedText)
-    }
-
+    /*
+    // may proof useful for full file diffing after re-opening an old file
     private calculateDiff(vcsText: string, modifiedText: string) {
         const diffResult = Diff.diffLines(vcsText, modifiedText);
       
@@ -501,6 +500,7 @@ export class GhostVCSServer extends BasicVCSServer {
             });
         });
     }
+    */
 
     private updatePreview() {
         const versionCounts = this.file.activeLines.map(line => {
@@ -528,7 +528,7 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        return new VCSSnapshot(crypto.randomUUID(), this, range)
+        return new VCSSnapshot(crypto.randomUUID(), this, range).compress()
     }
 
     public async getSnapshots(): Promise<VCSSnapshotData[]> {
@@ -546,67 +546,20 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public linesChanged(change: MultiLineChange): void {
 
-        function countStartingChars(line: string, character: string): number {
-            let count = 0
-            while(line[count] === character) { count++ }
-            return count
-        }
-
-        function countEndingChars(line: string, character: string): number {
-            let index = line.length - 1
-            while(index >= 0 && line[index] === character) { index-- }
-            return line.length - 1 - index
-        }
-
         const startsWithEol = change.insertedText[0] === this.file.eol
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
 
         const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > this.file.getLine(change.modifiedRange.startLineNumber).currentContent.length
+
         const insertedAtEnd   = change.modifiedRange.endColumn > this.file.getLine(change.modifiedRange.endLineNumber).currentContent.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
         const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
-        
-        /*
-        if (insertOnly) {
-            // line === startLine === endLine, no code overwritten, but line may be split
-            if (insertedAtStartOfStartLine) {
-                if (endsWithEol) {
-                    // we insert above line
-                } else {
-                    // line is def modified, every newline is inserted above
-                }
-            } else if (insertedAtEnd) {
-                if (startsWithEol) {
-                    // we insert below line
-                } else {
-                    // line is def modified, every newline is inserted below
-                }
-            } else {
-                // line is modified, we insert newlines below
-            }
-        } else if (oneLineModification) {
-            // line === startLine === endLine, overwrite some code
-            // line is modified, we insert newlines below
-        } else {
-            // startLine !== endLine
-            if (!insertedAtStartOfStartLine) {
-                // modify startLine
-            }
 
-            // overwrite all lines between startLine and endLine
-            // delete lines if less were written
-            // insert lines if more were written
-            
-            if (!insertedAtEnd) {
-                // modify endLine
-            }
-        }
-        */
-
-        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > this.file.getLine(change.modifiedRange.startLineNumber).currentContent.length
         const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
         const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
+
         const modifyStartLine = !insertOnly || !(pushStartLineDown) && !(pushStartLineUp)
 
         const timestamp = this.file.getTimestamp()
@@ -622,6 +575,7 @@ export class GhostVCSServer extends BasicVCSServer {
             vcsLines = this.file.getLines(modifiedRange)
             vcsLines.at(0).update(timestamp, modifiedLines[0])
         } else {
+            // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
                 modifiedRange.startLine--
                 modifiedRange.endLine--
@@ -641,31 +595,6 @@ export class GhostVCSServer extends BasicVCSServer {
                 this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i])
             }
         }
-
-
-
-
-        /*
-        console.log(modifiedLines)
-
-        vcsLines.forEach((line, index) => {
-            console.log("VCS: " + line.currentContent)
-
-            if (index < modifiedLines.length) {
-                const modifiedText = modifiedLines[index]
-                if (line.currentContent !== modifiedText) {
-                    line.update(timestamp, modifiedText)
-                }
-
-            } else {
-                line.delete(timestamp)
-            }
-        })
-
-        if (vcsLines.length < modifiedLines.length) {
-            this.file.insertLines(modifiedRange.endLine + 1, modifiedLines.slice(vcsLines.length, -1))
-        }
-        */
 
         this.updatePreview()
     }

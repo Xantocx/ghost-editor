@@ -6,7 +6,7 @@ export const ElectronVCSServer = electronServer.ElectronVCSServer
 export const ElectronVCSClient = electronClient.ElectronVCSClient
 
 // LOCAL GHOST VCS SERVER --------------------------------------------------------------------------------
-import * as localGhostVCSServer from "./servers/local-ghost-server"
+// import * as localGhostVCSServer from "./servers/local-ghost-server"  // causes issue in preload due to crypto import
 
-export const LocalGhostVCSServer = localGhostVCSServer.LocalGhostVCSServer
+// export const LocalGhostVCSServer = localGhostVCSServer.LocalGhostVCSServer
 export const LocalGhostVCSClient = electronClient.ElectronVCSClient

@@ -1,17 +1,19 @@
 import { IRange, Editor } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshot } from "./snapshot"
-import { MouseTracker } from "../basic/mouse-tracker"
-import { GhostViewZone } from "../basic/view-zone"
-import { GhostOverlayWidget } from "../basic/overlay-widget"
-import { GhostContentWidget } from "../basic/content-widget"
+import { MouseTracker } from "../widgets/mouse-tracker"
+import { GhostViewZone } from "../widgets/view-zone"
+import { GhostOverlayWidget } from "../widgets/overlay-widget"
+import { GhostContentWidget } from "../widgets/content-widget"
 import { LineLocator } from "../../utils/line-locator"
+import { Slider } from "../components/slider"
+import { Range } from "monaco-editor"
 
 export class GhostSnapshotHeader extends MouseTracker {
 
-    private readonly snapshot: GhostSnapshot
-    private readonly locator: LineLocator
-    private readonly alwaysUseViewZones: boolean
+    protected readonly snapshot: GhostSnapshot
+    protected readonly locator: LineLocator
+    protected readonly alwaysUseViewZones: boolean
 
     private readonly domViewZone: HTMLElement
     private readonly domOverlay: HTMLElement
@@ -46,11 +48,11 @@ export class GhostSnapshotHeader extends MouseTracker {
         return this.domOverlay.style
     }
 
-    private get lineNumber(): number {
+    protected get lineNumber(): number {
         return this.snapshot.startLine
     }
 
-    private get lineCount(): number {
+    protected get lineCount(): number {
         return 2
     }
 
@@ -58,14 +60,15 @@ export class GhostSnapshotHeader extends MouseTracker {
         return this.lineCount * this.editor.lineHeight
     }
 
-    private _contentLocator: LineLocator | undefined = undefined
-    private get contentLocator(): LineLocator {
+    protected _contentLocator: LineLocator | undefined = undefined
+    protected get contentLocator(): LineLocator {
 
         if (!this._contentLocator) {
             const parent = this
-            return new LineLocator(this.locator.reference, {
+            return new LineLocator(this.locator.referenceProvider, {
                 get range(): IRange {
-                    return parent.locator.range.delta(-parent.lineCount)
+                    const startLine = parent.locator.range.startLineNumber
+                    return new Range(startLine - parent.lineCount, 1, startLine - 1, Number.MAX_SAFE_INTEGER)
                 }
             })
         }
@@ -84,8 +87,7 @@ export class GhostSnapshotHeader extends MouseTracker {
         this.viewZone = new GhostViewZone(this.core, this.domViewZone, () => { return this.lineNumber }, () => { return this.lineCount })
         
         this.domOverlay = document.createElement('div');
-        this.domOverlay.innerHTML = 'My overlay widget';
-        this.domOverlay.style.background = 'rgba(50, 50, 255, 0.2)';
+        this.setupContent(this.domOverlay)
 
         this.overlay = new GhostOverlayWidget(this.core, this.domOverlay)
         this.content = new GhostContentWidget(this.core, this.domOverlay, this.contentLocator)
@@ -101,6 +103,11 @@ export class GhostSnapshotHeader extends MouseTracker {
         })
 
         this.show()
+    }
+
+    protected setupContent(container: HTMLElement): void {
+        container.style.background = 'rgba(50, 50, 255, 0.2)'
+        container.innerText = "HEADER WIDGET"
     }
 
     private setupMouseTracking() {

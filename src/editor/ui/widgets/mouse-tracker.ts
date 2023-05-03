@@ -13,10 +13,13 @@ export class MouseTracker {
     public onMouseEnter(callback: (mouseOn: boolean) => void): Disposable {
         callback(this.mouseOn)
         this.mouseEventSubscribers.push(callback)
+
+        const parent = this
+
         return {
-            dispose: () => {
-                const index = this.mouseEventSubscribers.indexOf(callback)
-                if (index > -1) { this.mouseEventSubscribers.splice(index, 1) }
+            dispose() {
+                const index = parent.mouseEventSubscribers.indexOf(callback)
+                if (index > -1) { parent.mouseEventSubscribers.splice(index, 1) }
             }
         }
     }

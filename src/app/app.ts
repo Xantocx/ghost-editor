@@ -2,7 +2,7 @@ import * as path from "path"
 import { App, BrowserWindow } from "electron"
 import { GhostMenu } from "./components/interface/menu"
 import { VCSServer } from "./components/vcs/vcs-provider"
-import { LocalGhostVCSServer } from "./components/vcs/implementations"
+import { LocalGhostVCSServer } from "./components/vcs/servers/local-ghost-server" // cannot come from implementations due to problems in preload
 
 export class GhostApp {
 

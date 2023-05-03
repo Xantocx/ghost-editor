@@ -5,26 +5,26 @@ export interface ReferenceProvider {
     topLine: number
 }
 
-export interface PositionProvider {
+export interface RangeProvider {
     range: IRange
 }
 
 export class LineLocator {
 
-    public readonly reference: ReferenceProvider
-    public readonly position: PositionProvider
+    public readonly referenceProvider: ReferenceProvider
+    public readonly rangeProvider: RangeProvider
 
     public get editorTopLine(): number {
-        return this.reference.topLine
+        return this.referenceProvider.topLine
     }
 
     public get range(): Range {
-        const range = this.position.range
+        const range = this.rangeProvider.range
         return new Range(range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn)
     }
 
     public set range(range: IRange) {
-        this.position.range = range
+        this.rangeProvider.range = range
     }
 
     public get startLine(): number {
@@ -39,8 +39,8 @@ export class LineLocator {
         return this.editorTopLine <= this.startLine
     }
 
-    constructor(reference: ReferenceProvider, position: PositionProvider) {
-        this.reference = reference
-        this.position = position
+    constructor(reference: ReferenceProvider, position: RangeProvider) {
+        this.referenceProvider = reference
+        this.rangeProvider = position
     }
 }

@@ -1,6 +1,6 @@
 import { Editor } from "../../utils/types"
 import { GhostSnapshot } from "./snapshot"
-import { GhostHighlightDecoration } from "../basic/highlight-decoration"
+import { GhostHighlightDecoration } from "../widgets/highlight-decoration"
 import { LineLocator } from "../../utils/line-locator"
 
 export class GhostSnapshotHighlight extends GhostHighlightDecoration {

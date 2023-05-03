@@ -1,6 +1,6 @@
 import { IRange, Range } from "../utils/range"
 import { VCSProvider } from "../vcs/vcs-provider"
-import { PositionProvider } from "../../../editor/utils/line-locator"
+import { RangeProvider } from "../../../editor/utils/line-locator"
 
 export interface VCSSnapshotData {
     uuid: string
@@ -8,7 +8,7 @@ export interface VCSSnapshotData {
     _endLine: number
 }
 
-export class VCSSnapshot implements VCSSnapshotData, PositionProvider {
+export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
     public readonly uuid: string
     public readonly provider: VCSProvider

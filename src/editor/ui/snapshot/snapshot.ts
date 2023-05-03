@@ -2,17 +2,19 @@ import { IRange, Editor, Model, LayoutInfo } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
-import { PositionProvider, LineLocator } from "../../utils/line-locator"
+import { GhostSnapshotFooter } from "./footer"
+import { RangeProvider, LineLocator } from "../../utils/line-locator"
 import { VCSSnapshotData, VCSSnapshot } from "../../../app/components/data/snapshot"
 
-export class GhostSnapshot implements PositionProvider {
+export class GhostSnapshot implements RangeProvider {
 
     public readonly editor: GhostEditor
-    private readonly snapshot: VCSSnapshot
+    public readonly snapshot: VCSSnapshot
     private readonly locator: LineLocator
 
     private header: GhostSnapshotHeader
     private highlight: GhostSnapshotHighlight
+    private footer: GhostSnapshotFooter
 
     public get core(): Editor {
         return this.editor.core
@@ -102,6 +104,7 @@ export class GhostSnapshot implements PositionProvider {
 
         this.header    = new GhostSnapshotHeader(this, this.locator, viewZonesOnly)
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
+        this.footer    = new GhostSnapshotFooter(this, this.locator, viewZonesOnly)
 
         const changeSubscription = this.highlight.onDidChange((event) => {
             const newRange = this.highlight.range
@@ -123,11 +126,18 @@ export class GhostSnapshot implements PositionProvider {
                 this.header.hide()
             }
         })
+        const footerMouseSubscription = this.footer.onMouseEnter((mouseOn: boolean) => {
+            if (!mouseOn && !this.highlight.mouseOn) {
+                this.footer.hide()
+            }
+        })
         const highlightMouseSubscription = this.highlight.onMouseEnter((mouseOn: boolean) => {
             if (mouseOn) {
                 this.header.show()
-            } else if(!this.header.mouseOn) {
-                this.header.hide()
+                this.footer.show()
+            } else {
+                if(!this.header.mouseOn) { this.header.hide() }
+                if(!this.footer.mouseOn) { this.footer.hide() }
             }
         })
     }
