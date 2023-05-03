@@ -16,19 +16,9 @@ export class GhostSnapshotFooter extends GhostSnapshotHeader {
         return 2
     }
 
-    protected override get contentLocator(): LineLocator {
-
-        if (!this._contentLocator) {
-            const parent = this
-            return new LineLocator(this.locator.referenceProvider, {
-                get range(): IRange {
-                    const endLine = parent.locator.range.endLineNumber
-                    return new Range(endLine + 1, 1, endLine + parent.lineCount, Number.MAX_SAFE_INTEGER)
-                }
-            })
-        }
-
-        return this._contentLocator
+    protected override contentRange(): IRange {
+        const endLine = this.locator.range.endLineNumber
+        return new Range(endLine + 1, 1, endLine + this.lineCount, Number.MAX_SAFE_INTEGER)
     }
 
     protected override setupContent(container: HTMLElement): void {

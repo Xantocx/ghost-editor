@@ -60,15 +60,19 @@ export class GhostSnapshotHeader extends MouseTracker {
         return this.lineCount * this.editor.lineHeight
     }
 
-    protected _contentLocator: LineLocator | undefined = undefined
-    protected get contentLocator(): LineLocator {
+    protected contentRange(): IRange {
+        const startLine = this.locator.range.startLineNumber
+        return new Range(startLine - this.lineCount, 1, startLine - 1, Number.MAX_SAFE_INTEGER)
+    }
+
+    private _contentLocator: LineLocator | undefined = undefined
+    private get contentLocator(): LineLocator {
 
         if (!this._contentLocator) {
             const parent = this
-            return new LineLocator(this.locator.referenceProvider, {
+            this._contentLocator = new LineLocator(this.locator.referenceProvider, {
                 get range(): IRange {
-                    const startLine = parent.locator.range.startLineNumber
-                    return new Range(startLine - parent.lineCount, 1, startLine - 1, Number.MAX_SAFE_INTEGER)
+                    return parent.contentRange()
                 }
             })
         }
