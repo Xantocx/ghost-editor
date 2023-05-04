@@ -35,6 +35,12 @@ export class Slider {
         this.root.appendChild(this.slider)
     }
 
+    public update(min: number, max: number, defaultValue: number): void {
+        this.slider.min   = `${min}`;
+        this.slider.max   = `${max}`;
+        this.slider.value = `${defaultValue}`;
+    }
+
     public onChange(callback: (value: number) => void): Disposable {
         this.onChangeSubscribers.push(callback)
 

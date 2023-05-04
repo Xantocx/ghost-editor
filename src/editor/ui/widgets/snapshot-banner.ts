@@ -95,13 +95,13 @@ export class GhostSnapshotBanner extends MouseTracker {
 
         this.setupMouseTracking()
 
-        const dimsensionSubscriper = this.viewZone.onDimensionsChange((top: number, height: number) => {
+        this.addSubscription(this.viewZone.onDimensionsChange((top: number, height: number) => {
             this.updateOverlayDimension(top, height)
-        })
+        }))
 
-        const layoutSubscription = this.core.onDidLayoutChange(event => {
+        this.addSubscription(this.core.onDidLayoutChange(event => {
             this.updateContentSize()
-        })
+        }))
 
         this.show()
     }
@@ -174,5 +174,16 @@ export class GhostSnapshotBanner extends MouseTracker {
                 this.show()
             }
         }
+    }
+
+    public remove(): void {
+        this.overlay.remove()
+        this.viewZone.remove()
+        this.content.remove()
+
+        this.domOverlay.remove()
+        this.domViewZone.remove()
+
+        super.remove()
     }
 }

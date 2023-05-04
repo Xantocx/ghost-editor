@@ -18,13 +18,13 @@ export class GhostSnapshotHighlight extends GhostHighlightDecoration {
         this.snapshot = snapshot
         this.updateWidth()
 
-        const changeSubscription = this.onDidChange(event => {
+        this.subscriptions.push(this.onDidChange(event => {
             this.updateWidth()
-        })
+        }))
 
-        const layoutSubscription = this.core.onDidLayoutChange(event => {
+        this.subscriptions.push(this.core.onDidLayoutChange(event => {
             this.updateWidth()
-        })
+        }))
     }
 
     private updateWidth(): void {

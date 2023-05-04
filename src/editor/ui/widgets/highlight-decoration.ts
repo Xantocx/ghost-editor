@@ -161,6 +161,12 @@ export class GhostHighlightDecoration extends MouseTracker {
     }
     
     public onDidChange(callback: (event: DecorationsChangedEvent) => void): Disposable {
-        return this.decorations.onDidChange(callback)
+        const subscription = this.decorations.onDidChange(callback)
+        return this.addSubscription(subscription)
+    }
+
+    public override remove(): void {
+        this.hide()
+        super.remove()
     }
 }

@@ -80,4 +80,9 @@ export class GhostContentWidget extends DomMouseTracker {
             this.editor.layoutContentWidget(this.widget)
         }
     }
+
+    public override remove(): void {
+        this.hide()
+        super.remove()
+    }
 }

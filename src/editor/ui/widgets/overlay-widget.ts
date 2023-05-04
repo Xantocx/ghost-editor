@@ -7,7 +7,6 @@ export class GhostOverlayWidget extends DomMouseTracker {
 
     private readonly uuid: string = uuid(16)
     private readonly editor: Editor
-    private readonly locator: LineLocator
 
     private _visible: boolean = false
     public get visible(): boolean {
@@ -57,5 +56,10 @@ export class GhostOverlayWidget extends DomMouseTracker {
         if (this.visible) {
             this.editor.layoutOverlayWidget(this.widget)
         }
+    }
+
+    public override remove(): void {
+        this.hide()
+        super.remove()
     }
 }

@@ -2,6 +2,8 @@ import { IRange } from "monaco-editor"
 import { VCSSnapshotData } from "../data/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 
+export type SnapshotUUID = string
+
 // functionality that the VCS needs to provide
 export interface VCSProvider {
     // file handling
@@ -11,15 +13,17 @@ export interface VCSProvider {
     cloneToPath(filePath: string): void
 
     // snapshot interface
-    createSnapshot(range: IRange): Promise<VCSSnapshotData>
+    createSnapshot(range: IRange): Promise<VCSSnapshotData | null>
+    getSnapshot(uuid: string): Promise<VCSSnapshotData>
     getSnapshots(): Promise<VCSSnapshotData[]>
     updateSnapshot(snapshot: VCSSnapshotData): void
+    applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string>
 
     // modification interface
-    lineChanged(change: LineChange): void
-    linesChanged(change: MultiLineChange): void
-    applyChange(change: AnyChange): void
-    applyChanges(changes: ChangeSet): void
+    lineChanged(change: LineChange): Promise<SnapshotUUID[]>
+    linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]>
+    applyChange(change: AnyChange): Promise<SnapshotUUID[]>
+    applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]>
 
     // version interface
     getVersions(snapshot: VCSSnapshotData): void
@@ -43,7 +47,11 @@ export abstract class BasicVCSProvider implements VCSProvider {
         throw new Error("Method not implemented.")
     }
 
-    public createSnapshot(range: IRange): Promise<VCSSnapshotData> {
+    public createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
+        throw new Error("Method not implemented.")
+    }
+
+    getSnapshot(uuid: string): Promise<VCSSnapshotData> {
         throw new Error("Method not implemented.")
     }
 
@@ -55,28 +63,35 @@ export abstract class BasicVCSProvider implements VCSProvider {
         throw new Error("Method not implemented.")
     }
 
-    public lineChanged(change: LineChange): void {
+    public applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
         throw new Error("Method not implemented.")
     }
 
-    public linesChanged(change: MultiLineChange): void {
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         throw new Error("Method not implemented.")
     }
 
-    public applyChange(change: AnyChange): void {
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+        throw new Error("Method not implemented.")
+    }
+
+    public async applyChange(change: AnyChange): Promise<SnapshotUUID[]> {
         if (change.changeBehaviour === ChangeBehaviour.Line) {
-            this.lineChanged(change as LineChange)
+            return this.lineChanged(change as LineChange)
         } else if (change.changeBehaviour === ChangeBehaviour.MultiLine) {
-            this.linesChanged(change as MultiLineChange)
+            return this.linesChanged(change as MultiLineChange)
         } else {
             throw new Error("Change type unknown.")
         }
     }
 
-    public applyChanges(changes: ChangeSet): void {
-        changes.forEach(change => {
-            this.applyChange(change)
+    public async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
+        let uuids: SnapshotUUID[] = []
+        changes.forEach(async change => {
+            const newUUIDs = await this.applyChange(change)
+            uuids = uuids.concat(newUUIDs)
         })
+        return uuids
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {
@@ -132,8 +147,12 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         this.adapter.cloneToPath(filePath)
     }
 
-    public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
+    public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
         return this.adapter.createSnapshot(range)
+    }
+
+    public async getSnapshot(uuid: string): Promise<VCSSnapshotData> {
+        return this.adapter.getSnapshot(uuid)
     }
 
     public async getSnapshots(): Promise<VCSSnapshotData[]> {
@@ -144,12 +163,16 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         this.adapter.updateSnapshot(snapshot)
     }
 
-    public lineChanged(change: LineChange): void {
-        this.adapter.lineChanged(change)
+    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+        return this.adapter.applySnapshotVersionIndex(uuid, versionIndex)
     }
 
-    public linesChanged(change: MultiLineChange): void {
-        this.adapter.linesChanged(change)
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
+        return this.adapter.lineChanged(change)
+    }
+
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+        return this.adapter.linesChanged(change)
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {

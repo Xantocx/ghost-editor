@@ -4,7 +4,7 @@ import { BrowserWindow } from "electron";
 import { LineChange, MultiLineChange } from "./src/app/components/data/change";
 import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot";
 import { IRange } from "./src/app/components/utils/range";
-import { BasicVCSServer, VCSServer } from "./src/app/components/vcs/vcs-provider";
+import { BasicVCSServer, SnapshotUUID, VCSServer } from "./src/app/components/vcs/vcs-provider";
 
 interface LineRange {
     startLine: number,
@@ -35,6 +35,14 @@ class TrackedBlock {
 
     public get lastActiveLine(): TrackedLine | undefined {
         return this.lastLine.currentlyActive ? this.lastLine : this.lastLine.previousActive
+    }
+
+    public get firstLineNumber(): number {
+        return this.firstActiveLine.lineNumber
+    }
+
+    public get lastLineNumber(): number {
+        return this.lastActiveLine.lineNumber
     }
 
     constructor(eol: string, firstLine?: TrackedLine | undefined, lastLine?: TrackedLine | undefined) {
@@ -230,13 +238,13 @@ class TrackedFile extends TrackedBlock {
         return lines
     }
 
-    public updateLine(lineNumber: number, content: string): TrackedLine {
+    public updateLine(lineNumber: number, content: string): SnapshotUUID[] {
         const line = this.getLine(lineNumber)
         line.update(this.getTimestamp(), content)
-        return line
+        return line.affectedSnapshotUUIDs
     }
 
-    public updateLines(lineNumber: number, content: string[]): TrackedLines {
+    public updateLines(lineNumber: number, content: string[]): SnapshotUUID[] {
         const count = content.length
         const timestamp = this.getTimestamp()
         const lines = this.getLines({ startLine: lineNumber, endLine: lineNumber + count - 1 })
@@ -245,10 +253,22 @@ class TrackedFile extends TrackedBlock {
             line.update(timestamp, content[index])
         })
 
-        return lines
+        return lines.flatMap(line => {
+            return line.affectedSnapshotUUIDs
+        })
     }
 
-    public createSnapshot(range: IRange): Snapshot {
+    public createSnapshot(range: IRange): Snapshot | null {
+
+        const overlappingSnapshot = Array.from(this.snapshots.values()).find(snapshot => {
+            return snapshot.firstLineNumber <= range.endLineNumber && snapshot.lastLineNumber >= range.startLineNumber
+        })
+
+        if (overlappingSnapshot) { 
+            console.warn("Could not create snapshot due to overlap!")
+            return null
+        }
+
         const snapshot = Snapshot.create(this, range)
         this.addSnapshot(snapshot)
         return snapshot
@@ -289,6 +309,8 @@ class TrackedLine {
     public previous: TrackedLine | undefined
     public next: TrackedLine | undefined
 
+    private snapshots: Snapshot[] = []
+
     public get previousActive(): TrackedLine | undefined {
 
         let previous = this.previous
@@ -317,11 +339,11 @@ class TrackedLine {
         if (!this.currentlyActive) { return null }
 
         const activePrevious = this.previousActive
-        if (activePrevious) {
-            return activePrevious.lineNumber + 1
-        } else {
-            return 1
-        }
+        return activePrevious ? activePrevious.lineNumber + 1 : 1
+    }
+
+    public get linePosition(): number {
+        return this.previous ? this.previous.linePosition + 1 : 1
     }
 
     public get currentlyActive(): boolean {
@@ -330,6 +352,12 @@ class TrackedLine {
 
     public get currentContent(): string {
         return this.history.currentContent
+    }
+
+    public get affectedSnapshotUUIDs(): SnapshotUUID[] {
+        return this.snapshots.map(snapshot => {
+            return snapshot.uuid
+        })
     }
 
     constructor(file: TrackedFile, initialTimestamp: number, initialContent: string, relations?: TrackedLineRelation) {
@@ -353,6 +381,15 @@ class TrackedLine {
     public delete(timestamp: number): LineVersion {
         return this.history.deleteLine(timestamp)
     }
+
+    public addToSnapshot(snapshot: Snapshot): void {
+        this.snapshots.push(snapshot)
+    }
+
+    public removeFromSnapshot(snapshot: Snapshot): void {
+        const index = this.snapshots.indexOf(snapshot, 0)
+        if (index > -1) { this.snapshots = this.snapshots.splice(index, 1) }
+    }
 }
 
 class TrackedLines {
@@ -371,8 +408,8 @@ class TrackedLines {
 
     public get stringLines(): string[] {
         return this.map(line => {
-            // return line.currentlyActive ? line.currentContent : null
-            return line.currentlyActive ? (line.currentContent ? line.currentContent : "//") : null // temporary fix to see version count for emty lines in preview
+            return line.currentlyActive ? line.currentContent : null
+            // return line.currentlyActive ? (line.currentContent ? line.currentContent : "//") : null // temporary fix to see version count for emty lines in preview
         }).filter(string => string !== null)
     }
 
@@ -388,6 +425,9 @@ class TrackedLines {
         return this.lines.map(callback)
     }
 
+    public flatMap<ReturnType>(callback: (line: TrackedLine) => ReturnType | ReturnType[]): ReturnType[] {
+        return this.lines.flatMap(callback)
+    }
 
     public forEach(callback: (line: TrackedLine, index: number) => void): void {
         this.lines.forEach(callback)
@@ -406,6 +446,10 @@ class LineHistory {
 
     private start: LineVersion
     private end: LineVersion
+
+    public get file(): TrackedFile {
+        return this.line.file
+    }
 
     public get versionCount(): number {
 
@@ -485,6 +529,22 @@ class LineVersion {
     public previous: LineVersion | undefined
     public next: LineVersion | undefined
 
+    public get versionOrder(): number {
+        return this.previous ? this.previous.versionOrder + 1 : 1
+    }
+
+    public get originTimestamp(): number {
+        return this.origin ? this.origin.timestamp : this.timestamp
+    }
+
+    public get line(): TrackedLine {
+        return this.histoy.line
+    }
+
+    public get isHead(): boolean {
+        return this.histoy.head === this
+    }
+
     constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
         this.histoy = history
         this.timestamp = timestamp
@@ -500,6 +560,10 @@ class LineVersion {
             if (this.previous) { this.previous.next = this }
             if (this.next)     { this.next.previous = this }
         }
+    }
+
+    public apply(): void {
+        this.histoy.head = this
     }
 
     public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
@@ -519,7 +583,29 @@ class Snapshot extends TrackedBlock {
         return this.timeline.length
     }
 
-    public get lastTimestamp(): number {
+    public get versionIndex(): number | null {
+
+        let index = -1
+        let lines = this.lines.lines
+
+        while(lines.length > 0) {
+
+            index++
+
+            if (index === this.versionCount) { throw new Error("Failed to get index for snapshot!") }
+
+            const version = this.timeline[index]
+            if (version.isHead) {
+                const line = version.line
+                const lineIndex = lines.indexOf(line, 0)
+                if (lineIndex > -1) { lines = lines.splice(lineIndex, 0) }
+            }
+        }
+
+        return index >= 0 ? index : null
+    }
+
+    private get lastTimestamp(): number {
         return this.timeline[this.versionCount - 1].timestamp
     }
 
@@ -532,20 +618,49 @@ class Snapshot extends TrackedBlock {
     constructor(file: TrackedFile, firstLine: TrackedLine, lastLine: TrackedLine) {
         super(file.eol, firstLine, lastLine)
         this.file = file
+
+        this.addLines()
         this.createTimeline()
     }
 
     private createTimeline(): void {
-        const timeline: LineVersion[] = []
-
-        this.lines.forEach(line => {
-            timeline.concat(line.history.versions)
+        let timeline = this.lines.flatMap(line => {
+            return line.history.versions
         })
 
         this.timeline = timeline.sort((versionA, versionB) => {
-            if      (versionA.timestamp < versionB.timestamp)   { return -1 }
-            else if (versionA.timestamp === versionB.timestamp) { return  0 }
-            else                                                { return  1 }
+
+            const originTimestampA = versionA.originTimestamp
+            const originTimestampB = versionB.originTimestamp
+
+            const timestampA = versionA.timestamp
+            const timestampB = versionB.timestamp
+
+            const lineA = versionA.line
+            const lineB = versionB.line
+
+            // order them by origin timestamps instead of own timestamps, this way changes based on this origin will follow immediately on the origin
+            if (originTimestampA !== originTimestampB) { 
+                return originTimestampA < originTimestampB ? -1 : 1
+            } else if (timestampA !== timestampB) {
+                return timestampA < timestampB ? -1 : 1
+            } else if (lineA === lineB) {
+                return versionA.versionOrder < versionB.versionOrder ? -1 : 1
+            } else {
+                return lineA.linePosition < lineB.linePosition ? -1 : 1
+            }
+        })
+    }
+
+    private addLines(): void {
+        this.lines.forEach(line => {
+            line.addToSnapshot(this)
+        })
+    }
+
+    private removeLines(): void {
+        this.lines.forEach(line => {
+            line.removeFromSnapshot(this)
         })
     }
 
@@ -558,9 +673,32 @@ class Snapshot extends TrackedBlock {
     }
 
     public update(update: VCSSnapshotData): void {
+        this.removeLines()
+
         this.firstLine = this.file.getLine(update._startLine)
         this.lastLine  = this.file.getLine(update._endLine)
+
+        this.addLines()
         this.createTimeline()
+    }
+
+    public applyIndex(versionIndex: number): void {
+        if (versionIndex < 0 || versionIndex >= this.versionCount) { throw new Error(`Provided version index (${versionIndex}) out of bounds `) }
+
+        let lines = this.lines.lines
+        while(lines.length > 0) {
+
+            const version = this.timeline[versionIndex]
+            const line = version.line
+            
+            if (lines.includes(line)) { 
+                version.apply()
+                const lineIndex = lines.indexOf(line, 0)
+                if (lineIndex > -1) { lines = lines.splice(lineIndex, 0) }
+            }
+
+            versionIndex--
+        }
     }
 
     public compress(): VCSSnapshotData {
@@ -571,7 +709,8 @@ class Snapshot extends TrackedBlock {
             uuid: parent.uuid,
             _startLine: parent.firstActiveLine.lineNumber,
             _endLine: parent.lastActiveLine.lineNumber,
-            versionCount: parent.versionCount
+            versionCount: parent.versionCount,
+            versionIndex: parent.versionIndex
         }
     }
 }
@@ -636,8 +775,12 @@ export class GhostVCSServer extends BasicVCSServer {
         console.log("CLONE TO PATH NOT IMPLEMENTED")
     }
 
-    public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        return this.file.createSnapshot(range).compress()
+    public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
+        return this.file.createSnapshot(range)?.compress()
+    }
+
+    public async getSnapshot(uuid: string): Promise<VCSSnapshotData> {
+        return this.file.getSnapshot(uuid).compress()
     }
 
     public async getSnapshots(): Promise<VCSSnapshotData[]> {
@@ -648,12 +791,18 @@ export class GhostVCSServer extends BasicVCSServer {
         this.file.updateSnapshot(snapshot)
     }
 
-    public lineChanged(change: LineChange): void {
-        this.file.updateLine(change.lineNumber, change.lineText)
-        this.updatePreview()
+    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+        this.file.getSnapshot(uuid).applyIndex(versionIndex)
+        return this.file.currentText
     }
 
-    public linesChanged(change: MultiLineChange): void {
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
+        const uuids = this.file.updateLine(change.lineNumber, change.lineText)
+        this.updatePreview()
+        return uuids
+    }
+
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
 
         const startsWithEol = change.insertedText[0] === this.file.eol
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
@@ -673,6 +822,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
         const timestamp = this.file.getTimestamp()
         const modifiedLines = change.lineText.split(this.file.eol)
+        let   affectedUUIDs: SnapshotUUID[] = []
 
         const modifiedRange = {
             startLine: change.modifiedRange.startLineNumber,
@@ -682,7 +832,9 @@ export class GhostVCSServer extends BasicVCSServer {
         let vcsLines: TrackedLines = new TrackedLines(this.file.eol)
         if (modifyStartLine) {
             vcsLines = this.file.getLines(modifiedRange)
-            vcsLines.at(0).update(timestamp, modifiedLines[0])
+            const firstLine = vcsLines.at(0)
+            firstLine.update(timestamp, modifiedLines[0])
+            affectedUUIDs = affectedUUIDs.concat(firstLine.affectedSnapshotUUIDs)
         } else {
             // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
@@ -695,17 +847,22 @@ export class GhostVCSServer extends BasicVCSServer {
 
         for (let i = 1; i < linesToConsider; i++) {
             if (i < vcsLines.length) {
+                const line = vcsLines.at(i)
+                affectedUUIDs = affectedUUIDs.concat(line.affectedSnapshotUUIDs)
                 if (i < modifiedLines.length) {
-                    vcsLines.at(i).update(timestamp, modifiedLines[i])
+                    line.update(timestamp, modifiedLines[i])
                 } else {
-                    vcsLines.at(i).delete(timestamp)
+                    line.delete(timestamp)
                 }
             } else {
-                this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i])
+                const line = this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i])
+                affectedUUIDs = affectedUUIDs.concat(line.affectedSnapshotUUIDs)
             }
         }
 
         this.updatePreview()
+
+        return affectedUUIDs
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {

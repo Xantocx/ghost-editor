@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import { VCSClient } from "../vcs-provider"
+import { SnapshotUUID, VCSClient } from "../vcs-provider"
 import { ElectronVCSServer } from "../servers/electron-server"
 
 import { IRange } from "monaco-editor"
@@ -27,8 +27,12 @@ export const ElectronVCSClient: VCSClient = {
         invoke(ElectronVCSServer.cloneToPathChannel, filePath)
     },
 
-    async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
+    async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
         return invoke(ElectronVCSServer.createSnapshotChannel, range)
+    },
+
+    async getSnapshot(): Promise<VCSSnapshotData> {
+        return invoke(ElectronVCSServer.getSnapshotChannel)
     },
 
     async getSnapshots(): Promise<VCSSnapshotData[]> {
@@ -39,20 +43,24 @@ export const ElectronVCSClient: VCSClient = {
         invoke(ElectronVCSServer.updateSnapshotChannel, snapshot)
     },
 
-    lineChanged(change: LineChange): void {
-        invoke(ElectronVCSServer.lineChangedChannel, change)
+    async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+        return invoke(ElectronVCSServer.applySnapshotVersionIndexChannel, uuid, versionIndex)
     },
 
-    linesChanged(change: MultiLineChange): void {
-        invoke(ElectronVCSServer.linesChangedChannel, change)
+    async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.lineChangedChannel, change)
     },
 
-    applyChange(change: Change): void {
-        invoke(ElectronVCSServer.applyChangeChannel, change)
+    async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.linesChangedChannel, change)
     },
 
-    applyChanges(changes: ChangeSet): void {
-        invoke(ElectronVCSServer.applyChangesChannel, changes)
+    async applyChange(change: Change): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.applyChangeChannel, change)
+    },
+
+    async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.applyChangesChannel, changes)
     },
 
     getVersions(snapshot: VCSSnapshotData) {

@@ -165,7 +165,7 @@ export class GhostEditor implements ReferenceProvider {
 
     setupContentEvents(): void {
 
-        const contentSubscription = this.core.onDidChangeModelContent(event => {
+        const contentSubscription = this.core.onDidChangeModelContent(async event => {
 
             const changeSet = new ChangeSet(Date.now(), this.model, this.eol, event)
 
@@ -182,13 +182,19 @@ export class GhostEditor implements ReferenceProvider {
             }
             */
 
-            this.vcs.applyChanges(changeSet)
+            const changedSnapshots = await this.vcs.applyChanges(changeSet)
+            changedSnapshots.forEach(uuid => {
+                this.getSnapshot(uuid)?.update()
+            })
         })
     }
 
-    replaceText(text: string): void {
+    update(text: string): void {
         this.flushCachedChanges()
         this.core.setValue(text)
+        this.snapshots.forEach(snapshot => {
+            snapshot.update()
+        })
     }
 
     async loadFile(filePath: string, content: string): Promise<void> {
@@ -222,12 +228,28 @@ export class GhostEditor implements ReferenceProvider {
         return this.core.getSelection()
     }
 
+    getSnapshot(uuid: string): GhostSnapshot | undefined {
+        return this.snapshots.find(snapshot => { return snapshot.uuid === uuid })
+    }
+
     async highlightSelection(): Promise<void> {
+
         const selection = this.getSelection()
+
         if (selection) {
-            this.flushCachedChanges()
-            const snapshot = await GhostSnapshot.create(this, selection)
-            this.snapshots.push(snapshot)
+
+            const overlappingSnapshot = this.snapshots.find(snapshot => {
+                return snapshot.startLine <= selection.endLineNumber && snapshot.endLine >= selection.startLineNumber
+            })
+
+            if (!overlappingSnapshot){
+                this.flushCachedChanges()
+                const snapshot = await GhostSnapshot.create(this, selection)
+                if (snapshot) { this.snapshots.push(snapshot) }
+            } else {
+                console.warn(`You cannot create a snapshot overlapping with ${overlappingSnapshot.snapshot.uuid}}!`)
+            }
+
         }
     }
 }

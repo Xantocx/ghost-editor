@@ -1,20 +1,28 @@
-import { IRange, Editor, Model, LayoutInfo } from "../../utils/types"
+import { IRange, Editor, Model, LayoutInfo, Disposable } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
 import { VCSSnapshotData, VCSSnapshot } from "../../../app/components/data/snapshot"
+import { SnapshotUUID } from "../../../app/components/vcs/vcs-provider"
+import { SubscriptionManager } from "../widgets/mouse-tracker"
 
-export class GhostSnapshot implements RangeProvider {
+export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
 
     public readonly editor: GhostEditor
-    public readonly snapshot: VCSSnapshot
-    private readonly locator: LineLocator
+    public snapshot: VCSSnapshot
+    private locator: LineLocator
+
+    public readonly viewZonesOnly: boolean
 
     private header: GhostSnapshotHeader
     private highlight: GhostSnapshotHighlight
     private footer: GhostSnapshotFooter
+
+    public get uuid(): SnapshotUUID {
+        return this.snapshot.uuid
+    }
 
     public get core(): Editor {
         return this.editor.core
@@ -84,54 +92,79 @@ export class GhostSnapshot implements RangeProvider {
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
-    public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot> {
+    public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
         const snapshot = await editor.vcs.createSnapshot(range)
+
+        if (!snapshot) { 
+            console.warn("Failed to create snapshot!")
+            return null
+         }
+
         return new GhostSnapshot(editor, snapshot)
     }
 
-    constructor(editor: GhostEditor, snapshot: VCSSnapshotData) {
+    constructor(editor: GhostEditor, snapshot: VCSSnapshotData, viewZonesOnly?: boolean) {
+        super()
+
         this.editor = editor
-        this.snapshot = VCSSnapshot.create(editor.vcs, snapshot)
+        this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true
 
-        this.locator = new LineLocator(editor, this.snapshot)
-
-        this.display(true)
+        this.load(snapshot)
     }
 
-    private display(viewZonesOnly: boolean): void {
+    public async update(): Promise<void> {
+        const snapshot = await this.editor.vcs.getSnapshot(this.uuid)
+        this.load(snapshot)
+    }
+
+    public load(snapshot: VCSSnapshotData): void {
+        this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
+        this.locator = new LineLocator(this.editor, this.snapshot)
+        this.display()
+    }
+
+    private display(): void {
+
+        this.remove()
 
         const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
 
-        this.header    = new GhostSnapshotHeader(this, this.locator, viewZonesOnly)
+        this.header    = new GhostSnapshotHeader(this, this.locator, this.viewZonesOnly)
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
-        this.footer    = new GhostSnapshotFooter(this, this.locator, viewZonesOnly)
+        this.footer    = new GhostSnapshotFooter(this, this.locator, this.viewZonesOnly)
 
-        const changeSubscription = this.highlight.onDidChange((event) => {
+        this.addSubscription(this.highlight.onDidChange((event) => {
             const newRange = this.highlight.range
             if (newRange) {
                 this.range = newRange
                 this.header.update()
                 this.highlight.update()
+                this.footer.update()
             }
-        })
+        }))
 
-        if (!viewZonesOnly) {
+        this.addSubscription(this.footer.onChange(async value => {
+            const newText = await this.editor.vcs.applySnapshotVersionIndex(this.uuid, value)
+            this.editor.update(newText)
+        }))
+
+        if (!this.viewZonesOnly) {
             this.setupHeaderHiding()
         }
     }
 
     private setupHeaderHiding(): void {
-        const headerMouseSubscription = this.header.onMouseEnter((mouseOn: boolean) => {
+        this.addSubscription(this.header.onMouseEnter((mouseOn: boolean) => {
             if (!mouseOn && !this.highlight.mouseOn) {
                 this.header.hide()
             }
-        })
-        const footerMouseSubscription = this.footer.onMouseEnter((mouseOn: boolean) => {
+        }))
+        this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
             if (!mouseOn && !this.highlight.mouseOn) {
                 this.footer.hide()
             }
-        })
-        const highlightMouseSubscription = this.highlight.onMouseEnter((mouseOn: boolean) => {
+        }))
+        this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
             if (mouseOn) {
                 this.header.show()
                 this.footer.show()
@@ -139,6 +172,13 @@ export class GhostSnapshot implements RangeProvider {
                 if(!this.header.mouseOn) { this.header.hide() }
                 if(!this.footer.mouseOn) { this.footer.hide() }
             }
-        })
+        }))
+    }
+
+    public override remove(): void {
+        super.remove()
+        this.header?.remove()
+        this.highlight?.remove()
+        this.footer?.remove()
     }
 }

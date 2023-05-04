@@ -80,11 +80,16 @@ export class GhostViewZone extends DomMouseTracker {
     public onDimensionsChange(callback: (top: number, height: number) => void): Disposable {
         callback(this.top, this.height)
         this.dimensionsSubscribers.push(callback)
-        return {
+        return this.addSubscription({
             dispose: () => {
                 const index = this.dimensionsSubscribers.indexOf(callback)
                 if (index > -1) { this.dimensionsSubscribers.splice(index, 1) }
             }
-        }
+        })
+    }
+
+    public remove(): void {
+        this.hide()
+        super.remove()
     }
 }

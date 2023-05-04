@@ -7,6 +7,7 @@ export interface VCSSnapshotData {
     _startLine: number
     _endLine: number
     versionCount: number
+    versionIndex: number
 }
 
 export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
@@ -18,6 +19,7 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
     public _endLine: number
 
     public versionCount: number
+    public versionIndex: number
 
     public get startLine(): number {
         return this._startLine
@@ -57,10 +59,10 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
     public static create(provider: VCSProvider, snapshot: VCSSnapshotData): VCSSnapshot {
         const range = new Range(snapshot._startLine, 1, snapshot._endLine, Number.MAX_SAFE_INTEGER)
-        return new VCSSnapshot(snapshot.uuid, provider, range, snapshot.versionCount)
+        return new VCSSnapshot(snapshot.uuid, provider, range, snapshot.versionCount, snapshot.versionIndex)
     }
 
-    constructor(uuid: string, provider: VCSProvider, range: IRange, versionCount: number) {
+    constructor(uuid: string, provider: VCSProvider, range: IRange, versionCount: number, versionIndex: number) {
         this.uuid = uuid
         this.provider = provider
         
@@ -68,6 +70,7 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
         this._endLine   = Math.max(range.startLineNumber, range.endLineNumber)
 
         this.versionCount = versionCount
+        this.versionIndex = versionIndex
     }
 
     private updateServer(): void {
@@ -82,7 +85,8 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
             uuid: parent.uuid,
             _startLine: parent.startLine,
             _endLine: parent.endLine,
-            versionCount: parent.versionCount
+            versionCount: parent.versionCount,
+            versionIndex: parent.versionIndex
         }
     }
 

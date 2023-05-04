@@ -8,8 +8,10 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
     public static updatePathChannel = "vcs-update-path"
     public static cloneToPathChannel = "vcs-clone-to-path"
     public static createSnapshotChannel = "vcs-create-snapshot"
+    public static getSnapshotChannel = "vcs-get-snapshot"
     public static getSnapshotsChannel = "vcs-get-snapshots"
     public static updateSnapshotChannel = "vcs-update-snapshot"
+    public static applySnapshotVersionIndexChannel = "vcs-apply-snapshot-version-index"
     public static lineChangedChannel = "vcs-line-changed"
     public static linesChangedChannel = "vcs-lines-Changed"
     public static applyChangeChannel = "vcs-apply-change"
@@ -43,7 +45,11 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
             return this.createSnapshot(range)
         })
 
-        const getSnapshotSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotsChannel, (event) => {
+        const getSnapshotSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotChannel, (event, uuid) => {
+            return this.getSnapshot(uuid)
+        })
+
+        const getSnapshotsSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotsChannel, (event) => {
             return this.getSnapshots()
         })
 
@@ -51,20 +57,24 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
             this.updateSnapshot(snapshot)
         })
 
+        const applySnapshotVersionIndexSubscription = ipcMain.handle(ElectronVCSServer.applySnapshotVersionIndexChannel, (event, uuid, versionIndex) => {
+            return this.applySnapshotVersionIndex(uuid, versionIndex)
+        })
+
         const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, (event, change) => {
-            this.lineChanged(change)
+            return this.lineChanged(change)
         })
 
         const linesChangedSubscription = ipcMain.handle(ElectronVCSServer.linesChangedChannel, (event, change) => {
-            this.linesChanged(change)
+            return this.linesChanged(change)
         })
 
         const applyChangeSubscription = ipcMain.handle(ElectronVCSServer.applyChangeChannel, (event, change) => {
-            this.applyChange(change)
+            return this.applyChange(change)
         })
 
         const applyChangesSubscription = ipcMain.handle(ElectronVCSServer.applyChangesChannel, (event, changes) => {
-            this.applyChanges(changes)
+            return this.applyChanges(changes)
         })
 
         const getVersionsSubscription = ipcMain.handle(ElectronVCSServer.getVersionsChannel, (event, snapshot) => {

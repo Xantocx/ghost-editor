@@ -1,6 +1,27 @@
 import { Disposable } from "../../utils/types"
 
-export class MouseTracker {
+export abstract class SubscriptionManager {
+
+    protected subscriptions: Disposable[] = []
+
+    public addSubscription(subscription: Disposable): Disposable {
+        this.subscriptions.push(subscription)
+        return {
+            dispose() {
+                subscription.dispose()
+                const index = this.subscription.indexOf(subscription, 0)
+                if (index > -1)  { this.subscription = this.subscription.splice(index, 1) }
+            }
+        }
+    }
+
+    public remove() {
+        this.subscriptions.forEach(subscription => { subscription.dispose() })
+        this.subscriptions = []
+    }
+}
+
+export abstract class MouseTracker extends SubscriptionManager {
 
     public mouseOn: boolean = false
     private mouseEventSubscribers: {(mouseOn: boolean): void}[] = []
@@ -16,12 +37,18 @@ export class MouseTracker {
 
         const parent = this
 
-        return {
+        const subscription = {
             dispose() {
                 const index = parent.mouseEventSubscribers.indexOf(callback)
                 if (index > -1) { parent.mouseEventSubscribers.splice(index, 1) }
             }
         }
+
+        return this.addSubscription(subscription)
+    }
+
+    public override remove(): void {
+        super.remove()
     }
 }
 
@@ -44,5 +71,10 @@ export class DomMouseTracker extends MouseTracker {
         this.domNode.addEventListener("mouseleave", (event) => {
             this.mouseChanged(false)
         });
+    }
+
+    public override remove(): void {
+        super.remove()
+        this.domNode.remove()
     }
 }

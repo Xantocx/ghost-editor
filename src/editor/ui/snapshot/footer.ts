@@ -1,11 +1,19 @@
 import { GhostSnapshotBanner } from "../widgets/snapshot-banner";
-import { IRange } from "../../utils/types";
+import { Disposable, IRange } from "../../utils/types";
 import { Range } from "monaco-editor";
 import { Slider } from "../components/slider";
 
 export class GhostSnapshotFooter extends GhostSnapshotBanner {
 
     private slider: Slider
+
+    private get versionCount(): number {
+        return this.snapshot.snapshot.versionCount
+    }
+
+    private get versionIndex(): number {
+        return this.snapshot.snapshot.versionIndex
+    }
 
     protected override get lineNumber(): number {
         return this.snapshot.endLine + 1
@@ -29,9 +37,14 @@ export class GhostSnapshotFooter extends GhostSnapshotBanner {
         container.style.height = "100vh"
 
         // build slider
-        this.slider = new Slider(container, this.snapshot.snapshot.uuid, 0, 100, 50)
-        this.slider.onChange(value => {
-            console.log(value)
-        })
+        this.slider = new Slider(container, this.snapshot.snapshot.uuid, 0, this.versionCount - 1, this.versionIndex)
+    }
+
+    public updateSlider(): void {
+        this.slider.update(0, this.versionCount - 1, this.versionIndex)
+    }
+
+    public onChange(callback: (value: number) => void): Disposable {
+        return this.addSubscription(this.slider.onChange(callback))
     }
 }
