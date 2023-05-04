@@ -528,7 +528,7 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        return new VCSSnapshot(crypto.randomUUID(), this, range).compress()
+        return new VCSSnapshot(crypto.randomUUID(), this, range, 10).compress()
     }
 
     public async getSnapshots(): Promise<VCSSnapshotData[]> {

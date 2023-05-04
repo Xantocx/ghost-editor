@@ -1,10 +1,9 @@
-import { GhostSnapshotHeader } from "./header";
-import { LineLocator } from "../../utils/line-locator";
+import { GhostSnapshotBanner } from "../widgets/snapshot-banner";
 import { IRange } from "../../utils/types";
 import { Range } from "monaco-editor";
 import { Slider } from "../components/slider";
 
-export class GhostSnapshotFooter extends GhostSnapshotHeader {
+export class GhostSnapshotFooter extends GhostSnapshotBanner {
 
     private slider: Slider
 

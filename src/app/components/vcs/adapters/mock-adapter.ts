@@ -7,10 +7,10 @@ import { VCSSnapshotData, VCSSnapshot } from "../../data/snapshot";
 export class MockAdapter extends BasicVCSAdapter {
 
     private snapshots: VCSSnapshot[] = [
-        new VCSSnapshot(crypto.randomUUID(), this, new Range(3, 1, 6, Number.MAX_SAFE_INTEGER)),
-        new VCSSnapshot(crypto.randomUUID(), this, new Range(9, 1, 14, Number.MAX_SAFE_INTEGER)),
-        new VCSSnapshot(crypto.randomUUID(), this, new Range(31, 1, 37, Number.MAX_SAFE_INTEGER)),
-        new VCSSnapshot(crypto.randomUUID(), this, new Range(45, 1, 40, Number.MAX_SAFE_INTEGER))
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(3, 1, 6, Number.MAX_SAFE_INTEGER), 0),
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(9, 1, 14, Number.MAX_SAFE_INTEGER), 0),
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(31, 1, 37, Number.MAX_SAFE_INTEGER), 0),
+        new VCSSnapshot(crypto.randomUUID(), this, new Range(45, 1, 40, Number.MAX_SAFE_INTEGER), 0)
     ]
 
     private _filePath: string | null
@@ -43,7 +43,7 @@ export class MockAdapter extends BasicVCSAdapter {
     }
 
     async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        const snapshot = new VCSSnapshot(crypto.randomUUID(), this, range)
+        const snapshot = new VCSSnapshot(crypto.randomUUID(), this, range, 0)
         console.log(snapshot)
         this.snapshots.push(snapshot)
         return snapshot
