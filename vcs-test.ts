@@ -153,7 +153,7 @@ class TrackedFile extends TrackedBlock {
     }
 
     public filePath: string | null
-    private snapshots: Snapshot[] = []
+    private snapshots = new Map<string, Snapshot>()
 
     constructor(filePath: string | null, eol: string) {
         super(eol)
@@ -246,6 +246,38 @@ class TrackedFile extends TrackedBlock {
         })
 
         return lines
+    }
+
+    public createSnapshot(range: IRange): Snapshot {
+        const snapshot = Snapshot.create(this, range)
+        this.addSnapshot(snapshot)
+        return snapshot
+    }
+
+    public addSnapshot(snapshot: Snapshot): void {
+        this.snapshots.set(snapshot.uuid, snapshot)
+    }
+
+    public getSnapshot(uuid: string): Snapshot {
+        if (!this.snapshots.has(uuid)) { throw new Error(`Snapshot with UUID ${uuid} does not exist!`) }
+        return this.snapshots.get(uuid)
+    }
+
+    public updateSnapshot(update: VCSSnapshotData): Snapshot {
+        const snapshot = this.getSnapshot(update.uuid)
+        snapshot.update(update)
+        return snapshot
+    }
+
+    public getSnapshotData(): VCSSnapshotData[] {
+
+        const snapshotData = []
+
+        this.snapshots.forEach(snapshot => {
+            snapshotData.push(snapshot.compress())
+        })
+
+        return snapshotData
     }
 }
 
@@ -396,6 +428,19 @@ class LineHistory {
         return this.head.content
     }
 
+    public get versions(): LineVersion[] {
+
+        let   version = this.start
+        const lines = [version]
+
+        while(version !== this.end) {
+            version = version.next
+            lines.push(version)
+        }
+
+        return lines
+    }
+
     constructor(line: TrackedLine, initialTimestamp: number, initialContent: string) {
         this.line  = line
         this.start = new LineVersion(this, initialTimestamp, false, "")
@@ -463,8 +508,72 @@ class LineVersion {
     }
 }
 
-class Snapshot {
+class Snapshot extends TrackedBlock {
 
+    public readonly uuid = crypto.randomUUID()
+    public readonly file: TrackedFile
+
+    private timeline: LineVersion[]
+
+    public get versionCount(): number {
+        return this.timeline.length
+    }
+
+    public get lastTimestamp(): number {
+        return this.timeline[this.versionCount - 1].timestamp
+    }
+
+    public static create(file: TrackedFile, range: IRange): Snapshot {
+        const firstLine = file.getLine(range.startLineNumber)
+        const lastLine  = file.getLine(range.endLineNumber)
+        return new Snapshot(file, firstLine, lastLine)
+    }
+
+    constructor(file: TrackedFile, firstLine: TrackedLine, lastLine: TrackedLine) {
+        super(file.eol, firstLine, lastLine)
+        this.file = file
+        this.createTimeline()
+    }
+
+    private createTimeline(): void {
+        const timeline: LineVersion[] = []
+
+        this.lines.forEach(line => {
+            timeline.concat(line.history.versions)
+        })
+
+        this.timeline = timeline.sort((versionA, versionB) => {
+            if      (versionA.timestamp < versionB.timestamp)   { return -1 }
+            else if (versionA.timestamp === versionB.timestamp) { return  0 }
+            else                                                { return  1 }
+        })
+    }
+
+    public addNewVersion(version: LineVersion): void {
+        if (version.timestamp >= this.lastTimestamp) {
+            this.timeline.push(version)
+        } else {
+            this.createTimeline()
+        }
+    }
+
+    public update(update: VCSSnapshotData): void {
+        this.firstLine = this.file.getLine(update._startLine)
+        this.lastLine  = this.file.getLine(update._endLine)
+        this.createTimeline()
+    }
+
+    public compress(): VCSSnapshotData {
+
+        const parent = this
+
+        return {
+            uuid: parent.uuid,
+            _startLine: parent.firstActiveLine.lineNumber,
+            _endLine: parent.lastActiveLine.lineNumber,
+            versionCount: parent.versionCount
+        }
+    }
 }
 
 
@@ -528,15 +637,15 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData> {
-        return new VCSSnapshot(crypto.randomUUID(), this, range, 10).compress()
+        return this.file.createSnapshot(range).compress()
     }
 
     public async getSnapshots(): Promise<VCSSnapshotData[]> {
-        return []
+        return this.file.getSnapshotData()
     }
 
     public updateSnapshot(snapshot: VCSSnapshotData): void {
-        console.log("UPDATE SNAPSHOT NOT IMPLEMENTED")
+        this.file.updateSnapshot(snapshot)
     }
 
     public lineChanged(change: LineChange): void {
