@@ -163,35 +163,44 @@ export class GhostEditor implements ReferenceProvider {
         }
     }
 
+    private manualContentChange = false
     setupContentEvents(): void {
 
         const contentSubscription = this.core.onDidChangeModelContent(async event => {
 
-            const changeSet = new ChangeSet(Date.now(), this.model, this.eol, event)
+            if (!this.manualContentChange) {
+                console.log("CHANGING")
 
-            /*
-            // TODO: this mechanism for eliminating minimal changes and summarizing them may be optimized
-            if (changeSet.length === 1 && changeSet[0].changeBehaviour === ChangeBehaviour.Line) {
-                const change = changeSet[0] as LineChange
-                if (!this.cachedLineChange || this.cachedLineChange?.lineNumber === change.lineNumber) {
-                    this.cachedLineChange = change
-                    return
-                } else {
-                    this.flushCachedChanges()
+                const changeSet = new ChangeSet(Date.now(), this.model, this.eol, event)
+
+                /*
+                // TODO: this mechanism for eliminating minimal changes and summarizing them may be optimized
+                if (changeSet.length === 1 && changeSet[0].changeBehaviour === ChangeBehaviour.Line) {
+                    const change = changeSet[0] as LineChange
+                    if (!this.cachedLineChange || this.cachedLineChange?.lineNumber === change.lineNumber) {
+                        this.cachedLineChange = change
+                        return
+                    } else {
+                        this.flushCachedChanges()
+                    }
                 }
-            }
-            */
+                */
 
-            const changedSnapshots = await this.vcs.applyChanges(changeSet)
-            changedSnapshots.forEach(uuid => {
-                this.getSnapshot(uuid)?.update()
-            })
+                const changedSnapshots = await this.vcs.applyChanges(changeSet)
+                changedSnapshots.forEach(uuid => {
+                    this.getSnapshot(uuid)?.update()
+                })
+            }
         })
     }
 
     update(text: string): void {
         this.flushCachedChanges()
+        
+        this.manualContentChange = true
         this.core.setValue(text)
+        this.manualContentChange = false
+
         this.snapshots.forEach(snapshot => {
             snapshot.update()
         })

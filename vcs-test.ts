@@ -52,7 +52,7 @@ class TrackedBlock {
     }
 
     public get lineCount(): number {
-        return this.lastActiveLine.lineNumber
+        return this.lines.length
     }
 
     public get activeLines(): TrackedLines {
@@ -103,7 +103,7 @@ class TrackedBlock {
     }
 
     public validLineNumber(lineNumber: number): boolean {
-        return lineNumber >= 1 && lineNumber <= this.lineCount
+        return lineNumber >= this.firstLineNumber && lineNumber <= this.lastLineNumber
     }
 
     public validRange(range: LineRange): boolean {
@@ -375,11 +375,11 @@ class TrackedLine {
 
     public update(timestamp: number, content: string): LineVersion {
         if (content === this.currentContent) { return this.history.head }
-        return this.history.createNewVersion(timestamp, true, content)
+        return this.history.createNewVersion(true, content)
     }
 
     public delete(timestamp: number): LineVersion {
-        return this.history.deleteLine(timestamp)
+        return this.history.deleteLine()
     }
 
     public addToSnapshot(snapshot: Snapshot): void {
@@ -488,29 +488,33 @@ class LineHistory {
     constructor(line: TrackedLine, initialTimestamp: number, initialContent: string) {
         this.line  = line
         this.start = new LineVersion(this, initialTimestamp, false, "")
-        this.end   = new LineVersion(this, initialTimestamp, true, initialContent, { previous: this.start })
+        this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start })
         this.head  = this.end
     }
 
-    private cloneHeadToEnd(timestamp: number): LineVersion {
-        this.end = this.head.clone(timestamp, { previous: this.end })
+    private getTimestamp(): number {
+        return this.file.getTimestamp()
+    }
+
+    private cloneHeadToEnd(): LineVersion {
+        this.end = this.head.clone(this.getTimestamp(), { previous: this.end })
         this.head = this.end
         return this.head
     }
 
-    public createNewVersion(timestamp: number, active: boolean, content: string): LineVersion {
+    public createNewVersion(active: boolean, content: string): LineVersion {
         if (this.head !== this.end) {
-            this.cloneHeadToEnd(timestamp)
+            this.cloneHeadToEnd()
         }
 
-        this.end = new LineVersion(this, timestamp, active, content, { previous: this.end })
+        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end })
         this.head = this.end
 
         return this.head
     }
 
-    public deleteLine(timestamp: number): LineVersion {
-        return this.createNewVersion(timestamp, false, "")
+    public deleteLine(): LineVersion {
+        return this.createNewVersion(false, "")
     }
 
 }
@@ -529,8 +533,16 @@ class LineVersion {
     public previous: LineVersion | undefined
     public next: LineVersion | undefined
 
+    public get previousVersionCount(): number {
+        return this.previous ? this.previous.previousVersionCount + 1 : 0
+    }
+
+    public get nextVersionCount(): number {
+        return this.next ? this.next.nextVersionCount + 1 : 0
+    }
+
     public get versionOrder(): number {
-        return this.previous ? this.previous.versionOrder + 1 : 1
+        return this.previousVersionCount
     }
 
     public get originTimestamp(): number {
@@ -570,9 +582,152 @@ class LineVersion {
         if (!relations?.origin) { relations.origin = this }
         return new LineVersion(this.histoy, timestamp, this.active, this.content, relations)
     }
+
+    // TODO: FIX THAT SORTING TO MAKE SENSE IN ALL CASES, ESPECIALLY AFTER EDITING
+    public static compare(versionA: LineVersion | undefined, versionB: LineVersion | undefined): number {
+        if (versionA && !versionB) {
+            return -1
+        } else if (!versionA && versionB) {
+            return 1
+        } else if (!versionA && ! versionB) {
+            return 0
+        }
+
+        const originTimestampA = versionA.originTimestamp
+        const originTimestampB = versionB.originTimestamp
+
+        const timestampA = versionA.timestamp
+        const timestampB = versionB.timestamp
+
+        const lineA = versionA.line
+        const lineB = versionB.line
+
+        // order them by origin timestamps instead of own timestamps, this way changes based on this origin will follow immediately on the origin
+        if (originTimestampA !== originTimestampB) { 
+            return originTimestampA < originTimestampB ? -1 : 1
+        } else if (timestampA !== timestampB) {
+            return timestampA < timestampB ? -1 : 1
+        } else if (lineA === lineB) {
+            return versionA.versionOrder < versionB.versionOrder ? -1 : 1
+        } else {
+            return lineA.linePosition < lineB.linePosition ? -1 : 1
+        }
+    }
 }
 
 class Snapshot extends TrackedBlock {
+
+    public readonly uuid = crypto.randomUUID()
+    public readonly file: TrackedFile
+
+    public get versionCount(): number {
+        let count = 0
+        this.lines.forEach(line => { count += line.history.versionCount })
+        return count - this.lineCount + 1 // substract the number of versions selected by default (the head for each line), and add one for all of them
+    }
+
+    public get versionIndex(): number {
+        return this.previousVersionCount
+    }
+
+    private get heads(): Map<TrackedLine, LineVersion> {
+        const heads = new Map<TrackedLine, LineVersion>()
+        this.lines.forEach(line => { heads.set(line, line.history.head) })
+        return heads
+    }
+
+    private get previousVersionCount(): number {
+        let count = 0
+        this.heads.forEach(head => { count += head.previousVersionCount })
+        return count
+    }
+
+    private get nextVersionCount(): number {
+        let count = 0
+        this.heads.forEach(head => { count += head.nextVersionCount })
+        return count
+    }
+
+    public static create(file: TrackedFile, range: IRange): Snapshot {
+        const firstLine = file.getLine(range.startLineNumber)
+        const lastLine  = file.getLine(range.endLineNumber)
+        return new Snapshot(file, firstLine, lastLine)
+    }
+
+    constructor(file: TrackedFile, firstLine: TrackedLine, lastLine: TrackedLine) {
+        super(file.eol, firstLine, lastLine)
+        this.file = file
+    }
+
+    private addLines(): void {
+        this.lines.forEach(line => {
+            line.addToSnapshot(this)
+        })
+    }
+
+    private removeLines(): void {
+        this.lines.forEach(line => {
+            line.removeFromSnapshot(this)
+        })
+    }
+
+    public update(update: VCSSnapshotData): void {
+        this.removeLines()
+
+        this.firstLine = this.file.getLine(update._startLine)
+        this.lastLine  = this.file.getLine(update._endLine)
+
+        this.addLines()
+    }
+
+    public applyIndex(targetIndex: number): void {
+        const headsMap = this.heads
+        let   index = this.versionIndex
+
+        while(index < targetIndex) {
+            let heads = Array.from(headsMap.values())
+            heads.sort((headA, headB) => { return LineVersion.compare(headA.next, headB.next) })
+
+            const headToUpdate = heads[0]
+            const newHead = headToUpdate.next
+            if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting up!") }
+
+            headToUpdate.histoy.head = newHead
+            headsMap.set(headToUpdate.line, newHead)
+
+            index++
+        }
+
+        while(index > targetIndex) {
+            let heads = Array.from(headsMap.values())
+            heads.sort((headA, headB) => { return LineVersion.compare(headA.previous, headB.previous) })
+
+            const headToUpdate = heads[0]
+            const newHead = headToUpdate.previous
+            if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting down!") }
+
+            headToUpdate.histoy.head = newHead
+            headsMap.set(headToUpdate.line, newHead)
+
+            index--
+        }
+    }
+
+    public compress(): VCSSnapshotData {
+
+        const parent = this
+
+        return {
+            uuid: parent.uuid,
+            _startLine: parent.firstActiveLine.lineNumber,
+            _endLine: parent.lastActiveLine.lineNumber,
+            versionCount: parent.versionCount,
+            versionIndex: parent.versionIndex
+        }
+    }
+}
+
+class SnapshotOld extends TrackedBlock {
 
     public readonly uuid = crypto.randomUUID()
     public readonly file: TrackedFile
@@ -654,13 +809,13 @@ class Snapshot extends TrackedBlock {
 
     private addLines(): void {
         this.lines.forEach(line => {
-            line.addToSnapshot(this)
+            //line.addToSnapshot(this)
         })
     }
 
     private removeLines(): void {
         this.lines.forEach(line => {
-            line.removeFromSnapshot(this)
+            //line.removeFromSnapshot(this)
         })
     }
 
@@ -793,6 +948,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
         this.file.getSnapshot(uuid).applyIndex(versionIndex)
+        this.updatePreview()
         return this.file.currentText
     }
 

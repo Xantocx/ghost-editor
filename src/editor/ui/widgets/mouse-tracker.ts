@@ -5,12 +5,15 @@ export abstract class SubscriptionManager {
     protected subscriptions: Disposable[] = []
 
     public addSubscription(subscription: Disposable): Disposable {
+
+        const parent = this
         this.subscriptions.push(subscription)
+
         return {
             dispose() {
                 subscription.dispose()
-                const index = this.subscription.indexOf(subscription, 0)
-                if (index > -1)  { this.subscription = this.subscription.splice(index, 1) }
+                const index = parent.subscriptions.indexOf(subscription, 0)
+                if (index > -1)  { parent.subscriptions = parent.subscriptions.splice(index, 1) }
             }
         }
     }

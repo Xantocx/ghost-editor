@@ -31,8 +31,8 @@ export const ElectronVCSClient: VCSClient = {
         return invoke(ElectronVCSServer.createSnapshotChannel, range)
     },
 
-    async getSnapshot(): Promise<VCSSnapshotData> {
-        return invoke(ElectronVCSServer.getSnapshotChannel)
+    async getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData> {
+        return invoke(ElectronVCSServer.getSnapshotChannel, uuid)
     },
 
     async getSnapshots(): Promise<VCSSnapshotData[]> {
