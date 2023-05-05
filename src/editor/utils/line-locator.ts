@@ -11,8 +11,8 @@ export interface RangeProvider {
 
 export class LineLocator {
 
-    public readonly referenceProvider: ReferenceProvider
-    public readonly rangeProvider: RangeProvider
+    public referenceProvider: ReferenceProvider
+    public rangeProvider: RangeProvider
 
     public get editorTopLine(): number {
         return this.referenceProvider.topLine

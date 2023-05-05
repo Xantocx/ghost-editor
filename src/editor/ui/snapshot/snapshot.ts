@@ -12,7 +12,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public readonly editor: GhostEditor
     public snapshot: VCSSnapshot
-    private locator: LineLocator
+    private readonly locator: LineLocator
 
     public readonly viewZonesOnly: boolean
 
@@ -115,36 +115,38 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         super()
 
         this.editor = editor
-        this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true
+        this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : false
 
-        this.load(snapshot, true)
-    }
-
-    public async update(): Promise<void> {
-        const snapshot = await this.editor.vcs.getSnapshot(this.uuid)
-        this.load(snapshot)
-    }
-
-    public load(snapshot: VCSSnapshotData, initialization?: boolean): void {
         this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
-        this.display(initialization)
+
+        this.display()
     }
 
-    private display(initialization?: boolean): void {
+    public manualUpdate(): void {
+        this.update(true)
+    }
+
+    public async update(manualUpdate?: boolean): Promise<void> {
+        const snapshot = await this.editor.vcs.getSnapshot(this.uuid)
+        
+        this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
+        this.locator.rangeProvider = this.snapshot
+
+        this.header?.update()
+        this.highlight?.update()
+        this.footer?.update()
+
+        if (!manualUpdate) { this.footer?.updateSlider() }
+    }
+
+    private display(): void {
 
         const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
 
-        if (!initialization) {
-            this.protectedRemove(!this.footerUpdateIssued ? () => { this.setupFooter() } : undefined)
-        }
-
         this.header    = new GhostSnapshotHeader(this, this.locator, this.viewZonesOnly)
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
-
-        if (initialization) {
-            this.setupFooter()
-        }
+        this.setupFooter()
 
         this.addSubscription(this.highlight.onDidChange((event) => {
             const newRange = this.highlight.range
@@ -163,14 +165,13 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     private setupFooter(): void {
 
-        this.footer = new GhostSnapshotFooter(this, this.locator, false)
+        this.footer = new GhostSnapshotFooter(this, this.locator, this.viewZonesOnly)
 
-        // capturing of subscription not necessary, will be removed when footer is removed
-        this.footer.onChange(async value => {
-            console.log(value)
+        // value updating
+        this.addSubscription(this.footer.onChange(async value => {
             const newText = await this.editor.vcs.applySnapshotVersionIndex(this.uuid, value)
             this.editor.update(newText)
-        })
+        }))
 
         // footer hiding
         this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
@@ -195,13 +196,14 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }))
         this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
             if (mouseOn) {
-                this.footer.show()
+                this.header.show()
             } else {
                 if(!this.header.mouseOn) { this.header.hide() }
             }
         }))
     }
 
+    /*
     public protectedRemove(callback?: () => void): void {
         if (this.footerProtected) {
             super.remove()
@@ -213,6 +215,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             if (callback) { callback() }
         }
     }
+    */
 
     public override remove(): void {
         super.remove()

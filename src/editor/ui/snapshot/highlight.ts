@@ -18,13 +18,18 @@ export class GhostSnapshotHighlight extends GhostHighlightDecoration {
         this.snapshot = snapshot
         this.updateWidth()
 
-        this.subscriptions.push(this.onDidChange(event => {
+        this.addSubscription(this.onDidChange(event => {
             this.updateWidth()
         }))
 
-        this.subscriptions.push(this.core.onDidLayoutChange(event => {
+        this.addSubscription(this.core.onDidLayoutChange(event => {
             this.updateWidth()
         }))
+    }
+
+    public override update(): void {
+        super.update()
+        this.updateWidth()
     }
 
     private updateWidth(): void {

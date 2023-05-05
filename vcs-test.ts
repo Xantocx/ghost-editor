@@ -963,13 +963,13 @@ export class GhostVCSServer extends BasicVCSServer {
         return this.file.currentText
     }
 
-    public async lineChanged(change: LineChange): Promise<Set<SnapshotUUID>> {
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         const uuids = this.file.updateLine(change.lineNumber, change.lineText)
         this.updatePreview()
-        return new Set(uuids)
+        return uuids
     }
 
-    public async linesChanged(change: MultiLineChange): Promise<Set<SnapshotUUID>> {
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
 
         const startsWithEol = change.insertedText[0] === this.file.eol
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
@@ -1029,7 +1029,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
         this.updatePreview()
 
-        return new Set(affectedUUIDs)
+        return affectedUUIDs
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {

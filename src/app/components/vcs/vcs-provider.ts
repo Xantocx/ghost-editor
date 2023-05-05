@@ -21,10 +21,10 @@ export interface VCSProvider {
     applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text>
 
     // modification interface
-    lineChanged(change: LineChange): Promise<Set<SnapshotUUID>>
-    linesChanged(change: MultiLineChange): Promise<Set<SnapshotUUID>>
-    applyChange(change: AnyChange): Promise<Set<SnapshotUUID>>
-    applyChanges(changes: ChangeSet): Promise<Set<SnapshotUUID>>
+    lineChanged(change: LineChange): Promise<SnapshotUUID[]>
+    linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]>
+    applyChange(change: AnyChange): Promise<SnapshotUUID[]>
+    applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]>
 
     // version interface
     getVersions(snapshot: VCSSnapshotData): void
@@ -68,15 +68,15 @@ export abstract class BasicVCSProvider implements VCSProvider {
         throw new Error("Method not implemented.")
     }
 
-    public async lineChanged(change: LineChange): Promise<Set<SnapshotUUID>> {
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         throw new Error("Method not implemented.")
     }
 
-    public async linesChanged(change: MultiLineChange): Promise<Set<SnapshotUUID>> {
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
         throw new Error("Method not implemented.")
     }
 
-    public async applyChange(change: AnyChange): Promise<Set<SnapshotUUID>> {
+    public async applyChange(change: AnyChange): Promise<SnapshotUUID[]> {
         if (change.changeBehaviour === ChangeBehaviour.Line) {
             return this.lineChanged(change as LineChange)
         } else if (change.changeBehaviour === ChangeBehaviour.MultiLine) {
@@ -86,13 +86,13 @@ export abstract class BasicVCSProvider implements VCSProvider {
         }
     }
 
-    public async applyChanges(changes: ChangeSet): Promise<Set<SnapshotUUID>> {
+    public async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
         // WARNING: async forEach is completely fucked
         const uuids = []
         for (let i = 0; i < changes.length; i++) {
             uuids.push(await this.applyChange(changes[i]))
         }
-        return new Set(uuids.flat())
+        return uuids.flat()
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {
@@ -168,11 +168,11 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         return this.adapter.applySnapshotVersionIndex(uuid, versionIndex)
     }
 
-    public async lineChanged(change: LineChange): Promise<Set<SnapshotUUID>> {
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         return this.adapter.lineChanged(change)
     }
 
-    public async linesChanged(change: MultiLineChange): Promise<Set<SnapshotUUID>> {
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
         return this.adapter.linesChanged(change)
     }
 

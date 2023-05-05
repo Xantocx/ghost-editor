@@ -184,7 +184,8 @@ export class GhostEditor implements ReferenceProvider {
                 }
                 */
 
-                const changedSnapshots = await this.vcs.applyChanges(changeSet)
+                // forEach is a bitch for anything but synchronous arrays...
+                const changedSnapshots = new Set(await this.vcs.applyChanges(changeSet))
                 console.log("UPDATING SNAPSHOTS: " + changedSnapshots.size)
                 console.log(changedSnapshots)
                 changedSnapshots.forEach(uuid => {
@@ -202,7 +203,7 @@ export class GhostEditor implements ReferenceProvider {
         this.manualContentChange = false
 
         this.snapshots.forEach(snapshot => {
-            snapshot.update()
+            snapshot.manualUpdate()
         })
     }
 
@@ -254,6 +255,7 @@ export class GhostEditor implements ReferenceProvider {
             if (!overlappingSnapshot){
                 this.flushCachedChanges()
                 const snapshot = await GhostSnapshot.create(this, selection)
+                console.log(snapshot?.uuid)
                 if (snapshot) { this.snapshots.push(snapshot) }
             } else {
                 console.warn(`You cannot create a snapshot overlapping with ${overlappingSnapshot.snapshot.uuid}}!`)

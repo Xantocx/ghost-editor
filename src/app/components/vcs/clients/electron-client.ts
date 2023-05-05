@@ -48,19 +48,19 @@ export const ElectronVCSClient: VCSClient = {
         return invoke(ElectronVCSServer.applySnapshotVersionIndexChannel, uuid, versionIndex)
     },
 
-    async lineChanged(change: LineChange): Promise<Set<SnapshotUUID>> {
+    async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         return invoke(ElectronVCSServer.lineChangedChannel, change)
     },
 
-    async linesChanged(change: MultiLineChange): Promise<Set<SnapshotUUID>> {
+    async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
         return invoke(ElectronVCSServer.linesChangedChannel, change)
     },
 
-    async applyChange(change: Change): Promise<Set<SnapshotUUID>> {
+    async applyChange(change: Change): Promise<SnapshotUUID[]> {
         return invoke(ElectronVCSServer.applyChangeChannel, change)
     },
 
-    async applyChanges(changes: ChangeSet): Promise<Set<SnapshotUUID>> {
+    async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
         return invoke(ElectronVCSServer.applyChangesChannel, changes)
     },
 

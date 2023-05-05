@@ -1,6 +1,7 @@
 import { Disposable } from "../../utils/types"
+import { SubscriptionManager } from "../widgets/mouse-tracker"
 
-export class Slider {
+export class Slider extends SubscriptionManager {
 
     public readonly uuid: string
     public readonly root: HTMLElement
@@ -8,7 +9,13 @@ export class Slider {
 
     private onChangeSubscribers: {(value: number): void}[] = []
 
+    public get style(): CSSStyleDeclaration {
+        return this.slider.style
+    }
+
     constructor(root: HTMLElement, uuid: string, min: number, max: number, defaultValue: number) {
+        super()
+
         this.root = root
         this.uuid = uuid
         this.slider = document.createElement("input") as HTMLInputElement
@@ -36,6 +43,7 @@ export class Slider {
     }
 
     public update(min: number, max: number, defaultValue: number): void {
+        console.log("SLIDER UPDATE")
         this.slider.min   = `${min}`;
         this.slider.max   = `${max}`;
         this.slider.value = `${defaultValue}`;
@@ -46,15 +54,16 @@ export class Slider {
 
         const parent = this
 
-        return {
+        return this.addSubscription({
             dispose() {
                 const index = parent.onChangeSubscribers.indexOf(callback)
                 if (index > -1) { parent.onChangeSubscribers.splice(index, 1) }
             },
-        }
+        })
     }
 
     public remove(): void {
+        super.remove()
         this.slider.remove()
     }
 }
