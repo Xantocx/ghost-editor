@@ -92,6 +92,14 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
+    private get footerProtected(): boolean {
+        return this.footer?.protected
+    }
+
+    private get footerUpdateIssued(): boolean {
+        return this.footer?.removeIssued
+    }
+
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
         const snapshot = await editor.vcs.createSnapshot(range)
 
@@ -109,7 +117,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.editor = editor
         this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true
 
-        this.load(snapshot)
+        this.load(snapshot, true)
     }
 
     public async update(): Promise<void> {
@@ -117,21 +125,26 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.load(snapshot)
     }
 
-    public load(snapshot: VCSSnapshotData): void {
+    public load(snapshot: VCSSnapshotData, initialization?: boolean): void {
         this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
-        this.display()
+        this.display(initialization)
     }
 
-    private display(): void {
-
-        this.remove()
+    private display(initialization?: boolean): void {
 
         const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
 
+        if (!initialization) {
+            this.protectedRemove(!this.footerUpdateIssued ? () => { this.setupFooter() } : undefined)
+        }
+
         this.header    = new GhostSnapshotHeader(this, this.locator, this.viewZonesOnly)
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
-        this.footer    = new GhostSnapshotFooter(this, this.locator, this.viewZonesOnly)
+
+        if (initialization) {
+            this.setupFooter()
+        }
 
         this.addSubscription(this.highlight.onDidChange((event) => {
             const newRange = this.highlight.range
@@ -143,14 +156,35 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             }
         }))
 
-        this.addSubscription(this.footer.onChange(async value => {
-            const newText = await this.editor.vcs.applySnapshotVersionIndex(this.uuid, value)
-            this.editor.update(newText)
-        }))
-
         if (!this.viewZonesOnly) {
             this.setupHeaderHiding()
         }
+    }
+
+    private setupFooter(): void {
+
+        this.footer = new GhostSnapshotFooter(this, this.locator, false)
+
+        // capturing of subscription not necessary, will be removed when footer is removed
+        this.footer.onChange(async value => {
+            console.log(value)
+            const newText = await this.editor.vcs.applySnapshotVersionIndex(this.uuid, value)
+            this.editor.update(newText)
+        })
+
+        // footer hiding
+        this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
+            if (!mouseOn && !this.highlight?.mouseOn) {
+                this.footer.hide()
+            }
+        }))
+        this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
+            if (mouseOn) {
+                this.footer.show()
+            } else {
+                if(!this.footer.mouseOn) { this.footer.hide() }
+            }
+        }))
     }
 
     private setupHeaderHiding(): void {
@@ -159,20 +193,25 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
                 this.header.hide()
             }
         }))
-        this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
-            if (!mouseOn && !this.highlight.mouseOn) {
-                this.footer.hide()
-            }
-        }))
         this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
             if (mouseOn) {
-                this.header.show()
                 this.footer.show()
             } else {
                 if(!this.header.mouseOn) { this.header.hide() }
-                if(!this.footer.mouseOn) { this.footer.hide() }
             }
         }))
+    }
+
+    public protectedRemove(callback?: () => void): void {
+        if (this.footerProtected) {
+            super.remove()
+            this.header.remove()
+            this.highlight.remove()
+            this.footer.protectedRemove(callback)
+        } else {
+            this.remove()
+            if (callback) { callback() }
+        }
     }
 
     public override remove(): void {

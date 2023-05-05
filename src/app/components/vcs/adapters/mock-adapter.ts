@@ -79,16 +79,16 @@ export class MockAdapter extends BasicVCSAdapter {
         return ""
     }
 
-    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
+    public async lineChanged(change: LineChange): Promise<Set<SnapshotUUID>> {
         // throw new Error("Method not implemented.");
         console.log(change)
-        return []
+        return new Set()
     }
 
-    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+    public async linesChanged(change: MultiLineChange): Promise<Set<SnapshotUUID>> {
         // throw new Error("Method not implemented.");
         console.log(change)
-        return []
+        return new Set()
     }
 
     public getVersions(snapshot: VCSSnapshotData): Promise<SnapshotUUID[]> {

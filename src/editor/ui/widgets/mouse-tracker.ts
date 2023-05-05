@@ -35,7 +35,7 @@ export abstract class MouseTracker extends SubscriptionManager {
     }
 
     public onMouseEnter(callback: (mouseOn: boolean) => void): Disposable {
-        callback(this.mouseOn)
+        //callback(this.mouseOn)
         this.mouseEventSubscribers.push(callback)
 
         const parent = this

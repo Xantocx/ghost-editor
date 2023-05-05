@@ -11,7 +11,7 @@ export class GhostSnapshotBanner extends MouseTracker {
 
     protected readonly snapshot: GhostSnapshot
     protected readonly locator: LineLocator
-    protected readonly alwaysUseViewZones: boolean
+    protected alwaysUseViewZones: boolean
 
     private readonly domViewZone: HTMLElement
     private readonly domOverlay: HTMLElement
@@ -22,6 +22,10 @@ export class GhostSnapshotBanner extends MouseTracker {
 
     public get visible(): boolean {
         return this.viewZone.visible || this.content.visible
+    }
+
+    public get protected(): boolean {
+        return this.mouseOn
     }
 
     protected get lineNumber(): number {
@@ -176,7 +180,27 @@ export class GhostSnapshotBanner extends MouseTracker {
         }
     }
 
-    public remove(): void {
+    public removeIssued: boolean = false
+    private removeCallbacks: {(): void}[] = []
+    public protectedRemove(callback?: () => void): void {
+
+        if (callback) { this.removeCallbacks.push(callback) }
+        if (this.removeIssued) { return }
+
+        this.removeIssued = true
+
+        if (this.protected) {
+            this.onMouseEnter(mouseOn => {
+                if (!this.protected) {
+                    this.remove()
+                }
+            })
+        } else {
+            this.remove()
+        }
+    }
+
+    public override remove(): void {
         this.overlay.remove()
         this.viewZone.remove()
         this.content.remove()
@@ -185,5 +209,9 @@ export class GhostSnapshotBanner extends MouseTracker {
         this.domViewZone.remove()
 
         super.remove()
+
+        this.removeCallbacks.forEach(callback => { callback() })
+        this.removeCallbacks = []
+        this.removeIssued = false
     }
 }

@@ -185,7 +185,7 @@ export class GhostEditor implements ReferenceProvider {
                 */
 
                 const changedSnapshots = await this.vcs.applyChanges(changeSet)
-                console.log("UPDATING SNAPSHOTS: " + changedSnapshots.length)
+                console.log("UPDATING SNAPSHOTS: " + changedSnapshots.size)
                 console.log(changedSnapshots)
                 changedSnapshots.forEach(uuid => {
                     this.getSnapshot(uuid)?.update()
