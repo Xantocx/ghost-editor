@@ -2,6 +2,7 @@ import { IRange } from "monaco-editor"
 import { VCSSnapshotData } from "../data/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 
+export type Text = string
 export type SnapshotUUID = string
 
 // functionality that the VCS needs to provide
@@ -17,7 +18,7 @@ export interface VCSProvider {
     getSnapshot(uuid: string): Promise<VCSSnapshotData>
     getSnapshots(): Promise<VCSSnapshotData[]>
     updateSnapshot(snapshot: VCSSnapshotData): void
-    applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string>
+    applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text>
 
     // modification interface
     lineChanged(change: LineChange): Promise<SnapshotUUID[]>
@@ -63,7 +64,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
         throw new Error("Method not implemented.")
     }
 
-    public applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+    public applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
         throw new Error("Method not implemented.")
     }
 
@@ -86,12 +87,12 @@ export abstract class BasicVCSProvider implements VCSProvider {
     }
 
     public async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
-        let uuids: SnapshotUUID[] = []
-        changes.forEach(async change => {
-            const newUUIDs = await this.applyChange(change)
-            uuids = uuids.concat(newUUIDs)
-        })
-        return uuids
+        // WARNING: async forEach is completely fucked
+        const uuids = []
+        for (let i = 0; i < changes.length; i++) {
+            uuids.push(await this.applyChange(changes[i]))
+        }
+        return uuids.flat()
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {
@@ -163,7 +164,7 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         this.adapter.updateSnapshot(snapshot)
     }
 
-    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
         return this.adapter.applySnapshotVersionIndex(uuid, versionIndex)
     }
 

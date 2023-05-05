@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import { SnapshotUUID, VCSClient } from "../vcs-provider"
+import { SnapshotUUID, Text, VCSClient } from "../vcs-provider"
 import { ElectronVCSServer } from "../servers/electron-server"
 
 import { IRange } from "monaco-editor"
@@ -11,6 +11,7 @@ function invoke<Type>(channel: string, ...args: any): Promise<Type> {
 }
 
 export const ElectronVCSClient: VCSClient = {
+    
     loadFile(filePath: string | null, eol: string, content: string | null): void {
         invoke(ElectronVCSServer.loadFileChannel, filePath, eol, content)
     },
@@ -43,7 +44,7 @@ export const ElectronVCSClient: VCSClient = {
         invoke(ElectronVCSServer.updateSnapshotChannel, snapshot)
     },
 
-    async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+    async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
         return invoke(ElectronVCSServer.applySnapshotVersionIndexChannel, uuid, versionIndex)
     },
 

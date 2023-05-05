@@ -169,8 +169,6 @@ export class GhostEditor implements ReferenceProvider {
         const contentSubscription = this.core.onDidChangeModelContent(async event => {
 
             if (!this.manualContentChange) {
-                console.log("CHANGING")
-
                 const changeSet = new ChangeSet(Date.now(), this.model, this.eol, event)
 
                 /*
@@ -187,6 +185,8 @@ export class GhostEditor implements ReferenceProvider {
                 */
 
                 const changedSnapshots = await this.vcs.applyChanges(changeSet)
+                console.log("UPDATING SNAPSHOTS: " + changedSnapshots.length)
+                console.log(changedSnapshots)
                 changedSnapshots.forEach(uuid => {
                     this.getSnapshot(uuid)?.update()
                 })

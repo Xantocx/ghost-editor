@@ -149,10 +149,9 @@ class TrackedFile extends TrackedBlock {
         const file = new TrackedFile(filePath, eol)
 
         const lines = content.split(eol)
-        const timestamp = file.getTimestamp()
 
         const trackedLines = lines.map(line => {
-            return new TrackedLine(file, timestamp, line)
+            return new TrackedLine(file, line, true)
         })
 
         file.lines = trackedLines
@@ -182,7 +181,7 @@ class TrackedFile extends TrackedBlock {
 
         if (adjustedLineNumber === 1) {
             const firstActive = this.firstActiveLine
-            const insertedLine = new TrackedLine(this, timestamp, content, { 
+            const insertedLine = new TrackedLine(this, content, false, { 
                 previous: firstActive.previous,
                 next:     firstActive
             })
@@ -194,7 +193,7 @@ class TrackedFile extends TrackedBlock {
             return insertedLine
         } else if (adjustedLineNumber === newLastLine) {
             const lastActive  = this.lastActiveLine
-            const insertedLine = new TrackedLine(this, timestamp, content, { 
+            const insertedLine = new TrackedLine(this, content, false, { 
                 previous: lastActive,
                 next:     lastActive.next
             })
@@ -206,7 +205,7 @@ class TrackedFile extends TrackedBlock {
             return insertedLine
         } else {
             const currentLine = this.getLine(adjustedLineNumber)
-            const newLine  = new TrackedLine(this, timestamp, content, { 
+            const newLine  = new TrackedLine(this, content, false, { 
                 previous: currentLine.previous, 
                 next:     currentLine 
             })
@@ -360,9 +359,9 @@ class TrackedLine {
         })
     }
 
-    constructor(file: TrackedFile, initialTimestamp: number, initialContent: string, relations?: TrackedLineRelation) {
+    constructor(file: TrackedFile, initialContent: string, loadedLine: boolean, relations?: TrackedLineRelation) {
         this.file = file
-        this.history = new LineHistory(this, initialTimestamp, initialContent)
+        this.history = new LineHistory(this, initialContent, loadedLine)
 
         if (relations) {
             this.previous = relations.previous
@@ -485,10 +484,19 @@ class LineHistory {
         return lines
     }
 
-    constructor(line: TrackedLine, initialTimestamp: number, initialContent: string) {
+    constructor(line: TrackedLine, initialContent: string, loadedLine?: boolean) {
         this.line  = line
-        this.start = new LineVersion(this, initialTimestamp, false, "")
-        this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start })
+
+        if (loadedLine) {
+            // when line is loaded from file, it may never disappear in the version history, it represents the first version
+            this.start = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start })
+            this.end   = this.start
+        } else {
+            // any line inserted later could also be deleted through version scrubbing
+            this.start = new LineVersion(this, this.getTimestamp(), false, "")
+            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start })
+        }
+
         this.head  = this.end
     }
 
@@ -657,6 +665,8 @@ class Snapshot extends TrackedBlock {
     constructor(file: TrackedFile, firstLine: TrackedLine, lastLine: TrackedLine) {
         super(file.eol, firstLine, lastLine)
         this.file = file
+        
+        this.addLines()
     }
 
     private addLines(): void {
@@ -727,6 +737,7 @@ class Snapshot extends TrackedBlock {
     }
 }
 
+/*
 class SnapshotOld extends TrackedBlock {
 
     public readonly uuid = crypto.randomUUID()
@@ -869,7 +880,7 @@ class SnapshotOld extends TrackedBlock {
         }
     }
 }
-
+*/
 
 export class GhostVCSServer extends BasicVCSServer {
 
