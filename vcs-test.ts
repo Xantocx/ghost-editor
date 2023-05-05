@@ -316,6 +316,12 @@ class TrackedFile extends TrackedBlock {
         return snapshot
     }
 
+    public updateSnapshots(): void {
+        this.snapshots.forEach(snapshot => {
+            snapshot.updateLines()
+        })
+    }
+
     public getSnapshotData(): VCSSnapshotData[] {
 
         const snapshotData = []
@@ -1046,6 +1052,7 @@ export class GhostVCSServer extends BasicVCSServer {
             }
         }
 
+        this.file.updateSnapshots()
         this.updatePreview()
 
         return affectedLines.map(line => line.snapshotUUIDs).flat()
