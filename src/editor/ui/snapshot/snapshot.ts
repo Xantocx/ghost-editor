@@ -115,7 +115,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         super()
 
         this.editor = editor
-        this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : false
+        this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true //TODO: fix positioning of banners when using overlays instead of viewzones
 
         this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
