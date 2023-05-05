@@ -47,18 +47,18 @@ class TrackedBlock {
         return this.lastActiveLine.lineNumber
     }
 
-    constructor(eol: string, firstLine?: TrackedLine | undefined, lastLine?: TrackedLine | undefined) {
-        this.eol = eol
-        this.firstLine = firstLine
-        this.lastLine  = lastLine
-    }
-
     public get lineCount(): number {
         return this.lines.length
     }
 
     public get activeLines(): TrackedLines {
         return this.lines.filter(line => { return line.currentlyActive })
+    }
+
+    constructor(eol: string, firstLine?: TrackedLine | undefined, lastLine?: TrackedLine | undefined) {
+        this.eol = eol
+        this.firstLine = firstLine
+        this.lastLine  = lastLine
     }
 
     public get lines(): TrackedLines {
@@ -255,13 +255,13 @@ class TrackedFile extends TrackedBlock {
         return lines
     }
 
-    public updateLine(lineNumber: number, content: string): SnapshotUUID[] {
+    public updateLine(lineNumber: number, content: string): TrackedLine {
         const line = this.getLine(lineNumber)
         line.update(content)
-        return line.affectedSnapshotUUIDs
+        return line
     }
 
-    public updateLines(lineNumber: number, content: string[]): SnapshotUUID[] {
+    public updateLines(lineNumber: number, content: string[]): TrackedLines {
         const count = content.length
         const lines = this.getLines({ startLine: lineNumber, endLine: lineNumber + count - 1 })
 
@@ -269,9 +269,7 @@ class TrackedFile extends TrackedBlock {
             line.update(content[index])
         })
 
-        return lines.flatMap(line => {
-            return line.affectedSnapshotUUIDs
-        })
+        return lines
     }
 
     public createSnapshot(range: IRange): Snapshot | null {
@@ -340,6 +338,25 @@ class TrackedLine {
 
     public snapshots: Snapshot[] = []
 
+    public get currentlyActive(): boolean {
+        return this.history.currentlyActive
+    }
+
+    public get currentContent(): string {
+        return this.history.currentContent
+    }
+
+    public get lineNumber(): number | null {
+        if (!this.currentlyActive) { return null }
+
+        const activePrevious = this.previousActive
+        return activePrevious ? activePrevious.lineNumber + 1 : 1
+    }
+
+    public get linePosition(): number {
+        return this.previous ? this.previous.linePosition + 1 : 1
+    }
+
     public get previousActive(): TrackedLine | undefined {
 
         let previous = this.previous
@@ -364,26 +381,7 @@ class TrackedLine {
         return next
     }
 
-    public get lineNumber(): number | null {
-        if (!this.currentlyActive) { return null }
-
-        const activePrevious = this.previousActive
-        return activePrevious ? activePrevious.lineNumber + 1 : 1
-    }
-
-    public get linePosition(): number {
-        return this.previous ? this.previous.linePosition + 1 : 1
-    }
-
-    public get currentlyActive(): boolean {
-        return this.history.currentlyActive
-    }
-
-    public get currentContent(): string {
-        return this.history.currentContent
-    }
-
-    public get affectedSnapshotUUIDs(): SnapshotUUID[] {
+    public get snapshotUUIDs(): SnapshotUUID[] {
         return this.snapshots.map(snapshot => {
             return snapshot.uuid
         })
@@ -392,6 +390,7 @@ class TrackedLine {
     constructor(file: TrackedFile, initialContent: string, loadedLine: boolean, relations?: TrackedLineRelation) {
         this.file = file
         this.snapshots = relations?.snapshots ? relations.snapshots : []
+
         this.history = new LineHistory(this, initialContent, loadedLine)
 
         if (relations) {
@@ -425,7 +424,7 @@ class TrackedLine {
 class TrackedLines {
 
     public readonly lines: TrackedLine[]
-    public readonly eol: string = "\n"
+    public readonly eol: string
 
     constructor(eol: string, ...lines: TrackedLine[]) {
         this.lines = lines
@@ -455,6 +454,10 @@ class TrackedLines {
 
     public get text(): string {
         return this.stringLines.join(this.eol)
+    }
+
+    public get snapshotUUIDs(): SnapshotUUID[] {
+        return this.lines.flatMap(line => { return line.snapshotUUIDs })
     }
 
     public at(index: number): TrackedLine {
@@ -518,29 +521,12 @@ class LineHistory {
         return this.line.file
     }
 
-    public get versionCount(): number {
-
-        let count = 0
-        let version = this.start
-
-        while (version) {
-            count++
-            version = version.next
-        }
-
-        return count
-    }
-
     public get currentlyActive(): boolean {
         return this.head.active
     }
 
     public get currentContent(): string {
         return this.head.content
-    }
-
-    public get injectionPoints(): IInjectionPoint[] {
-        return this.line.snapshots.map(snapshot => { return snapshot.activeInjectionPoint }).filter(injectionPoint => injectionPoint)
     }
 
     public get versions(): LineVersion[] {
@@ -556,36 +542,53 @@ class LineHistory {
         return lines
     }
 
+    public get versionCount(): number {
+
+        let count = 0
+        let version = this.start
+
+        while (version) {
+            count++
+            version = version.next
+        }
+
+        return count
+    }
+
+    public get snapshots(): Snapshot[] {
+        return this.line.snapshots
+    }
+
     constructor(line: TrackedLine, initialContent: string, loadedLine?: boolean) {
         this.line  = line
 
+        // always must have a head, which results in somewhat unorthodox definitions of verions here...
         if (loadedLine) {
             // when line is loaded from file, it may never disappear in the version history, it represents the first version
-            console.log("CREATION STRATEGY 1")
-            console.log(this.injectionPoints)
-            this.head  = new LineVersion(this, this.getTimestamp(), true, initialContent, { injectionPoints: this.injectionPoints })
+            this.head  = new LineVersion(this, this.getTimestamp(), true, initialContent, { injectionPoints: this.getInjectionPoints() })
             this.start = this.head
             this.end   = this.start
         } else {
             // any line inserted later could also be deleted through version scrubbing
-            console.log("CREATION STRATEGY 2")
-            console.log(this.injectionPoints)
-            this.head  = new LineVersion(this, this.getTimestamp(), false, "", { injectionPoints: this.injectionPoints }) // necessary to make sure the line state for each version is computed correctly
+            this.head  = new LineVersion(this, this.getTimestamp(), false, "", { injectionPoints: this.getInjectionPoints() })
+            
             this.start = this.head
-            console.log("CREATION STRATEGY 3")
-            console.log(this.injectionPoints)
-            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start, injectionPoints: this.injectionPoints })
-        }
+            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start, injectionPoints: this.getInjectionPoints() })
 
-        this.head  = this.end
+            this.head  = this.end
+        }
     }
 
     private getTimestamp(): number {
         return this.file.getTimestamp()
     }
 
+    private getInjectionPoints(): IInjectionPoint[] {
+        return this.snapshots.map(snapshot => { return snapshot.activeInjectionPoint }).filter(injectionPoint => injectionPoint)
+    }
+
     private cloneHeadToEnd(): LineVersion {
-        this.end = this.head.clone(this.getTimestamp(), { previous: this.end, injectionPoints: this.injectionPoints })
+        this.end = this.head.clone(this.getTimestamp(), { previous: this.end, injectionPoints: this.getInjectionPoints() })
         this.head = this.end
         return this.head
     }
@@ -595,9 +598,7 @@ class LineHistory {
             this.cloneHeadToEnd()
         }
 
-        console.log("CREATION STRATEGY 4")
-        //console.log(this.injectionPoints)
-        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end, injectionPoints: this.injectionPoints })
+        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end, injectionPoints: this.getInjectionPoints() })
         this.head = this.end
         
         return this.head
@@ -627,18 +628,6 @@ class LineVersion {
 
     private readonly injectionPoints: IInjectionPoint[] = []
 
-    private get tracedOrigin(): LineVersion | undefined {
-
-        let current: LineVersion = this
-
-        while (current.origin || current.previous) {
-            if (current.origin) { return current.origin }
-            else                { current = current.previous }
-        }
-
-        return undefined
-    }
-
     public get file(): TrackedFile {
         return this.line.file
     }
@@ -659,15 +648,6 @@ class LineVersion {
         return this.next ? this.next.nextVersionCount + 1 : 0
     }
 
-    public get versionOrder(): number {
-        return this.previousVersionCount + 1
-    }
-
-    public get originTimestamp(): number {
-        const timestamp = this.tracedOrigin?.timestamp
-        return timestamp ? timestamp : this.timestamp
-    }
-
     constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
         this.histoy = history
         this.timestamp = timestamp
@@ -681,7 +661,7 @@ class LineVersion {
             this.origin = relations.origin
             this.previous = relations.previous
             this.next = relations.next
-            this.injectionPoints = relations.injectionPoints
+            this.injectionPoints = relations.injectionPoints ? relations.injectionPoints : []
 
             if (this.origin)   { this.origin.clones.push(this) }
             if (this.previous) { this.previous.next = this }
@@ -689,41 +669,12 @@ class LineVersion {
         }
     }
 
-    public getInjectorComparable(injector: Injector, log?: boolean): InjectionComparable {
+    private getInjectorComparable(injector: Injector): InjectionComparable {
 
-        const injectionPoint = this.injectionPoints?.find(point => { return point.injector === injector })
+        const injectionPoint = this.injectionPoints.find(point => { return point.injector === injector })
 
-        if (injectionPoint) {
-            return InjectionComparable.createWithInjectionPoint(injectionPoint, this)
-        } else {
-            return InjectionComparable.create(this)
-        }
-
-        /*
-        if (injectionPoint) { 
-            if (log) { console.log("Actual: " + this.timestamp + " vs Injection Point Adjusted: " + injectionPoint.getAdjustedTimestamp(this)) }
-            return injectionPoint.getAdjustedTimestamp(this)
-        }
-
-        // alternative computation if no insertion point was provided
-        let lastPreviousVersion: LineVersion | undefined = undefined
-
-        injector.lines.forEach(line => {
-            if (this.lineState.has(line)) {
-                const alternative = this.lineState.get(line)
-                if (!lastPreviousVersion || alternative.timestamp > lastPreviousVersion.timestamp) {
-                    lastPreviousVersion = alternative
-                }
-            }
-        })
-
-        if (log) { 
-            const result = lastPreviousVersion ? lastPreviousVersion.timestamp : this.timestamp
-            console.log("Actual: " + this.timestamp + " vs Last Previous Version: " + result)
-        }
-
-        return lastPreviousVersion ? lastPreviousVersion.timestamp : this.timestamp
-        */
+        if (injectionPoint) { return InjectionComparable.createWithInjectionPoint(injectionPoint, this) } 
+        else                { return InjectionComparable.createForVersion(this) }
     }
 
     public apply(): void {
@@ -732,14 +683,12 @@ class LineVersion {
 
     public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
         if (!relations?.origin) { relations.origin = this }
-        console.log("CREATION STRATEGY 5")
-            console.log(this.injectionPoints)
         return new LineVersion(this.histoy, timestamp, this.active, this.content, relations)
     }
 
-    // TODO: FIX THAT SORTING TO MAKE SENSE IN ALL CASES, ESPECIALLY AFTER EDITING
-    public static compare(snapshot: Snapshot, versionA: LineVersion | undefined, versionB: LineVersion | undefined, undefinedIsGreater: boolean): number {
+    public static compareForInjector(injector: Injector, versionA: LineVersion | undefined, versionB: LineVersion | undefined, undefinedIsGreater: boolean): number {
 
+        // handle undefined values and sort them to the end or beginning of the array, depending on config
         if (versionA && !versionB) {
             return undefinedIsGreater ? -1 :  1
         } else if (!versionA && versionB) {
@@ -748,32 +697,10 @@ class LineVersion {
             return 0
         }
 
-        const comparableA = versionA.getInjectorComparable(snapshot)
-        const comparableB = versionB.getInjectorComparable(snapshot)
+        const comparableA = versionA.getInjectorComparable(injector)
+        const comparableB = versionB.getInjectorComparable(injector)
 
         return InjectionComparable.compare(comparableA, comparableB)
-
-        /*
-        const snapshotTimestampA = versionA.getInjectorTimestamp(snapshot)
-        const snapshotTimestampB = versionB.getInjectorTimestamp(snapshot)
-
-        const timestampA = versionA.timestamp
-        const timestampB = versionB.timestamp
-
-        const lineA = versionA.line
-        const lineB = versionB.line
-
-        // order them by origin timestamps instead of own timestamps, this way changes based on this origin will follow immediately on the origin
-        if (snapshotTimestampA !== snapshotTimestampB) { 
-            return snapshotTimestampA < snapshotTimestampB ? -1 : 1
-        } else if (timestampA !== timestampB) {
-            return timestampA < timestampB ? -1 : 1
-        } else if (lineA === lineB) {
-            return versionA.versionOrder < versionB.versionOrder ? -1 : 1
-        } else {
-            return lineA.linePosition < lineB.linePosition ? -1 : 1
-        }
-        */
     }
 }
 
@@ -801,7 +728,7 @@ class InjectionComparable {
         return new InjectionComparable(injectionPoint.timestamp, version.timestamp)
     }
 
-    public static create(version: LineVersion): InjectionComparable {
+    public static createForVersion(version: LineVersion): InjectionComparable {
         return new InjectionComparable(version.timestamp, version.timestamp)
     }
 
@@ -815,22 +742,6 @@ class InjectionComparable {
         this.sequenceNumber = sequenceNumber
     }
 }
-
-/*
-class InjectionPointComparable extends InjectionComparable {
-
-    constructor(injectionPoint: IInjectionPoint, version: LineVersion) {
-        super(injectionPoint.timestamp, version.timestamp)
-    }
-}
-
-class VersionComparable extends InjectionComparable {
-
-    constructor(version: LineVersion) {
-        super(version.timestamp, version.timestamp)
-    }
-}
-*/
 
 class InjectionPoint<InjectorClass extends Injector> implements IInjectionPoint {
 
@@ -881,7 +792,7 @@ class Snapshot extends TrackedBlock implements Injector {
     }
 
     public get latestHead(): LineVersion {
-        return this.heads.sort((headA, headB) => { return LineVersion.compare(this, headA, headB, false) })[this.lineCount - 1]
+        return this.heads.sort((headA, headB) => { return LineVersion.compareForInjector(this, headA, headB, false) })[this.lineCount - 1]
     }
 
     private get previousVersionCount(): number {
@@ -932,52 +843,46 @@ class Snapshot extends TrackedBlock implements Injector {
         this.addLines()
     }
 
+    public updateLines(): void {
+        this.removeLines()
+        this.addLines()
+    }
+
     public applyIndex(targetIndex: number): void {
         const headsMap = this.headsMap
         let   index = this.versionIndex
 
+        // TODO: Maybe find a way to unify the two while loops to simplify code
+
         while(index < targetIndex) {
             let heads = Array.from(headsMap.values())
-            heads.sort((headA, headB) => { return LineVersion.compare(this, headA.next, headB.next, true) })
+            heads.sort((headA, headB) => { return LineVersion.compareForInjector(this, headA.next, headB.next, true) })
 
             const headToUpdate = heads[0]
             const newHead = headToUpdate.next
             if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting up!") }
 
-            //console.log("NEW HEAD:\nComputed Timestamp: " + newHead.getInjectorTimestamp(this) + "\nTimestamp: " + newHead.timestamp)
-
             headToUpdate.histoy.head = newHead
             headsMap.set(headToUpdate.line, newHead)
 
             index++
-
-            if (index === targetIndex) {
-                console.log(newHead.getInjectorComparable(this))
-                //console.log("Injector Timestamp: " + newHead.getInjectorTimestamp(this) + " vs Actual Timestamp: " + newHead.timestamp)
-            }
         }
 
         while(index > targetIndex) {
             let heads = Array.from(headsMap.values())
-            heads.sort((headA, headB) => { return LineVersion.compare(this, headA.previous, headB.previous, false) }).reverse()
+            heads.sort((headA, headB) => { return LineVersion.compareForInjector(this, headA.previous, headB.previous, false) }).reverse()
 
             const headToUpdate = heads[0]
             const newHead = headToUpdate.previous
             if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting down!") }
 
-            //console.log("NEW HEAD:\nComputed Timestamp: " + newHead.getInjectorTimestamp(this) + "\nTimestamp: " + newHead.timestamp)
-
             headToUpdate.histoy.head = newHead
             headsMap.set(headToUpdate.line, newHead)
 
             index--
-
-            if (index === targetIndex) {
-                console.log(newHead.getInjectorComparable(this))
-                //console.log("Injector Timestamp: " + newHead.getInjectorTimestamp(this) + " vs Actual Timestamp: " + newHead.timestamp)
-            }
         }
 
+        // create injection point if necessary
         if (this.nextVersionCount > 0) {
             this.activeInjectionPoint = new InjectionPoint(this, this.headsMap)
         } else {
@@ -1081,9 +986,9 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
-        const uuids = this.file.updateLine(change.lineNumber, change.lineText)
+        const line = this.file.updateLine(change.lineNumber, change.lineText)
         this.updatePreview()
-        return uuids
+        return line.snapshotUUIDs
     }
 
     public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
@@ -1107,7 +1012,7 @@ export class GhostVCSServer extends BasicVCSServer {
         const modifyStartLine = !insertOnly || !(pushStartLineDown) && !(pushStartLineUp)
 
         const modifiedLines = change.lineText.split(this.file.eol)
-        let   affectedUUIDs: SnapshotUUID[] = []
+        let   affectedLines: TrackedLine[] = []
 
         const modifiedRange = {
             startLine: change.modifiedRange.startLineNumber,
@@ -1117,9 +1022,7 @@ export class GhostVCSServer extends BasicVCSServer {
         let vcsLines: TrackedLines = new TrackedLines(this.file.eol)
         if (modifyStartLine) {
             vcsLines = this.file.getLines(modifiedRange)
-            const firstLine = vcsLines.at(0)
-            firstLine.update(modifiedLines[0])
-            affectedUUIDs = affectedUUIDs.concat(firstLine.affectedSnapshotUUIDs)
+            affectedLines.push(vcsLines.at(0).update(modifiedLines[0]).line)
         } else {
             // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
@@ -1133,21 +1036,19 @@ export class GhostVCSServer extends BasicVCSServer {
         for (let i = 1; i < linesToConsider; i++) {
             if (i < vcsLines.length) {
                 const line = vcsLines.at(i)
-                affectedUUIDs = affectedUUIDs.concat(line.affectedSnapshotUUIDs)
                 if (i < modifiedLines.length) {
-                    line.update(modifiedLines[i])
+                    affectedLines.push(line.update(modifiedLines[i]).line)
                 } else {
-                    line.delete()
+                    affectedLines.push(line.delete().line)
                 }
             } else {
-                const line = this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i])
-                affectedUUIDs = affectedUUIDs.concat(line.affectedSnapshotUUIDs)
+                affectedLines.push(this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i]))
             }
         }
 
         this.updatePreview()
 
-        return affectedUUIDs
+        return affectedLines.map(line => line.snapshotUUIDs).flat()
     }
 
     public getVersions(snapshot: VCSSnapshotData): void {
