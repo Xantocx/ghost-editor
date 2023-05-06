@@ -195,43 +195,54 @@ class TrackedFile extends TrackedBlock {
     public insertLine(lineNumber: number, content: string): TrackedLine {
         const newLastLine = this.lastLineNumber + 1
         const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
-        const snapshots = this.getSnapshots(Math.min(adjustedLineNumber, this.lastLineNumber))
+
+        const includedSnapshots = this.getSnapshots(Math.min(adjustedLineNumber, this.lastLineNumber))
+        const expandedSnapshots = this.getSnapshots(Math.min(adjustedLineNumber - 1, this.lastLineNumber))
+        const snapshots = Array.from(new Set(includedSnapshots.concat(expandedSnapshots)))
+
+        let createdLine: TrackedLine
 
         if (adjustedLineNumber === 1) {
             const firstActive = this.firstActiveLine
-            const insertedLine = new TrackedLine(this, content, false, { 
+            createdLine = new TrackedLine(this, content, false, { 
                 previous:  firstActive.previous,
                 next:      firstActive,
                 snapshots: snapshots
             })
 
-            if (!insertedLine.previous) { 
-                this.firstLine = insertedLine
+            if (!createdLine.previous) { 
+                this.firstLine = createdLine
             }
-
-            return insertedLine
         } else if (adjustedLineNumber === newLastLine) {
             const lastActive  = this.lastActiveLine
-            const insertedLine = new TrackedLine(this, content, false, { 
+            createdLine = new TrackedLine(this, content, false, { 
                 previous:  lastActive,
                 next:      lastActive.next,
                 snapshots: snapshots
             })
 
-            if (!insertedLine.next) { 
-                this.lastLine = insertedLine
+            if (!createdLine.next) { 
+                this.lastLine = createdLine
             }
-
-            return insertedLine
         } else {
             const currentLine = this.getLine(adjustedLineNumber)
-            const newLine  = new TrackedLine(this, content, false, { 
+            createdLine  = new TrackedLine(this, content, false, { 
                 previous:  currentLine.previous, 
                 next:      currentLine ,
                 snapshots: snapshots
             })
-            return newLine
         }
+
+        expandedSnapshots.forEach(snapshot => {
+            const snapshotData = snapshot.compress()
+            const lineNumber = createdLine.lineNumber
+            if (snapshotData._endLine < lineNumber) {
+                snapshotData._endLine = lineNumber
+                snapshot.update(snapshotData)
+            }
+        })
+
+        return createdLine
     }
 
     public insertLines(lineNumber: number, content: string[]): TrackedLines{
@@ -960,6 +971,7 @@ class Snapshot extends TrackedBlock implements Injector {
         this.addLines()
     }
 
+    // TODO: CANNOT RETURN TO ANY CONFIG!
     public applyIndex(targetIndex: number): void {
         const headsMap = this.headsMap
         let   index = this.versionIndex

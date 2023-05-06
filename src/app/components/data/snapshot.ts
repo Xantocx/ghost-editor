@@ -52,9 +52,8 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
     }
 
     public set range(range: IRange) {
-        if (this.update(range)) {
-            this.updateServer()
-        }
+        // used to update server, not anymore for overlapping reasons when inserting lines too late
+        this.update(range)
     }
 
     public static create(provider: VCSProvider, snapshot: VCSSnapshotData): VCSSnapshot {
@@ -71,6 +70,20 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
         this.versionCount = versionCount
         this.versionIndex = versionIndex
+    }
+
+    private update(range: IRange): boolean {
+        const start = Math.min(range.startLineNumber, range.endLineNumber)
+        const end   = Math.max(range.startLineNumber, range.endLineNumber)
+
+        const updated = this._startLine !== start || this._endLine !== end
+
+        if (updated) {
+            this._startLine = start
+            this._endLine   = end
+        }
+
+        return updated
     }
 
     private updateServer(): void {
@@ -90,17 +103,9 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
         }
     }
 
-    public update(range: IRange): boolean {
-        const start = Math.min(range.startLineNumber, range.endLineNumber)
-        const end   = Math.max(range.startLineNumber, range.endLineNumber)
-
-        const updated = this._startLine !== start || this._endLine !== end
-
-        if (updated) {
-            this._startLine = start
-            this._endLine   = end
+    public manualUpdate(range: IRange) {
+        if (this.update(range)) {
+            this.updateServer()
         }
-
-        return updated
     }
 }

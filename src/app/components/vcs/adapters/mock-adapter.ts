@@ -69,7 +69,7 @@ export class MockAdapter extends BasicVCSAdapter {
         })
 
         if (oldSnapshot) {
-            oldSnapshot.update(snapshot.range)
+            oldSnapshot.range = snapshot.range
         } else {
             throw new Error(`Snapshot with UUID ${snapshot.uuid} does not exist!`)
         }
