@@ -695,6 +695,18 @@ class LineVersion {
         return this.next ? this.next.nextVersionCount + 1 : 0
     }
 
+    public get tracedOrigin(): LineVersion | undefined {
+        let origin = this.origin
+        while(origin?.origin) {
+            origin = origin.origin
+        }
+        return origin
+    }
+
+    public get originTimestamp(): number {
+        return this.origin ? this.origin.originTimestamp : this.timestamp
+    }
+
     constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
         this.history = history
         this.timestamp = timestamp
@@ -971,7 +983,14 @@ class Snapshot extends TrackedBlock implements Injector {
     private computeTimeline(): void {
         const timeline = this.lines.map(line => line.history.versions).flat().filter(version => { return !version.isHead } )
         timeline.push(this.latestHead)
-        this.timeline = timeline.sort( (versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
+        this.timeline = timeline.sort( (versionA, versionB) => {
+
+            if (versionA.originTimestamp === versionB.originTimestamp) {
+                return versionA === versionB.tracedOrigin ? -1 : 1
+            }
+
+            return versionA.originTimestamp - versionB.originTimestamp
+         })
     }
 
     private removeLines(): void {
@@ -1305,7 +1324,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
         let linesToConsider = Math.max(vcsLines.length, modifiedLines.length)
 
-        while (linesToConsider - 1 > 1) {
+        while (linesToConsider - 1 >= 1) {
             const i = linesToConsider - 1
 
             if (i < vcsLines.length) {
@@ -1322,21 +1341,23 @@ export class GhostVCSServer extends BasicVCSServer {
             linesToConsider--
         }
 
+        let lineState = this.file.headsMap
+
+        if (modifyStartLine) {
+            affectedLines.push(vcsLines.at(0).update(modifiedLines[0], lineState).line)
+        }
+
         for (let i = 1; i < linesToConsider; i++) {
             if (i < vcsLines.length) {
                 const line = vcsLines.at(i)
                 if (i < modifiedLines.length) {
-                    affectedLines.push(line.update(modifiedLines[i]).line)
+                    affectedLines.push(line.update(modifiedLines[i], lineState).line)
                 } else {
                     affectedLines.push(line.delete().line)
                 }
             } else {
                 affectedLines.push(this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i]))
             }
-        }
-
-        if (modifyStartLine) {
-            affectedLines.push(vcsLines.at(0).update(modifiedLines[0]).line)
         }
 
         this.file.updateSnapshots()
