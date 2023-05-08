@@ -681,7 +681,8 @@ class LineVersion {
         this.content = content
 
         this.lineState = this.file.headsMap
-        if (this.histoy.head) { this.lineState.set(this.line, this.histoy.head) }
+        this.lineState.delete(this.line)
+        //if (this.histoy.head) { this.lineState.set(this.line, this.histoy.head) }
 
         if (relations) {
             this.origin = relations.origin
@@ -693,8 +694,6 @@ class LineVersion {
             if (this.previous) { this.previous.next = this }
             if (this.next)     { this.next.previous = this }
         }
-
-        //if (this.histoy.snapshots.length > 0) { console.log(this.getInjectorComparable(this.histoy.snapshots[0])) }
     }
 
     public getInjectorComparable(injector: Injector): InjectionComparable {
@@ -707,6 +706,18 @@ class LineVersion {
 
     public apply(): void {
         this.histoy.head = this
+    }
+
+    public applyToLines(lines: TrackedLines): void {
+        if (this.active) {
+            lines.forEach(line => {
+                if (this.lineState.has(line)) {
+                    this.lineState.get(line).apply()
+                }
+            })
+        }
+
+        this.apply()
     }
 
     public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
@@ -987,7 +998,8 @@ class Snapshot extends TrackedBlock implements Injector {
             const newHead = headToUpdate.next
             if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting up!") }
 
-            headToUpdate.histoy.head = newHead
+            //headToUpdate.histoy.head = newHead
+            newHead.applyToLines(this.lines)
             headsMap.set(headToUpdate.line, newHead)
 
             index++
@@ -1013,7 +1025,8 @@ class Snapshot extends TrackedBlock implements Injector {
             const newHead = headToUpdate.previous
             if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting down!") }
 
-            headToUpdate.histoy.head = newHead
+            //headToUpdate.histoy.head = newHead
+            newHead.applyToLines(this.lines)
             headsMap.set(headToUpdate.line, newHead)
 
             index--
