@@ -1293,7 +1293,7 @@ export class GhostVCSServer extends BasicVCSServer {
         let vcsLines: TrackedLines = new TrackedLines(this.file.eol)
         if (modifyStartLine) {
             vcsLines = this.file.getLines(modifiedRange)
-            affectedLines.push(vcsLines.at(0).update(modifiedLines[0]).line)
+            //affectedLines.push(vcsLines.at(0).update(modifiedLines[0]).line)
         } else {
             // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
@@ -1302,7 +1302,25 @@ export class GhostVCSServer extends BasicVCSServer {
             }
         }
 
-        const linesToConsider = Math.max(vcsLines.length, modifiedLines.length)
+
+        let linesToConsider = Math.max(vcsLines.length, modifiedLines.length)
+
+        while (linesToConsider - 1 > 1) {
+            const i = linesToConsider - 1
+
+            if (i < vcsLines.length) {
+                const line = vcsLines.at(i)
+                if (i < modifiedLines.length) {
+                    break
+                } else {
+                    affectedLines.push(line.delete().line)
+                }
+            } else {
+                break
+            }
+
+            linesToConsider--
+        }
 
         for (let i = 1; i < linesToConsider; i++) {
             if (i < vcsLines.length) {
@@ -1315,6 +1333,10 @@ export class GhostVCSServer extends BasicVCSServer {
             } else {
                 affectedLines.push(this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i]))
             }
+        }
+
+        if (modifyStartLine) {
+            affectedLines.push(vcsLines.at(0).update(modifiedLines[0]).line)
         }
 
         this.file.updateSnapshots()
