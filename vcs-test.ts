@@ -242,6 +242,8 @@ class TrackedFile extends TrackedBlock {
             }
         })
 
+        this.updateSnapshots()
+
         return createdLine
     }
 
@@ -254,6 +256,7 @@ class TrackedFile extends TrackedBlock {
     public deleteLine(lineNumber: number): TrackedLine {
         const line = this.getLine(lineNumber)
         line.delete()
+        this.updateSnapshots()
         return line
     }
 
@@ -271,6 +274,7 @@ class TrackedFile extends TrackedBlock {
     public updateLine(lineNumber: number, content: string): TrackedLine {
         const line = this.getLine(lineNumber)
         line.update(content)
+        this.updateSnapshots()
         return line
     }
 
@@ -534,8 +538,8 @@ class LineHistory {
     
     public head: LineVersion
 
-    private start: LineVersion
-    private end: LineVersion
+    public start: LineVersion
+    public end: LineVersion
 
     public get file(): TrackedFile {
         return this.line.file
@@ -638,7 +642,7 @@ class LineHistory {
 
 class LineVersion {
 
-    public readonly histoy: LineHistory
+    public readonly history: LineHistory
 
     public readonly timestamp: number
     public readonly active: boolean
@@ -659,11 +663,19 @@ class LineVersion {
     }
 
     public get line(): TrackedLine {
-        return this.histoy.line
+        return this.history.line
     }
 
     public get isHead(): boolean {
-        return this.histoy.head === this
+        return this.history.head === this
+    }
+
+    public get isStart(): boolean {
+        return this.history.start === this
+    }
+
+    public get isEnd(): boolean {
+        return this.history.end === this
     }
 
     public get previousVersionCount(): number {
@@ -675,7 +687,7 @@ class LineVersion {
     }
 
     constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
-        this.histoy = history
+        this.history = history
         this.timestamp = timestamp
         this.active = active
         this.content = content
@@ -705,7 +717,7 @@ class LineVersion {
     }
 
     public apply(): void {
-        this.histoy.head = this
+        this.history.head = this
     }
 
     public applyToLines(lines: TrackedLines): void {
@@ -713,6 +725,8 @@ class LineVersion {
             lines.forEach(line => {
                 if (this.lineState.has(line)) {
                     this.lineState.get(line).apply()
+                } else {
+                    line.history.start.apply()
                 }
             })
         }
@@ -722,7 +736,7 @@ class LineVersion {
 
     public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
         if (!relations?.origin) { relations.origin = this }
-        return new LineVersion(this.histoy, timestamp, this.active, this.content, relations)
+        return new LineVersion(this.history, timestamp, this.active, this.content, relations)
     }
 
     public update(content: string): void {
@@ -913,6 +927,103 @@ class Snapshot extends TrackedBlock implements Injector {
     public readonly uuid = crypto.randomUUID()
     public readonly file: TrackedFile
 
+    private timeline: LineVersion[]
+
+    public activeInjectionPoint: InjectionPoint<this> | undefined = undefined
+
+    public get versionCount(): number {
+        return this.timeline.length
+    }
+
+    public get versionIndex(): number {
+        this.computeTimeline()
+        const index = this.timeline.indexOf(this.latestHead, 0)
+        if (index < 0) { throw new Error("Latest head not in timeline!") }
+        return index
+    }
+
+    public get latestHead(): LineVersion {
+        return this.heads.sort((headA, headB) => { return headA.timestamp - headB.timestamp })[this.lineCount - 1]
+    }
+
+    public static create(file: TrackedFile, range: IRange): Snapshot {
+        const firstLine = file.getLine(range.startLineNumber)
+        const lastLine  = file.getLine(range.endLineNumber)
+        return new Snapshot(file, firstLine, lastLine)
+    }
+
+    constructor(file: TrackedFile, firstLine: TrackedLine, lastLine: TrackedLine) {
+        super(file.eol, firstLine, lastLine)
+        this.file = file
+        
+        this.addLines()
+    }
+
+    private computeTimeline(): void {
+        const timeline = this.lines.map(line => line.history.versions).flat().filter(version => { return !version.isHead } )
+        timeline.push(this.latestHead)
+        this.timeline = timeline.sort( (versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
+    }
+
+    private removeLines(): void {
+        this.lines.forEach(line => {
+            line.removeFromSnapshot(this)
+        })
+    }
+
+    private addLines(): void {
+        this.lines.forEach(line => {
+            line.addToSnapshot(this)
+        })
+
+        this.computeTimeline()
+    }
+
+    public update(update: VCSSnapshotData): void {
+        console.log("Line Update")
+
+        this.removeLines()
+
+        this.firstLine = this.file.getLine(update._startLine)
+        this.lastLine  = this.file.getLine(update._endLine)
+
+        this.addLines()
+    }
+
+    public updateLines(): void {
+        this.removeLines()
+        this.addLines()
+    }
+
+    // TODO: CANNOT RETURN TO ANY CONFIG!
+    public applyIndex(targetIndex: number): void {
+        this.computeTimeline()
+        console.log(targetIndex)
+        console.log(this.timeline.length)
+        console.log("---")
+        this.timeline[targetIndex].applyToLines(this.lines)
+    }
+
+    public compress(): VCSSnapshotData {
+
+        const parent = this
+
+        return {
+            uuid: parent.uuid,
+            _startLine: parent.firstActiveLine.lineNumber,
+            _endLine: parent.lastActiveLine.lineNumber,
+            versionCount: parent.versionCount,
+            versionIndex: parent.versionIndex
+        }
+    }
+}
+
+/*
+class Snapshot extends TrackedBlock implements Injector {
+
+    public readonly uuid = crypto.randomUUID()
+    public readonly file: TrackedFile
+
     public activeInjectionPoint: InjectionPoint<this> | undefined = undefined
 
     public get versionCount(): number {
@@ -1053,6 +1164,7 @@ class Snapshot extends TrackedBlock implements Injector {
         }
     }
 }
+*/
 
 export class GhostVCSServer extends BasicVCSServer {
 
