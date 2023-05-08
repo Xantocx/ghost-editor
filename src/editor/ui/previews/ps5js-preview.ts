@@ -1,7 +1,6 @@
 import { uuid } from "../../utils/uuid";
 import { CodePreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
-import { sleep } from "../../utils/helpers"
 
 export class P5JSPreview extends CodePreview {
 
@@ -31,13 +30,26 @@ export class P5JSPreview extends CodePreview {
             </head>
             <body>
                 <script>
-                    ${this.code}
+                    const code = ${JSON.stringify(this.code)}
+                    try {
+                        eval(code)
+                    } catch (error) {
+                        const errorMessage = document.createElement("div")
+
+                        errorMessage.setAttribute("data-iframe-width", "")
+                        errorMessage.innerText = "Error: " + error.message
+
+                        document.body.appendChild(errorMessage);
+                    }
                 </script>
 
                 <script>
                     // workaround to allow the use of taggedElement for width calculation when sizing the iframe
                     window.addEventListener("load", event => {
-                        document.getElementsByClassName("p5Canvas")[0].setAttribute("data-iframe-width", "")
+                        p5Canvas = document.getElementsByClassName("p5Canvas")
+                        for (let i = 0; i < p5Canvas.length; i++) {
+                            p5Canvas[i].setAttribute("data-iframe-width", "")
+                        }
                     })
                 </script>
             </body>
@@ -53,8 +65,11 @@ export class P5JSPreview extends CodePreview {
     constructor(root: HTMLElement, code?: string) {
         super(root, code)
         this.iframe = document.createElement("iframe") as HTMLIFrameElement
-
         this.iframe.id = this.id
+    }
+
+    private startSetup = true
+    private setup(): void {
         this.root.appendChild(this.iframe)
 
         const onResize = (messageData) => {
@@ -70,9 +85,12 @@ export class P5JSPreview extends CodePreview {
         }
 
         iframeResize({ /*log: true,*/ checkOrigin: ["file://"], sizeWidth: true, widthCalculationMethod: 'taggedElement', onResized: onResize }, `#${this.id}`)
+
+        this.startSetup = false
     }
 
     public override async render(): Promise<void> {
+        if (this.startSetup) { this.setup() }
         this.iframe.src = this.htmlUrl
     }
 }
