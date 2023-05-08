@@ -14,6 +14,7 @@ interface LineRange {
 interface TrackedLineRelation {
     previous?: TrackedLine | undefined
     next?: TrackedLine | undefined
+    lineState?: LineState
     snapshots?: Snapshot[] | undefined
 }
 
@@ -21,6 +22,7 @@ interface LineVersionRelation {
     origin?: LineVersion | undefined
     previous?: LineVersion | undefined
     next?: LineVersion | undefined
+    lineState?: LineState | undefined
     injectionPoints?: IInjectionPoint[]
 }
 
@@ -192,7 +194,7 @@ class TrackedFile extends TrackedBlock {
         return timestamp
     }
 
-    public insertLine(lineNumber: number, content: string): TrackedLine {
+    public insertLine(lineNumber: number, content: string, lineState?: LineState): TrackedLine {
         const newLastLine = this.lastLineNumber + 1
         const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
 
@@ -207,6 +209,7 @@ class TrackedFile extends TrackedBlock {
             createdLine = new TrackedLine(this, content, false, { 
                 previous:  firstActive.previous,
                 next:      firstActive,
+                lineState: lineState,
                 snapshots: snapshots
             })
 
@@ -218,6 +221,7 @@ class TrackedFile extends TrackedBlock {
             createdLine = new TrackedLine(this, content, false, { 
                 previous:  lastActive,
                 next:      lastActive.next,
+                lineState: lineState,
                 snapshots: snapshots
             })
 
@@ -228,7 +232,8 @@ class TrackedFile extends TrackedBlock {
             const currentLine = this.getLine(adjustedLineNumber)
             createdLine  = new TrackedLine(this, content, false, { 
                 previous:  currentLine.previous, 
-                next:      currentLine ,
+                next:      currentLine,
+                lineState: lineState,
                 snapshots: snapshots
             })
         }
@@ -247,43 +252,43 @@ class TrackedFile extends TrackedBlock {
         return createdLine
     }
 
-    public insertLines(lineNumber: number, content: string[]): TrackedLines{
+    public insertLines(lineNumber: number, content: string[], lineState?: LineState): TrackedLines{
         return new TrackedLines(this.eol, ...content.map((line, index) => {
-            return this.insertLine(lineNumber + index, line)
+            return this.insertLine(lineNumber + index, line, lineState)
         }))
     }
 
-    public deleteLine(lineNumber: number): TrackedLine {
+    public deleteLine(lineNumber: number, lineState?: LineState): TrackedLine {
         const line = this.getLine(lineNumber)
-        line.delete()
+        line.delete(lineState)
         this.updateSnapshots()
         return line
     }
 
-    public deleteLines(range: LineRange): TrackedLines {
+    public deleteLines(range: LineRange, lineState?: LineState): TrackedLines {
 
         const lines = this.getLines(range)
 
         lines.forEach(line => {
-            line.delete()
+            line.delete(lineState)
         })
 
         return lines
     }
 
-    public updateLine(lineNumber: number, content: string): TrackedLine {
+    public updateLine(lineNumber: number, content: string, lineState?: LineState): TrackedLine {
         const line = this.getLine(lineNumber)
-        line.update(content)
+        line.update(content, lineState)
         this.updateSnapshots()
         return line
     }
 
-    public updateLines(lineNumber: number, content: string[]): TrackedLines {
+    public updateLines(lineNumber: number, content: string[], lineState?: LineState): TrackedLines {
         const count = content.length
         const lines = this.getLines({ startLine: lineNumber, endLine: lineNumber + count - 1 })
 
         lines.forEach((line, index) => {
-            line.update(content[index])
+            line.update(content[index], lineState)
         })
 
         return lines
@@ -414,7 +419,8 @@ class TrackedLine {
         this.file = file
         this.snapshots = relations?.snapshots ? relations.snapshots : []
 
-        this.history = new LineHistory(this, initialContent, loadedLine)
+        const lineState = relations?.lineState ? relations.lineState : this.file.headsMap
+        this.history = new LineHistory(this, lineState, initialContent, loadedLine)
 
         if (relations) {
             this.previous = relations.previous
@@ -425,14 +431,14 @@ class TrackedLine {
         }
     }
 
-    public update(content: string): LineVersion {
+    public update(content: string, lineState?: LineState): LineVersion {
         if (content === this.currentContent)     { return this.history.head }
         if (this.file.lastModifiedLine === this) { return this.history.updateCurrentVersion(content) }
-        return this.history.createNewVersion(true, content)
+        return this.history.createNewVersion(true, content, lineState)
     }
 
-    public delete(): LineVersion {
-        return this.history.deleteLine()
+    public delete(lineState?: LineState): LineVersion {
+        return this.history.deleteLine(lineState)
     }
 
     public addToSnapshot(snapshot: Snapshot): void {
@@ -583,22 +589,22 @@ class LineHistory {
         return this.line.snapshots
     }
 
-    constructor(line: TrackedLine, initialContent: string, loadedLine?: boolean) {
+    constructor(line: TrackedLine, lineState: LineState, initialContent: string, loadedLine?: boolean) {
         this.line  = line
         const injectionPoints = this.getInjectionPoints()
 
         // always must have a head, which results in somewhat unorthodox definitions of verions here...
         if (loadedLine) {
             // when line is loaded from file, it may never disappear in the version history, it represents the first version
-            this.head  = new LineVersion(this, this.getTimestamp(), true, initialContent, { injectionPoints: injectionPoints })
+            this.head  = new LineVersion(this, this.getTimestamp(), true, initialContent, { lineState: lineState, injectionPoints: injectionPoints })
             this.start = this.head
             this.end   = this.start
         } else {
             // any line inserted later could also be deleted through version scrubbing
-            this.head  = new LineVersion(this, this.getTimestamp(), false, "", { injectionPoints: injectionPoints })
+            this.head  = new LineVersion(this, this.getTimestamp(), false, "", { lineState: lineState, injectionPoints: injectionPoints })
             
             this.start = this.head
-            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start, injectionPoints: injectionPoints })
+            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start, lineState: lineState, injectionPoints: injectionPoints })
 
             this.head  = this.end
         }
@@ -612,18 +618,22 @@ class LineHistory {
         return this.snapshots.map(snapshot => { return snapshot.activeInjectionPoint }).filter(injectionPoint => injectionPoint)
     }
 
-    private cloneHeadToEnd(): LineVersion {
-        this.end = this.head.clone(this.getTimestamp(), { previous: this.end, injectionPoints: this.getInjectionPoints() })
+    private cloneHeadToEnd(lineState?: LineState): LineVersion {
+        this.end = this.head.clone(this.getTimestamp(), { previous: this.end,
+                                                          lineState: lineState,
+                                                          injectionPoints: this.getInjectionPoints() })
         this.head = this.end
         return this.head
     }
 
-    public createNewVersion(active: boolean, content: string): LineVersion {
+    public createNewVersion(active: boolean, content: string, lineState?: LineState): LineVersion {
         if (this.head !== this.end) {
-            this.cloneHeadToEnd()
+            this.cloneHeadToEnd(lineState)
         }
 
-        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end, injectionPoints: this.getInjectionPoints() })
+        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end, 
+                                                                                 lineState: lineState, 
+                                                                                 injectionPoints: this.getInjectionPoints() })
         this.head = this.end
         
         return this.head
@@ -634,8 +644,8 @@ class LineHistory {
         return this.head
     }
 
-    public deleteLine(): LineVersion {
-        return this.createNewVersion(false, "")
+    public deleteLine(lineState?: LineState): LineVersion {
+        return this.createNewVersion(false, "", lineState)
     }
 
 }
@@ -648,14 +658,13 @@ class LineVersion {
     public readonly active: boolean
     public content: string
 
-    private readonly lineState: LineState = new Map<TrackedLine, LineVersion>()
-
     public readonly origin: LineVersion | undefined
     private clones: LineVersion[] = []
 
     public previous: LineVersion | undefined
     public next: LineVersion | undefined
 
+    private readonly lineState: LineState = new Map<TrackedLine, LineVersion>()
     private readonly injectionPoints: IInjectionPoint[] = []
 
     public get file(): TrackedFile {
@@ -692,15 +701,15 @@ class LineVersion {
         this.active = active
         this.content = content
 
-        this.lineState = this.file.headsMap
+        this.lineState = relations?.lineState ? relations.lineState : this.file.headsMap
+        this.injectionPoints = relations?.injectionPoints ? relations.injectionPoints : []
+
         this.lineState.delete(this.line)
-        //if (this.histoy.head) { this.lineState.set(this.line, this.histoy.head) }
 
         if (relations) {
             this.origin = relations.origin
             this.previous = relations.previous
             this.next = relations.next
-            this.injectionPoints = relations.injectionPoints ? relations.injectionPoints : []
 
             if (this.origin)   { this.origin.clones.push(this) }
             if (this.previous) { this.previous.next = this }
@@ -1271,7 +1280,7 @@ export class GhostVCSServer extends BasicVCSServer {
         const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
         const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
 
-        const modifyStartLine = !insertOnly || !(pushStartLineDown) && !(pushStartLineUp)
+        const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
 
         const modifiedLines = change.lineText.split(this.file.eol)
         let   affectedLines: TrackedLine[] = []
