@@ -30,16 +30,25 @@ export class P5JSPreview extends CodePreview {
             </head>
             <body>
                 <script>
-                    const code = ${JSON.stringify(this.code)}
-                    try {
-                        eval(code)
-                    } catch (error) {
+                    function createErrorMessage(text) {
                         const errorMessage = document.createElement("div")
 
                         errorMessage.setAttribute("data-iframe-width", "")
-                        errorMessage.innerText = "Error: " + error.message
+                        errorMessage.innerText = text
 
                         document.body.appendChild(errorMessage);
+                    }
+
+                    const code = ${JSON.stringify(this.code)}
+
+                    if (!code.includes("setup") || !code.includes("draw")) {
+                        createErrorMessage("Your code must include a setup and a draw function to be rendered in this P5JS preview.")
+                    } else {
+                        try {
+                            eval(code)
+                        } catch (error) {
+                            createErrorMessage(error.message)
+                        }
                     }
                 </script>
 
