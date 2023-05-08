@@ -1026,9 +1026,6 @@ class Snapshot extends TrackedBlock implements Injector {
     // TODO: CANNOT RETURN TO ANY CONFIG!
     public applyIndex(targetIndex: number): void {
         this.computeTimeline()
-        console.log(targetIndex)
-        console.log(this.timeline.length)
-        console.log("---")
         this.timeline[targetIndex].applyToLines(this.lines)
     }
 
