@@ -645,9 +645,7 @@ class LineHistory {
     }
 
     public createNewVersion(active: boolean, content: string, lineState?: LineState): LineVersion {
-        const timestamp = this.getTimestamp()
-
-        if (timestamp - this.head.timestamp > 1 && this.head !== this.end) {
+        if (this.head !== this.end) {
             this.cloneHeadToEnd(lineState)
         }
 
@@ -663,7 +661,7 @@ class LineHistory {
     }
 
     public deleteLine(lineState?: LineState): LineVersion {
-        this.cloneHeadToEnd(lineState)
+        //this.cloneHeadToEnd(lineState)
         return this.createNewVersion(false, "", lineState)
     }
 
@@ -673,7 +671,9 @@ class LineVersion {
 
     public readonly history: LineHistory
 
-    public readonly timestamp: number
+    public readonly enterTimestamp: number
+    public leaveTimestamp: number = Number.MAX_SAFE_INTEGER
+
     public readonly active: boolean
     public content: string
 
@@ -725,6 +725,7 @@ class LineVersion {
         return this.next ? this.next.nextVersionCount + 1 : 0
     }
 
+    /*
     public get tracedOrigin(): LineVersion | undefined {
         let origin = this.origin
         while(origin?.origin) {
@@ -736,10 +737,11 @@ class LineVersion {
     public get originTimestamp(): number {
         return this.origin ? this.origin.originTimestamp : this.timestamp
     }
+    */
 
     constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
         this.history = history
-        this.timestamp = timestamp
+        this.enterTimestamp = timestamp
         this.active = active
         this.content = content
 
@@ -753,8 +755,16 @@ class LineVersion {
             this.next = relations.next
 
             if (this.origin)   { this.origin.clones.push(this) }
-            if (this.previous) { this.previous.next = this }
-            if (this.next)     { this.next.previous = this }
+
+            if (this.previous) { 
+                this.previous.next = this
+                this.previous.leaveTimestamp = this.enterTimestamp
+            }
+
+            if (this.next)     { 
+                this.next.previous = this
+                this.leaveTimestamp = this.next.enterTimestamp
+            }
         }
     }
 
@@ -791,27 +801,40 @@ class Snapshot extends TrackedBlock {
     public readonly uuid = crypto.randomUUID()
     public readonly file: TrackedFile
 
+    public get nativeLineCount(): number {
+        return this.lines.filter(line => !line.history.start.isPreInsertion).length
+    }
+
+    public get insertedLineCount(): number {
+        return this.lines.filter(line => line.history.start.isPreInsertion).length
+    }
+
     public get versionCount(): number {
-        return this.versions.length - this.lineCount + 1
+        return this.versions.length - this.insertedLineCount - this.nativeLineCount + 1
     }
 
     public get versionIndex(): number {
+        let latestHead = this.latestHead
+        if (latestHead.previous?.isPreInsertion) { latestHead = latestHead.previous }
+
         const timeline = this.computeTimeline()
-        const index = timeline.indexOf(this.latestHead, 0)
+        const index = timeline.indexOf(latestHead, 0)
         if (index < 0) { throw new Error("Latest head not in timeline!") }
         return index
     }
 
     public get latestHead(): LineVersion {
         return this.heads.filter(head => !head.isPreInsertion)
-                         .sort((headA, headB) => { return headB.timestamp - headA.timestamp })[0]
+                         .sort((headA, headB) => { return headB.enterTimestamp - headA.enterTimestamp })[0]
     }
 
+    /*
     public get latestDeletionHead(): LineVersion | undefined {
         const sortedDeletionHeads = this.heads.filter(head => head.isDeletion)
                                               .sort((headA, headB) => { return headB.timestamp - headA.timestamp })
         return sortedDeletionHeads.length > 0 ? sortedDeletionHeads[0] : undefined
     }
+    */
 
     public static create(file: TrackedFile, range: IRange): Snapshot {
         const firstLine = file.getLine(range.startLineNumber)
@@ -826,10 +849,18 @@ class Snapshot extends TrackedBlock {
         this.addLines()
     }
 
+    /*
     private computeTimeline(): LineVersion[] {
         const timeline = this.versions.filter(version => { return !version.isHead } )
         timeline.push(this.latestHead) // required to calculate current index
-        return timeline.sort( (versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
+        return timeline.sort( (versionA, versionB) => { return versionA.enterTimestamp - versionB.enterTimestamp })
+    }
+    */
+
+    private computeTimeline(): LineVersion[] {
+        const timeline = this.versions.filter(version => { return !version.previous?.isPreInsertion } )
+        //timeline.push(this.latestHead) // required to calculate current index
+        return timeline.sort( (versionA, versionB) => { return versionA.enterTimestamp - versionB.enterTimestamp })
     }
 
     private removeLines(): void {
@@ -862,11 +893,26 @@ class Snapshot extends TrackedBlock {
         this.file.resetVersionMerging()
         const timeline = this.computeTimeline()
 
+        targetIndex += this.nativeLineCount - 1
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
-        // unfortunately, this will result in several cases in which versions do not change, because a deletion version is applied that already existed before, etc.
         let version = timeline[targetIndex]
-        version.applyToLines(this.lines)
+        let nextVersion = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
+
+        if (version.isHead && version.isPreInsertion) {
+            version.next.applyToLines(this.lines)
+            console.log("SKIP")
+            console.log(version.next.content)
+        } else if (nextVersion?.isPreInsertion && nextVersion?.next?.isHead) {
+            nextVersion.applyToLines(this.lines)
+            console.log(nextVersion.content)
+        } else {
+            version.applyToLines(this.lines)
+            console.log(version.content)
+            console.log(version.next?.content)
+        }
+
+        console.log("-----")
     }
 
     public compress(): VCSSnapshotData {
