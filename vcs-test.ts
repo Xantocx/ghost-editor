@@ -192,6 +192,14 @@ class TrackedFile extends TrackedBlock {
         this.filePath = filePath
     }
 
+    public setupVersionMerging(line: TrackedLine): void {
+        this.lastModifiedLine = line
+    }
+
+    public resetVersionMerging(): void {
+        this.lastModifiedLine = undefined
+    }
+
     private nextTimestamp = 0
     public getTimestamp(): number {
         const timestamp = this.nextTimestamp
@@ -200,6 +208,8 @@ class TrackedFile extends TrackedBlock {
     }
 
     public insertLine(lineNumber: number, content: string, lineState?: LineState): TrackedLine {
+        this.resetVersionMerging()
+
         const newLastLine = this.lastLineNumber + 1
         const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
 
@@ -264,6 +274,8 @@ class TrackedFile extends TrackedBlock {
     }
 
     public deleteLine(lineNumber: number, lineState?: LineState): TrackedLine {
+        this.resetVersionMerging()
+
         const line = this.getLine(lineNumber)
         line.delete(lineState)
         this.updateSnapshots()
@@ -271,7 +283,6 @@ class TrackedFile extends TrackedBlock {
     }
 
     public deleteLines(range: LineRange, lineState?: LineState): TrackedLines {
-
         const lines = this.getLines(range)
 
         lines.forEach(line => {
@@ -285,10 +296,15 @@ class TrackedFile extends TrackedBlock {
         const line = this.getLine(lineNumber)
         line.update(content, lineState)
         this.updateSnapshots()
+
+        this.setupVersionMerging(line)
+
         return line
     }
 
     public updateLines(lineNumber: number, content: string[], lineState?: LineState): TrackedLines {
+        this.resetVersionMerging()
+
         const count = content.length
         const lines = this.getLines({ startLine: lineNumber, endLine: lineNumber + count - 1 })
 
@@ -629,7 +645,9 @@ class LineHistory {
     }
 
     public createNewVersion(active: boolean, content: string, lineState?: LineState): LineVersion {
-        if (this.head !== this.end) {
+        const timestamp = this.getTimestamp()
+
+        if (timestamp - this.head.timestamp > 1 && this.head !== this.end) {
             this.cloneHeadToEnd(lineState)
         }
 
@@ -841,6 +859,7 @@ class Snapshot extends TrackedBlock {
     }
 
     public applyIndex(targetIndex: number): void {
+        this.file.resetVersionMerging()
         const timeline = this.computeTimeline()
 
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
@@ -931,6 +950,8 @@ export class GhostVCSServer extends BasicVCSServer {
 
         console.log("Text Update")
 
+        this.file.resetVersionMerging()
+
         const startsWithEol = change.insertedText[0] === this.file.eol
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
 
@@ -982,7 +1003,7 @@ export class GhostVCSServer extends BasicVCSServer {
         }
 
         function updateLine(line: TrackedLine, newContent: string): void {
-            if (vcsLines.length > modifiedLines.length) { line.cloneCurrentVersion() }
+            //if (vcsLines.length > modifiedLines.length) { line.cloneCurrentVersion() }
             line.update(newContent)
             affectedLines.push(line)
         }
