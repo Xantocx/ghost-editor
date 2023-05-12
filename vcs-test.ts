@@ -799,13 +799,15 @@ class Snapshot extends TrackedBlock {
     }
 
     public get versionCount(): number {
-        return this.versions.length - this.insertedLineCount - this.nativeLineCount + 1
+        return this.computeUnorderedTimeline().length - this.nativeLineCount + 1
+        //return this.versions.length - this.insertedLineCount - this.nativeLineCount + 1
     }
 
     public get versionIndex(): number {
         // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
         let latestHead = this.latestHead
         if (latestHead.previous?.isPreInsertion) { latestHead = latestHead.previous }
+        //if (latestHead.origin)                   { latestHead = latestHead.next }
 
         const timeline = this.computeTimeline()
         const index = timeline.indexOf(latestHead, 0)
@@ -833,9 +835,14 @@ class Snapshot extends TrackedBlock {
         this.addLines()
     }
 
+    private computeUnorderedTimeline(): LineVersion[] {
+        // isPreInsertion to avoid choosing versions following on a pre-insertion-version, as we simulate those.
+        // Same for origin -> cloned versions are not displayed, and are just there for correct code structure
+        return this.versions.filter(version => { return !version.previous?.isPreInsertion /*&& !version.origin*/ } )
+    }
+
     private computeTimeline(): LineVersion[] {
-        const timeline = this.versions.filter(version => { return !version.previous?.isPreInsertion } )
-        return timeline.sort( (versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
+        return this.computeUnorderedTimeline().sort((versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
     }
 
     private removeLines(): void {
