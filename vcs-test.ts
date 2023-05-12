@@ -11,6 +11,8 @@ interface LineRange {
     endLine: number
 }
 
+type LineState = Map<TrackedLine, LineVersion>
+
 interface TrackedLineRelation {
     previous?: TrackedLine | undefined
     next?: TrackedLine | undefined
@@ -23,7 +25,6 @@ interface LineVersionRelation {
     previous?: LineVersion | undefined
     next?: LineVersion | undefined
     lineState?: LineState | undefined
-    injectionPoints?: IInjectionPoint[]
 }
 
 class TrackedBlock {
@@ -599,16 +600,15 @@ class LineHistory {
 
     constructor(line: TrackedLine, lineState: LineState, initialContent: string, loadedLine?: boolean) {
         this.line  = line
-        const injectionPoints = this.getInjectionPoints()
 
         if (loadedLine) {
             // when line is loaded from file, it may never disappear in the version history, it represents the first version
-            this.start = new LineVersion(this, this.getTimestamp(), true, initialContent, { lineState: lineState, injectionPoints: injectionPoints })
+            this.start = new LineVersion(this, this.getTimestamp(), true, initialContent, { lineState: lineState })
             this.end   = this.start
         } else {
             // any line inserted later could also be deleted through version scrubbing
-            this.start = new LineVersion(this, this.getTimestamp(), false, "", { lineState: lineState, injectionPoints: injectionPoints })
-            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start, lineState: lineState, injectionPoints: injectionPoints })
+            this.start = new LineVersion(this, this.getTimestamp(), false, "", { lineState: lineState })
+            this.end   = new LineVersion(this, this.getTimestamp(), true, initialContent, { previous: this.start, lineState: lineState })
         }
 
         this.head  = this.end
@@ -618,14 +618,8 @@ class LineHistory {
         return this.file.getTimestamp()
     }
 
-    private getInjectionPoints(): IInjectionPoint[] {
-        return this.snapshots.map(snapshot => { return snapshot.activeInjectionPoint }).filter(injectionPoint => injectionPoint)
-    }
-
     private cloneHeadToEnd(lineState?: LineState): LineVersion {
-        this.end = this.head.clone(this.getTimestamp(), { previous: this.end,
-                                                          lineState: lineState,
-                                                          injectionPoints: this.getInjectionPoints() })
+        this.end = this.head.clone(this.getTimestamp(), { previous: this.end, lineState: lineState })
         this.head = this.end
         return this.head
     }
@@ -639,9 +633,7 @@ class LineHistory {
             this.cloneHeadToEnd(lineState)
         }
 
-        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end, 
-                                                                                 lineState: lineState, 
-                                                                                 injectionPoints: this.getInjectionPoints() })
+        this.end = new LineVersion(this, this.getTimestamp(), active, content, { previous: this.end, lineState: lineState })
         this.head = this.end
         
         return this.head
@@ -674,7 +666,6 @@ class LineVersion {
     public next: LineVersion | undefined
 
     private readonly lineState: LineState = new Map<TrackedLine, LineVersion>()
-    private readonly injectionPoints: IInjectionPoint[] = []
 
     public get file(): TrackedFile {
         return this.line.file
@@ -735,7 +726,6 @@ class LineVersion {
         this.content = content
 
         this.lineState = relations?.lineState ? relations.lineState : this.file.headsMap
-        this.injectionPoints = relations?.injectionPoints ? relations.injectionPoints : []
 
         this.lineState.delete(this.line)
 
@@ -748,14 +738,6 @@ class LineVersion {
             if (this.previous) { this.previous.next = this }
             if (this.next)     { this.next.previous = this }
         }
-    }
-
-    public getInjectorComparable(injector: Injector): InjectionComparable {
-
-        const injectionPoint = this.injectionPoints.find(point => { return point.injector === injector })
-
-        if (injectionPoint) { return InjectionComparable.createWithInjectionPoint(injectionPoint, this) } 
-        else                { return InjectionComparable.createForVersion(this) }
     }
 
     public apply(): void {
@@ -784,193 +766,12 @@ class LineVersion {
     public update(content: string): void {
         this.content = content
     }
-
-    public static compareForInjector(injector: Injector, versionA: LineVersion | undefined, versionB: LineVersion | undefined, undefinedIsGreater: boolean): number {
-
-        // handle undefined values and sort them to the end or beginning of the array, depending on config
-        if (versionA && !versionB) {
-            return undefinedIsGreater ? -1 :  1
-        } else if (!versionA && versionB) {
-            return undefinedIsGreater ?  1 : -1
-        } else if (!versionA && !versionB) {
-            return 0
-        }
-
-        const comparableA = versionA.getInjectorComparable(injector)
-        const comparableB = versionB.getInjectorComparable(injector)
-
-        return InjectionComparable.compare(comparableA, comparableB)
-    }
 }
 
-type LineState = Map<TrackedLine, LineVersion>
-
-// any component that allows to (partly) reverse history has to be an injector to allow for the injection of new versions in the reversed segment
-interface Injector {
-    file:  TrackedFile
-    lines: TrackedLines
-    activeInjectionPoint: InjectionPoint<this> | undefined
-}
-
-interface IInjectionPoint {
-    injector: Injector
-    parent: IInjectionPoint
-    depth: number
-    comparable: InjectionComparable
-    creationTimestamp: number
-    //compare(injectionPoint: IInjectionPoint): number
-}
-
-class InjectionComparable {
-
-    public readonly timestamp: number
-    public readonly sequenceNumber: number
-    public readonly creationTimestamp: number
-    public readonly injectionPoint?: IInjectionPoint
-    public readonly copied: boolean
-
-    public get hasInjectionPoint(): boolean {
-        return this.injectionPoint ? true : false
-    }
-
-    public static createWithInjectionPoint(injectionPoint: IInjectionPoint, version: LineVersion): InjectionComparable {
-        return new InjectionComparable(injectionPoint.comparable.timestamp, version.timestamp, injectionPoint.creationTimestamp, injectionPoint)
-    }
-
-    public static createForVersion(version: LineVersion): InjectionComparable {
-        return new InjectionComparable(version.timestamp, version.timestamp, version.timestamp)
-    }
-
-    public static compare(comparableA: InjectionComparable, comparableB: InjectionComparable): number {
-
-        const injectionPointA = comparableA.injectionPoint
-        const injectionPointB = comparableB.injectionPoint
-
-        // easisest case: timestamp uniquely seperates to versions
-        if (comparableA.timestamp !== comparableB.timestamp) { return comparableA.timestamp - comparableB.timestamp }
-
-        // trickier: same timestamp indicates a comparison between two versions nested with injection points -> recursively unwrap if depth is unequal
-        else if (comparableA.hasInjectionPoint && comparableB.hasInjectionPoint && injectionPointA.depth !== injectionPointB.depth) {
-            if      (injectionPointA.depth > injectionPointB.depth) { return InjectionComparable.compare(injectionPointA.comparable, comparableB) }
-            else if (injectionPointA.depth < injectionPointB.depth) { return InjectionComparable.compare(comparableA, injectionPointB.comparable) }
-        }
-
-        // wrapped in injection points, but same depth -> sequence number (aka unique timestamp) should help in most cases
-        else if (comparableA.sequenceNumber !== comparableB.sequenceNumber) { return comparableA.sequenceNumber - comparableB.sequenceNumber }
-        // if we compare an element with an injection point created directly behind it, the injection point will have copied its comparable, indicated by the copied variable
-        else if (comparableA.copied !== comparableB.copied)                 { return comparableA.copied ? 1 : -1 }
-        // if both are copied (meaning two different injection points at the same position) just sort them by creation time
-        else if (comparableA.copied  && comparableB.copied)                 { return comparableA.creationTimestamp - comparableB.creationTimestamp }
-
-        // we should never have to comparables that are both linked to a unique element and not copied by an injection point
-        else { throw new Error("Comparing two original comparables with identical values. This should never happen!") }
-    }
-
-    protected constructor(timestamp: number, sequenceNumber: number, creationTimestamp: number, injectionPoint?: IInjectionPoint, copied?: boolean) {
-        this.timestamp = timestamp
-        this.sequenceNumber = sequenceNumber
-        this.creationTimestamp = creationTimestamp
-        this.injectionPoint = injectionPoint
-        this.copied = copied ? copied : false
-    }
-
-    public copy(): InjectionComparable {
-        return new InjectionComparable(this.timestamp, this.sequenceNumber, this.creationTimestamp, this.injectionPoint, true)
-    }
-
-    public isLessThan(comparable: InjectionComparable): boolean {
-        return InjectionComparable.compare(this, comparable) < 0
-    }
-
-    public isEqualTo(comparable: InjectionComparable): boolean {
-        return InjectionComparable.compare(this, comparable) === 0
-    }
-
-    public isGreaterThan(comparable: InjectionComparable): boolean {
-        return InjectionComparable.compare(this, comparable) > 0
-    }
-}
-
-class InjectionPoint<InjectorClass extends Injector> implements IInjectionPoint {
-
-    public readonly injector: InjectorClass
-    public readonly lineState: LineState
-    public readonly comparable: InjectionComparable
-    public readonly depth: number
-    public readonly creationTimestamp: number
-
-    public get parent(): IInjectionPoint | undefined {
-        return this.comparable.injectionPoint
-    }
-
-    public get timestamp(): number {
-        return this.comparable.timestamp
-    }
-
-    public get versions(): LineVersion[] {
-        return Array.from(this.lineState.values())
-    }
-
-    constructor(injector: InjectorClass, lineState: LineState) {
-        this.injector   = injector
-        this.lineState  = lineState
-        this.comparable = this.computeComparable()
-        this.depth = this.parent ? this.parent.depth + 1 : 0
-        this.creationTimestamp = this.injector.file.getTimestamp()
-    }
-
-    private computeComparable(): InjectionComparable {
-
-        let injectionVersion: LineVersion | undefined = undefined
-        let injectionComparable: InjectionComparable | undefined = undefined
-
-        this.versions.forEach(version => {
-            const versionComparable = version.getInjectorComparable(this.injector)
-            if (!injectionComparable || injectionComparable.isLessThan(versionComparable)) {
-                injectionVersion = version
-                injectionComparable = versionComparable
-            }
-        })
-
-        return injectionComparable.copy()
-    }
-
-    /*
-    // what if the largest timestamp comes from a injection point? this must be considered !!!
-    private computeTimestamp(): number {
-
-        let timestamp = -1
-
-        this.versions.forEach(version => { 
-            const alternativeTimestamp = version.getInjectorComparable(this.injector).timestamp
-            timestamp = Math.max(timestamp, alternativeTimestamp)
-         })
-
-        return timestamp
-    }
-    */
-
-    /*
-    public compare(injectionPoint: IInjectionPoint): number {
-
-        let pointA: IInjectionPoint = this
-        let pointB: IInjectionPoint = injectionPoint
-
-        while(pointA.depth > pointB.depth) { pointA = pointA.parent }
-        while(pointA.depth < pointB.depth) { pointB = pointB.parent }
-
-        return InjectionComparable.compare(pointA.comparable, pointB.comparable)
-    }
-    */
-}
-
-class Snapshot extends TrackedBlock implements Injector {
+class Snapshot extends TrackedBlock {
 
     public readonly uuid = crypto.randomUUID()
     public readonly file: TrackedFile
-
-    public activeInjectionPoint: InjectionPoint<this> | undefined = undefined
-
 
     public get versionCount(): number {
         return this.versions.length - this.lineCount + 1
@@ -1063,154 +864,6 @@ class Snapshot extends TrackedBlock implements Injector {
     }
 }
 
-/*
-class Snapshot extends TrackedBlock implements Injector {
-
-    public readonly uuid = crypto.randomUUID()
-    public readonly file: TrackedFile
-
-    public activeInjectionPoint: InjectionPoint<this> | undefined = undefined
-
-    public get versionCount(): number {
-        let count = 0
-        this.lines.forEach(line => { count += line.history.versionCount })
-        return count - this.lineCount + 1 // substract the number of versions selected by default (the head for each line), and add one for all of them
-    }
-
-    public get versionIndex(): number {
-        return this.previousVersionCount
-    }
-
-    public get latestHead(): LineVersion {
-        return this.heads.sort((headA, headB) => { return LineVersion.compareForInjector(this, headA, headB, false) })[this.lineCount - 1]
-    }
-
-    private get previousVersionCount(): number {
-        let count = 0
-        this.heads.forEach(head => { count += head.previousVersionCount })
-        return count
-    }
-
-    private get nextVersionCount(): number {
-        let count = 0
-        this.heads.forEach(head => { count += head.nextVersionCount })
-        return count
-    }
-
-    public static create(file: TrackedFile, range: IRange): Snapshot {
-        const firstLine = file.getLine(range.startLineNumber)
-        const lastLine  = file.getLine(range.endLineNumber)
-        return new Snapshot(file, firstLine, lastLine)
-    }
-
-    constructor(file: TrackedFile, firstLine: TrackedLine, lastLine: TrackedLine) {
-        super(file.eol, firstLine, lastLine)
-        this.file = file
-        
-        this.addLines()
-    }
-
-    private addLines(): void {
-        this.lines.forEach(line => {
-            line.addToSnapshot(this)
-        })
-    }
-
-    private removeLines(): void {
-        this.lines.forEach(line => {
-            line.removeFromSnapshot(this)
-        })
-    }
-
-    public update(update: VCSSnapshotData): void {
-        console.log("Line Update")
-
-        this.removeLines()
-
-        this.firstLine = this.file.getLine(update._startLine)
-        this.lastLine  = this.file.getLine(update._endLine)
-
-        this.addLines()
-    }
-
-    public updateLines(): void {
-        this.removeLines()
-        this.addLines()
-    }
-
-    // TODO: CANNOT RETURN TO ANY CONFIG!
-    public applyIndex(targetIndex: number): void {
-        const headsMap = this.headsMap
-        let   index = this.versionIndex
-
-        // TODO: Maybe find a way to unify the two while loops to simplify code
-
-        while(index < targetIndex) {
-            let heads = Array.from(headsMap.values())
-            // sorting next changes for each head by timestamp and select the lowest one to find out which head will change next
-            heads.sort((headA, headB) => { return LineVersion.compareForInjector(this, headA.next, headB.next, true) })
-
-            const headToUpdate = heads[0]
-            const newHead = headToUpdate.next
-            if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting up!") }
-
-            //headToUpdate.histoy.head = newHead
-            newHead.applyToLines(this.lines)
-            headsMap.set(headToUpdate.line, newHead)
-
-            index++
-        }
-
-        while(index > targetIndex) {
-            let heads = Array.from(headsMap.values())
-            // sorting heads by timestamp, then reversing to get the head that was last modified to revert this modification first
-            heads.sort((headA, headB) => { 
-
-                const previousA = headA.previous
-                const previousB = headB.previous
-
-                if      (!previousA &&  previousB) { return -1 }
-                else if ( previousA && !previousB) { return  1 }
-                else if (!previousA && !previousB) { return  0 }
-
-                return LineVersion.compareForInjector(this, headA, headB, false) 
-
-            }).reverse()
-
-            const headToUpdate = heads[0]
-            const newHead = headToUpdate.previous
-            if (!newHead) { throw new Error("Cannot satisfy index requirement for snapshot when counting down!") }
-
-            //headToUpdate.histoy.head = newHead
-            newHead.applyToLines(this.lines)
-            headsMap.set(headToUpdate.line, newHead)
-
-            index--
-        }
-
-        // create injection point if necessary
-        if (this.nextVersionCount > 0) {
-            this.activeInjectionPoint = new InjectionPoint(this, this.headsMap)
-        } else {
-            this.activeInjectionPoint = undefined
-        }
-    }
-
-    public compress(): VCSSnapshotData {
-
-        const parent = this
-
-        return {
-            uuid: parent.uuid,
-            _startLine: parent.firstActiveLine.lineNumber,
-            _endLine: parent.lastActiveLine.lineNumber,
-            versionCount: parent.versionCount,
-            versionIndex: parent.versionIndex
-        }
-    }
-}
-*/
-
 export class GhostVCSServer extends BasicVCSServer {
 
     private file: TrackedFile | null = null
@@ -1220,30 +873,6 @@ export class GhostVCSServer extends BasicVCSServer {
         super()
         this.browserWindow = browserWindow
     }
-
-    /*
-    // may proof useful for full file diffing after re-opening an old file
-    private calculateDiff(vcsText: string, modifiedText: string) {
-        const diffResult = Diff.diffLines(vcsText, modifiedText);
-      
-        let lineNumber = 1;
-        diffResult.forEach((part) => {
-            const lines = part.value.split('\n');
-            lines.pop(); // Remove the last empty element
-        
-            lines.forEach((line) => {
-                if (part.added) {
-                console.log(`Line ${lineNumber}: New line: ${line}`);
-                } else if (part.removed) {
-                console.log(`Line ${lineNumber}: Deleted line: ${line}`);
-                } else {
-                console.log(`Line ${lineNumber}: Unchanged line: ${line}`);
-                }
-                lineNumber++;
-            });
-        });
-    }
-    */
 
     private updatePreview() {
         const versionCounts = this.file.activeLines.map(line => {
