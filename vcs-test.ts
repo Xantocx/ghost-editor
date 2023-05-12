@@ -1403,15 +1403,15 @@ export class GhostVCSServer extends BasicVCSServer {
             affectedLines.push(line)
         }
 
-        for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
-            const line = vcsLines.at(i)
-            deleteLine(line)
-        }
-
         function updateLine(line: TrackedLine, newContent: string): void {
             if (vcsLines.length > modifiedLines.length) { line.cloneCurrentVersion() }
             line.update(newContent)
             affectedLines.push(line)
+        }
+
+        for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
         }
 
         if (modifyStartLine) {
