@@ -57,6 +57,10 @@ class TrackedBlock {
         return this.lines.filter(line => { return line.currentlyActive })
     }
 
+    public get versions(): LineVersion[] {
+        return this.lines.flatMap(line => line.history.versions)
+    }
+
     constructor(eol: string, firstLine?: TrackedLine | undefined, lastLine?: TrackedLine | undefined) {
         this.eol = eol
         this.firstLine = firstLine
@@ -649,6 +653,7 @@ class LineHistory {
     }
 
     public deleteLine(lineState?: LineState): LineVersion {
+        this.cloneHeadToEnd(lineState)
         return this.createNewVersion(false, "", lineState)
     }
 
@@ -697,6 +702,10 @@ class LineVersion {
 
     public get isDeletion(): boolean {
         return !this.isStart && !this.active
+    }
+
+    public get isClone(): boolean {
+        return this.origin ? true : false
     }
 
     public get previousVersionCount(): number {
@@ -753,28 +762,18 @@ class LineVersion {
         this.history.head = this
     }
 
-    public applyToLines(lines: TrackedLines): void {
-
-        //console.log("\n--- START LINE SETTING ---")
-
-        if (this.active) {
-            lines.forEach(line => {
-
-                //console.log(line.lineNumber + " (before): '" + line.currentContent + "'")
-
-                if (this.lineState.has(line)) {
-                    this.lineState.get(line).apply()
-                } else if (line !== this.line) {
-                    line.history.start.apply()
-                }
-
-                //console.log(line.lineNumber + " (after): '" + line.currentContent + "'\n")
-            })
-        }
+    public applyToLines(lines: TrackedLines, log?: boolean): void {
+        lines.forEach(line => {
+            if (log) { console.log(line.lineNumber + "(before): '" + line.currentContent + "' (" + line.history.head.active + ")") }
+            if (this.lineState.has(line)) {
+                this.lineState.get(line).apply()
+            } else if (line !== this.line) {
+                line.history.start.apply()
+            }
+            if (log) { console.log(line.lineNumber + "(after): '" + line.currentContent + "' (" + line.history.head.active + ")\n") }
+        })
 
         this.apply()
-
-        //console.log("--- END LINE SETTING ---\n")
     }
 
     public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
@@ -970,31 +969,29 @@ class Snapshot extends TrackedBlock implements Injector {
     public readonly uuid = crypto.randomUUID()
     public readonly file: TrackedFile
 
-    private timeline: LineVersion[]
-
     public activeInjectionPoint: InjectionPoint<this> | undefined = undefined
 
+
     public get versionCount(): number {
-        return this.timeline.length
+        return this.versions.length - this.lineCount + 1
     }
 
     public get versionIndex(): number {
-        this.computeTimeline()
-        const index = this.timeline.indexOf(this.latestHead, 0)
+        const timeline = this.computeTimeline()
+        const index = timeline.indexOf(this.latestHead, 0)
         if (index < 0) { throw new Error("Latest head not in timeline!") }
         return index
     }
 
     public get latestHead(): LineVersion {
-        const sortedHeads = this.heads.filter(head => !head.isPreInsertion)
-                                      .sort((headA, headB) => { return headA.timestamp - headB.timestamp })
-        return sortedHeads[sortedHeads.length - 1]
+        return this.heads.filter(head => !head.isPreInsertion)
+                         .sort((headA, headB) => { return headB.timestamp - headA.timestamp })[0]
     }
 
     public get latestDeletionHead(): LineVersion | undefined {
-        const sortedHeads = this.heads.filter(head => head.isDeletion)
-                                      .sort((headA, headB) => { return headA.timestamp - headB.timestamp })
-        return sortedHeads.length > 0 ? sortedHeads[sortedHeads.length - 1] : undefined
+        const sortedDeletionHeads = this.heads.filter(head => head.isDeletion)
+                                              .sort((headA, headB) => { return headB.timestamp - headA.timestamp })
+        return sortedDeletionHeads.length > 0 ? sortedDeletionHeads[0] : undefined
     }
 
     public static create(file: TrackedFile, range: IRange): Snapshot {
@@ -1010,24 +1007,10 @@ class Snapshot extends TrackedBlock implements Injector {
         this.addLines()
     }
 
-    private computeTimeline(): void {
-        const timeline = this.lines.map(line => line.history.versions).flat().filter(version => { return !version.isHead } )
-        timeline.push(this.latestHead)
-        this.timeline = timeline.sort( (versionA, versionB) => {
-
-            return versionA.timestamp - versionB.timestamp
-
-
-            if (versionA.originTimestamp === versionB.originTimestamp) {
-                if (versionA.origin && versionB.origin) {
-                    return versionA.timestamp - versionB.timestamp
-                } else {
-                    return versionA === versionB.tracedOrigin ? -1 : 1
-                }
-            }
-
-            return versionA.originTimestamp - versionB.originTimestamp
-         })
+    private computeTimeline(): LineVersion[] {
+        const timeline = this.versions.filter(version => { return !version.isHead } )
+        timeline.push(this.latestHead) // required to calculate current index
+        return timeline.sort( (versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
     }
 
     private removeLines(): void {
@@ -1040,13 +1023,9 @@ class Snapshot extends TrackedBlock implements Injector {
         this.lines.forEach(line => {
             line.addToSnapshot(this)
         })
-
-        this.computeTimeline()
     }
 
     public update(update: VCSSnapshotData): void {
-        console.log("Line Update")
-
         this.removeLines()
 
         this.firstLine = this.file.getLine(update._startLine)
@@ -1060,46 +1039,14 @@ class Snapshot extends TrackedBlock implements Injector {
         this.addLines()
     }
 
-    // TODO: CANNOT RETURN TO ANY CONFIG!
-    private lastAppliedIndex: number = 0
     public applyIndex(targetIndex: number): void {
-        this.computeTimeline()
+        const timeline = this.computeTimeline()
 
-        if (targetIndex < 0 || targetIndex >= this.timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${this.timeline.length}!`) }
+        if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
-        /*
-        console.log("\n--- TIMELINE START ---")
-        this.timeline.forEach(version => {
-            console.log(`${version.line.lineNumber}: "${version.content}" (${version.active}) at ${version.timestamp}`)
-        })
-        console.log("--- LATEST HEAD ---")
-        const head = this.latestHead
-        console.log(`${head.line.lineNumber}: "${head.content}" (${head.active}) at ${head.timestamp}`)
-        console.log("--- SELECTED VERSION ---")
-        const v = this.timeline[targetIndex]
-        console.log(`${v.line.lineNumber}: "${v.content}" (${v.active}) at ${v.timestamp}`)
-        console.log("--- LAST DELETION ---")
-        const deletion = this.latestDeletionHead
-        if (deletion) { console.log(`${deletion.previous.line.lineNumber}: "${deletion.previous.content}" (${deletion.previous.active}) at ${deletion.timestamp}`) }
-        else {console.log("NONE")}
-        console.log("--- TIMELINE END ---\n")
-        */
-
-        let version = this.timeline[targetIndex]
+        // unfortunately, this will result in several cases in which versions do not change, because a deletion version is applied that already existed before, etc.
+        let version = timeline[targetIndex]
         version.applyToLines(this.lines)
-
-        /*
-        const latestDeletion = this.latestDeletionHead
-        const selectedVersion = this.timeline[targetIndex]
-
-        if (this.lastRequestedIndex - targetIndex === 1 && latestDeletion && latestDeletion.timestamp > selectedVersion.timestamp) {
-            latestDeletion.previous.applyToLines(this.lines)
-        } else {
-            selectedVersion.applyToLines(this.lines)
-        }
-        */
-
-        this.lastAppliedIndex = targetIndex
     }
 
     public compress(): VCSSnapshotData {
@@ -1400,7 +1347,7 @@ export class GhostVCSServer extends BasicVCSServer {
         */
 
         function deleteLine(line: TrackedLine): void {
-            line.cloneCurrentVersion()
+            //line.cloneCurrentVersion()
             line.delete()
             affectedLines.push(line)
         }
