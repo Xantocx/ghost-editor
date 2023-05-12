@@ -1061,12 +1061,13 @@ class Snapshot extends TrackedBlock implements Injector {
     }
 
     // TODO: CANNOT RETURN TO ANY CONFIG!
-    private lastRequestedIndex: number = 0
+    private lastAppliedIndex: number = 0
     public applyIndex(targetIndex: number): void {
         this.computeTimeline()
 
         if (targetIndex < 0 || targetIndex >= this.timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${this.timeline.length}!`) }
 
+        /*
         console.log("\n--- TIMELINE START ---")
         this.timeline.forEach(version => {
             console.log(`${version.line.lineNumber}: "${version.content}" (${version.active}) at ${version.timestamp}`)
@@ -1075,16 +1076,17 @@ class Snapshot extends TrackedBlock implements Injector {
         const head = this.latestHead
         console.log(`${head.line.lineNumber}: "${head.content}" (${head.active}) at ${head.timestamp}`)
         console.log("--- SELECTED VERSION ---")
-        const version = this.timeline[targetIndex]
-        console.log(`${version.line.lineNumber}: "${version.content}" (${version.active}) at ${version.timestamp}`)
+        const v = this.timeline[targetIndex]
+        console.log(`${v.line.lineNumber}: "${v.content}" (${v.active}) at ${v.timestamp}`)
         console.log("--- LAST DELETION ---")
         const deletion = this.latestDeletionHead
         if (deletion) { console.log(`${deletion.previous.line.lineNumber}: "${deletion.previous.content}" (${deletion.previous.active}) at ${deletion.timestamp}`) }
         else {console.log("NONE")}
         console.log("--- TIMELINE END ---\n")
+        */
 
-        console.log(targetIndex)
-        this.timeline[targetIndex].applyToLines(this.lines)
+        let version = this.timeline[targetIndex]
+        version.applyToLines(this.lines)
 
         /*
         const latestDeletion = this.latestDeletionHead
@@ -1097,7 +1099,7 @@ class Snapshot extends TrackedBlock implements Injector {
         }
         */
 
-        this.lastRequestedIndex = targetIndex
+        this.lastAppliedIndex = targetIndex
     }
 
     public compress(): VCSSnapshotData {
