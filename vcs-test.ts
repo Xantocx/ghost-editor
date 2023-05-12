@@ -452,6 +452,10 @@ class TrackedLine {
         }
     }
 
+    public cloneCurrentVersion(lineState?: LineState): LineVersion {
+        return this.history.cloneCurrentVersion(lineState)
+    }
+
     public update(content: string, lineState?: LineState): LineVersion {
         if (content === this.currentContent)     { return this.history.head }
         if (this.file.lastModifiedLine === this) { return this.history.updateCurrentVersion(content) }
@@ -460,10 +464,6 @@ class TrackedLine {
 
     public delete(lineState?: LineState): LineVersion {
         return this.history.deleteLine(lineState)
-    }
-
-    public cloneCurrentVersion(lineState?: LineState): LineVersion {
-        return this.history.cloneCurrentVersion(lineState)
     }
 
     public addToSnapshot(snapshot: Snapshot): void {
@@ -661,7 +661,6 @@ class LineHistory {
     }
 
     public deleteLine(lineState?: LineState): LineVersion {
-        //this.cloneHeadToEnd(lineState)
         return this.createNewVersion(false, "", lineState)
     }
 
@@ -671,9 +670,7 @@ class LineVersion {
 
     public readonly history: LineHistory
 
-    public readonly enterTimestamp: number
-    public leaveTimestamp: number = Number.MAX_SAFE_INTEGER
-
+    public readonly timestamp: number
     public readonly active: boolean
     public content: string
 
@@ -741,7 +738,7 @@ class LineVersion {
 
     constructor(history: LineHistory, timestamp: number, active: boolean, content: string, relations?: LineVersionRelation) {
         this.history = history
-        this.enterTimestamp = timestamp
+        this.timestamp = timestamp
         this.active = active
         this.content = content
 
@@ -755,17 +752,18 @@ class LineVersion {
             this.next = relations.next
 
             if (this.origin)   { this.origin.clones.push(this) }
-
-            if (this.previous) { 
-                this.previous.next = this
-                this.previous.leaveTimestamp = this.enterTimestamp
-            }
-
-            if (this.next)     { 
-                this.next.previous = this
-                this.leaveTimestamp = this.next.enterTimestamp
-            }
+            if (this.previous) { this.previous.next = this }
+            if (this.next)     { this.next.previous = this }
         }
+    }
+
+    public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
+        if (!relations?.origin) { relations.origin = this }
+        return new LineVersion(this.history, timestamp, this.active, this.content, relations)
+    }
+
+    public update(content: string): void {
+        this.content = content
     }
 
     public apply(): void {
@@ -784,15 +782,6 @@ class LineVersion {
         })
 
         this.apply()
-    }
-
-    public clone(timestamp: number, relations?: LineVersionRelation): LineVersion {
-        if (!relations?.origin) { relations.origin = this }
-        return new LineVersion(this.history, timestamp, this.active, this.content, relations)
-    }
-
-    public update(content: string): void {
-        this.content = content
     }
 }
 
@@ -814,27 +803,22 @@ class Snapshot extends TrackedBlock {
     }
 
     public get versionIndex(): number {
+        // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
         let latestHead = this.latestHead
         if (latestHead.previous?.isPreInsertion) { latestHead = latestHead.previous }
 
         const timeline = this.computeTimeline()
         const index = timeline.indexOf(latestHead, 0)
+
         if (index < 0) { throw new Error("Latest head not in timeline!") }
+
         return index
     }
 
     public get latestHead(): LineVersion {
         return this.heads.filter(head => !head.isPreInsertion)
-                         .sort((headA, headB) => { return headB.enterTimestamp - headA.enterTimestamp })[0]
+                         .sort((headA, headB) => { return headB.timestamp - headA.timestamp })[0]
     }
-
-    /*
-    public get latestDeletionHead(): LineVersion | undefined {
-        const sortedDeletionHeads = this.heads.filter(head => head.isDeletion)
-                                              .sort((headA, headB) => { return headB.timestamp - headA.timestamp })
-        return sortedDeletionHeads.length > 0 ? sortedDeletionHeads[0] : undefined
-    }
-    */
 
     public static create(file: TrackedFile, range: IRange): Snapshot {
         const firstLine = file.getLine(range.startLineNumber)
@@ -849,18 +833,9 @@ class Snapshot extends TrackedBlock {
         this.addLines()
     }
 
-    /*
-    private computeTimeline(): LineVersion[] {
-        const timeline = this.versions.filter(version => { return !version.isHead } )
-        timeline.push(this.latestHead) // required to calculate current index
-        return timeline.sort( (versionA, versionB) => { return versionA.enterTimestamp - versionB.enterTimestamp })
-    }
-    */
-
     private computeTimeline(): LineVersion[] {
         const timeline = this.versions.filter(version => { return !version.previous?.isPreInsertion } )
-        //timeline.push(this.latestHead) // required to calculate current index
-        return timeline.sort( (versionA, versionB) => { return versionA.enterTimestamp - versionB.enterTimestamp })
+        return timeline.sort( (versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
     }
 
     private removeLines(): void {
@@ -890,29 +865,41 @@ class Snapshot extends TrackedBlock {
     }
 
     public applyIndex(targetIndex: number): void {
+        // The concept works as follow: I create a timeline from all versions, sorted by timestamp. Then I limit the selecteable versions to all versions past the original file creation
+        // (meaning versions that were in the file when loading it into the versioning are ignored), except for the last one (to recover the original state of a snapshot). This means the
+        // index provided by the interface will be increased by the amount of such native lines - 1. This index will then select the version, which will be applied on all lines directly.
+        // There are no clones anymore for deleted or modified lines (besides when editing past versions, cloning edited versions to the end). The trick to handle inserted lines works as
+        // follows: I still require a deactiveated and an activated version with the actual contet. However, the timeline will only contain the deactivated one, the pre-insertion line.
+        // When this line gets chosen by the user, I can decide how to process it: If it is already the head, the user likely meant to actually see the content of this line and I just apply
+        // the next line with content. If it is currently not the head, the user likely meant to disable it, so it will be applied directly.
+        // the only larger difficulty arises when the user decides to select this line, and then moves the selected index one to the left. This operation will trigger the version prior to
+        // the actual insertion and can be completely unrelated. However, when leaving the insertion version, what the user really wants to do is hide it again. This can be checked by checking
+        // the next version for each index, and it if is a pre-insertion version, then check wether the next version of it (the enabled one with actual content) is currently head. If that's the
+        // case, then just apply the next version, aka the pre-insertion version, to hide it again.
+        // The great thing about this method is, that, if the user jumps to the insertion version, it will be handled logically, even if the jump came from non-adjacent versions.
+
         this.file.resetVersionMerging()
         const timeline = this.computeTimeline()
 
         targetIndex += this.nativeLineCount - 1
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
-        let version = timeline[targetIndex]
+        let version = timeline[targetIndex] // actually targeted version
         let nextVersion = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
 
+        // handle skipping the pre-insertion version, if it is already applied
         if (version.isHead && version.isPreInsertion) {
             version.next.applyToLines(this.lines)
-            console.log("SKIP")
-            console.log(version.next.content)
+            console.log("CASE 1: " + version.next.content)
+        // handle the undo of the line insertion if we go back by one version
         } else if (nextVersion?.isPreInsertion && nextVersion?.next?.isHead) {
             nextVersion.applyToLines(this.lines)
-            console.log(nextVersion.content)
+            console.log("CASE 2: " + nextVersion.content)
+        // handle all traditional cases
         } else {
             version.applyToLines(this.lines)
-            console.log(version.content)
-            console.log(version.next?.content)
+            console.log("CASE 3: " + version.content)
         }
-
-        console.log("-----")
     }
 
     public compress(): VCSSnapshotData {
@@ -994,9 +981,8 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
 
-        console.log("Text Update")
-
         this.file.resetVersionMerging()
+
 
         const startsWithEol = change.insertedText[0] === this.file.eol
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
@@ -1014,8 +1000,6 @@ export class GhostVCSServer extends BasicVCSServer {
 
         const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
 
-        const modifiedLines = change.lineText.split(this.file.eol)
-        let   affectedLines: TrackedLine[] = []
 
         const modifiedRange = {
             startLine: change.modifiedRange.startLineNumber,
@@ -1023,6 +1007,8 @@ export class GhostVCSServer extends BasicVCSServer {
         }
 
         let vcsLines: TrackedLines = undefined
+        const modifiedLines = change.lineText.split(this.file.eol)
+
         if (modifyStartLine) {
             vcsLines = this.file.getLines(modifiedRange)
         } else {
@@ -1033,43 +1019,48 @@ export class GhostVCSServer extends BasicVCSServer {
                 modifiedRange.endLine--
             }
         }
+        
 
-        // delete overflowing lines REVERSED FOR TESTING
-        /*
-        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
-            const line = vcsLines.at(i)
-            affectedLines.push(line.delete().line)
-        }
-        */
-
+        const parent = this
+        let affectedLines: TrackedLine[] = []
         function deleteLine(line: TrackedLine): void {
-            //line.cloneCurrentVersion()
             line.delete()
             affectedLines.push(line)
         }
 
         function updateLine(line: TrackedLine, newContent: string): void {
-            //if (vcsLines.length > modifiedLines.length) { line.cloneCurrentVersion() }
             line.update(newContent)
             affectedLines.push(line)
         }
+
+        function insertLine(lineNumber: number, content: string): void {
+            const line = parent.file.insertLine(lineNumber, content)
+            affectedLines.push(line)
+        }
+
+
 
         for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
             const line = vcsLines.at(i)
             deleteLine(line)
         }
 
-        if (modifyStartLine) {
-            updateLine(vcsLines.at(0), modifiedLines[0])
+        /*
+        // inverse deletion order
+        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
         }
+        */
+
+        if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
 
         for (let i = 1; i < modifiedLines.length; i++) {
             if (i < vcsLines.length) {
                 const line = vcsLines.at(i)
-                //affectedLines.push(line.update(modifiedLines[i]).line)
                 updateLine(line, modifiedLines[i])
             } else {
-                affectedLines.push(this.file.insertLine(modifiedRange.startLine + i, modifiedLines[i]))
+                insertLine(modifiedRange.startLine + i, modifiedLines[i])
             }
         }
 
