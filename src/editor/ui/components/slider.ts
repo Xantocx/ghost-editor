@@ -9,7 +9,11 @@ export class Slider extends SubscriptionManager {
 
     private onChangeSubscribers: {(value: number): void}[] = []
 
-    public get style(): CSSStyleDeclaration {
+    public get rootStyle(): CSSStyleDeclaration {
+        return this.root.style
+    }
+
+    public get sliderStyle(): CSSStyleDeclaration {
         return this.slider.style
     }
 
@@ -20,8 +24,14 @@ export class Slider extends SubscriptionManager {
         this.uuid = uuid
         this.slider = document.createElement("input") as HTMLInputElement
 
+        // Set root style
+        this.rootStyle.display = "flex"
+        this.rootStyle.justifyContent = "center"
+        this.rootStyle.alignItems = "center"
+        this.rootStyle.height = "100vh"
+
         // Set slider style
-        this.slider.style.width = "100%"
+        this.sliderStyle.width = "100%"
 
         // Set the attributes for the slider
         this.slider.type = 'range';

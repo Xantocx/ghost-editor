@@ -35,18 +35,7 @@ export class GhostSnapshotFooter extends GhostSnapshotBanner {
     }
 
     protected override setupContent(container: HTMLElement): void {
-
-        // center slider
-        container.style.display = "flex"
-        container.style.justifyContent = "center"
-        container.style.alignItems = "center"
-        container.style.height = "100vh"
-
-        // build slider
         this.slider = new Slider(container, this.snapshot.snapshot.uuid, 0, this.versionCount - 1, this.versionIndex)
-
-        const style = this.slider.style
-        style.margin = "auto"
     }
 
     public updateSlider(): void {

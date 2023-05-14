@@ -897,15 +897,12 @@ class Snapshot extends TrackedBlock {
         // handle skipping the pre-insertion version, if it is already applied
         if (version.isHead && version.isPreInsertion) {
             version.next.applyToLines(this.lines)
-            console.log("CASE 1: " + version.next.content)
         // handle the undo of the line insertion if we go back by one version
         } else if (nextVersion?.isPreInsertion && nextVersion?.next?.isHead) {
             nextVersion.applyToLines(this.lines)
-            console.log("CASE 2: " + nextVersion.content)
         // handle all traditional cases
         } else {
             version.applyToLines(this.lines)
-            console.log("CASE 3: " + version.content)
         }
     }
 

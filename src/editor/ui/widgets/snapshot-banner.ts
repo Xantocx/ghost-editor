@@ -112,7 +112,7 @@ export class GhostSnapshotBanner extends MouseTracker {
 
     protected setupContent(container: HTMLElement): void {
         container.style.background = 'rgba(50, 50, 255, 0.2)'
-        container.innerText = "HEADER WIDGET"
+        container.innerText = "TEST BANNER WIDGET"
     }
 
     private setupMouseTracking() {
