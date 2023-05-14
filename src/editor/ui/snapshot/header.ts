@@ -5,7 +5,7 @@ import { SideScrollButtonList } from "../components/side-scroll-list"
 
 export class GhostSnapshotHeader extends GhostSnapshotBanner {
 
-    private list: SideScrollList
+    private list: SideScrollButtonList
 
     protected override get lineNumber(): number {
         return this.snapshot.startLine
