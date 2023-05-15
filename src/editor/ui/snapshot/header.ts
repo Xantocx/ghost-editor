@@ -29,22 +29,15 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         container.style.border = "1px solid black"
 
         this.createAddButton(container)
-        this.versionList = this.createVersionList(container, ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9", "Item 10", "Item 11"])
+        this.versionList = this.createVersionList(container, [])
     }
-
-    /*
-    public override update(): void {
-        super.update()
-        this.versionList.updateWidth(this.overlayWidth)
-    }
-    */
 
     private createAddButton(container: HTMLElement): void {
         const addButtonDiv = document.createElement("div")
-        addButtonDiv.style.height = "100%"
         addButtonDiv.style.display = "flex"
         addButtonDiv.style.justifyContent = "center"
         addButtonDiv.style.alignItems = "center"
+        addButtonDiv.style.height = "100%"
         addButtonDiv.style.borderRight = "1px solid black"
 
         const addButton = Button.addButton(addButtonDiv, () => { console.log("Safe Version!") })
@@ -54,8 +47,9 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
 
     private createVersionList(container: HTMLElement, elements: string[]): SideScrollButtonList {
         const versionDiv = document.createElement("div")
-        versionDiv.style.height = "100%"
         versionDiv.style.flexGrow = "1"
+        versionDiv.style.overflow = "hidden"
+        versionDiv.style.height = "100%"
 
         container.appendChild(versionDiv)
 

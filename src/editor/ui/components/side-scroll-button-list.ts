@@ -80,7 +80,7 @@ export class SideScrollButtonList {
 
         // set list container style
         this.listContainer = document.createElement("div")
-        this.listContainerStyle.width = "300px"
+        this.listContainerStyle.flexGrow = "1"
         this.listContainerStyle.overflow = "hidden"
         this.listContainerStyle.whiteSpace = "nowrap"
         this.root.appendChild(this.listContainer)
@@ -101,8 +101,11 @@ export class SideScrollButtonList {
         // setup placeholder in case list is empty
         this.emptyPlaceholder = document.createElement("li")
         this.emptyPlaceholder.textContent = placeholderText ? placeholderText : "Empty..."
+        this.emptyPlaceholder.style.marginLeft = "15px"
         this.emptyPlaceholder.style.color = "gray"
         this.emptyPlaceholder.style.fontStyle = "italic"
+        this.emptyPlaceholder.style.fontWeight = "bold"
+        this.emptyPlaceholder.style.textAlign = "center"
 
         // load elements
         if (elements) { this.fillList(elements) }
@@ -130,10 +133,6 @@ export class SideScrollButtonList {
                 this.elements.push(listElem)
             })
         }
-    }
-
-    public updateWidth(width: number): void {
-        this.listContainerStyle.width = `${width}px`
     }
 
     public remove(): void {
