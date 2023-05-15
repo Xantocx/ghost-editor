@@ -6,6 +6,8 @@ import { Button } from "../components/button"
 
 export class GhostSnapshotHeader extends GhostSnapshotBanner {
 
+    private versionList: SideScrollButtonList
+
     protected override get lineNumber(): number {
         return this.snapshot.startLine
     }
@@ -24,37 +26,39 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         // container style to allow for auto resizing of sub-elements
         container.style.display = "flex"
         container.style.height = "100vh"
+        container.style.border = "1px solid black"
 
-        const addButton = this.createAddButton()
-        const customVersions = this.createVersionsList(["Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9", "Item 10", "Item 11"], "green")
-        const automaticVersions = this.createVersionsList(["Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9", "Item 10", "Item 11"], "black")
-
-        container.appendChild(addButton)
-        container.appendChild(customVersions)
-        container.appendChild(automaticVersions)
+        this.createAddButton(container)
+        this.versionList = this.createVersionList(container, ["Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9", "Item 10", "Item 11"])
     }
 
-    private createAddButton(): HTMLDivElement {
+    /*
+    public override update(): void {
+        super.update()
+        this.versionList.updateWidth(this.overlayWidth)
+    }
+    */
+
+    private createAddButton(container: HTMLElement): void {
         const addButtonDiv = document.createElement("div")
-        addButtonDiv.style.backgroundColor = "red"
         addButtonDiv.style.height = "100%"
+        addButtonDiv.style.display = "flex"
+        addButtonDiv.style.justifyContent = "center"
+        addButtonDiv.style.alignItems = "center"
+        addButtonDiv.style.borderRight = "1px solid black"
 
-        const addButton = new Button(addButtonDiv, "+", () => { console.log("Safe Version!") })
-        addButton.style.backgroundColor = "green"
-        addButton.style.padding = "5px 10px"
-        addButton.style.margin = "5px 5px"
+        const addButton = Button.addButton(addButtonDiv, () => { console.log("Safe Version!") })
 
-        return addButtonDiv
+        container.appendChild(addButtonDiv)
     }
 
-    private createVersionsList(elements: string[], color: string): HTMLDivElement {
-        const versionsDiv = document.createElement("div")
-        versionsDiv.style.backgroundColor = color
-        versionsDiv.style.flexGrow = "1"
-        versionsDiv.style.height = "100%"
+    private createVersionList(container: HTMLElement, elements: string[]): SideScrollButtonList {
+        const versionDiv = document.createElement("div")
+        versionDiv.style.height = "100%"
+        versionDiv.style.flexGrow = "1"
 
-        const versionsList = new SideScrollButtonList(versionsDiv, elements)
+        container.appendChild(versionDiv)
 
-        return versionsDiv
+        return new SideScrollButtonList(versionDiv, elements)
     }
 }

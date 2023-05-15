@@ -22,10 +22,7 @@ class SideScrollButtonListElement {
         this.list = list
 
         this.element = document.createElement("li")
-        this.button  = new Button(this.element, text, onClick)
-
-        // element style
-        this.elementStyle.marginRight = "10px"
+        this.button  = Button.basicButton(this.element, text, onClick)
 
         this.htmlList.appendChild(this.element)
     }
@@ -39,13 +36,24 @@ class SideScrollButtonListElement {
 export class SideScrollButtonList {
 
     public readonly root: HTMLElement
+    public readonly listContainer: HTMLDivElement
     public readonly list: HTMLUListElement
 
-    private emptyPlaceholder: HTMLLIElement
+    public readonly scrollLeftButton: Button
+    public readonly scrollRightButton: Button
+
+    private readonly emptyPlaceholder: HTMLLIElement
     private elements: SideScrollButtonListElement[] = []
+
+    private readonly scrollSpeed: number = 100
+    private readonly elementSpacing = 10
 
     public get rootStyle(): CSSStyleDeclaration {
         return this.root.style
+    }
+
+    public get listContainerStyle(): CSSStyleDeclaration {
+        return this.listContainer.style
     }
 
     public get listStyle(): CSSStyleDeclaration {
@@ -58,18 +66,37 @@ export class SideScrollButtonList {
     }
 
     constructor(root: HTMLElement, elements?: string[], placeholderText?: string) {
-        this.root = root
-        this.list = document.createElement("ul")
-
         // set root style
-        this.rootStyle.overflowX = "auto"
-        this.rootStyle.whiteSpace = "nowrap"
+        this.root = root
+        this.rootStyle.display = "flex"
+        this.rootStyle.alignItems = "center"
+
+        console.log("Width: " + window.getComputedStyle(this.root.parentElement!).width)
+
+        // scroll button left   
+        this.scrollLeftButton = Button.fullFieldButton(this.root, "<", () => { this.listContainer.scrollLeft -= this.scrollSpeed })
+        this.scrollLeftButton.style.borderRight = "1px solid black"
+        this.scrollLeftButton.style.borderBottom = "1px solid black"
+
+        // set list container style
+        this.listContainer = document.createElement("div")
+        this.listContainerStyle.width = "300px"
+        this.listContainerStyle.overflow = "hidden"
+        this.listContainerStyle.whiteSpace = "nowrap"
+        this.root.appendChild(this.listContainer)
+
+        // scroll button right
+        this.scrollRightButton = Button.fullFieldButton(this.root, ">", () => { this.listContainer.scrollLeft += this.scrollSpeed })
+        this.scrollRightButton.style.borderLeft = "1px solid black"
+        this.scrollRightButton.style.borderBottom = "1px solid black"
 
         // set list style
+        this.list = document.createElement("ul")
         this.listStyle.listStyle = "none"
-        this.listStyle.padding = "0"
-        this.listStyle.margin = "5px 5px"
-        this.listStyle.display = "flex"
+        this.listStyle.padding = "0 0"
+        this.listStyle.margin = "0 0"
+        this.listStyle.display = "inline-flex"
+        this.listContainer.appendChild(this.list)
 
         // setup placeholder in case list is empty
         this.emptyPlaceholder = document.createElement("li")
@@ -77,7 +104,7 @@ export class SideScrollButtonList {
         this.emptyPlaceholder.style.color = "gray"
         this.emptyPlaceholder.style.fontStyle = "italic"
 
-        this.root.appendChild(this.list)
+        // load elements
         if (elements) { this.fillList(elements) }
     }
 
@@ -94,11 +121,19 @@ export class SideScrollButtonList {
         if (elements.length === 0) {
             this.clearList()
         } else {
-            elements.forEach(element => {
+            elements.forEach((element: string, index: number) => {
                 const listElem = new SideScrollButtonListElement(this, element, () => { console.log("Clicked " + element) })
+
+                if(index === 0) { listElem.elementStyle.marginLeft = `${this.elementSpacing}px` }
+                listElem.elementStyle.marginRight = `${this.elementSpacing}px`
+
                 this.elements.push(listElem)
             })
         }
+    }
+
+    public updateWidth(width: number): void {
+        this.listContainerStyle.width = `${width}px`
     }
 
     public remove(): void {

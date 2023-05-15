@@ -58,8 +58,12 @@ export class GhostSnapshotBanner extends MouseTracker {
         return wrongContentDisplay || wrongOverlayDisplay
     }
 
-    private get overlayStyle(): CSSStyleDeclaration {
+    public get overlayStyle(): CSSStyleDeclaration {
         return this.domOverlay.style
+    }
+
+    public get overlayWidth(): number {
+        return parseFloat(this.overlayStyle.width)
     }
 
     private get overlayHeight(): number {
@@ -131,7 +135,7 @@ export class GhostSnapshotBanner extends MouseTracker {
 
     private updateOverlaySize(height: number): void {
         this.overlayStyle.height = `${height}px`
-        this.overlayStyle.width  = `${this.snapshot.highlightWidth + 2}px`
+        this.overlayStyle.width  = `${this.snapshot.highlightWidth}px`
     }
 
     private updateOverlayDimension(top: number, height: number): void {
