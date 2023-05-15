@@ -16,7 +16,6 @@ export class P5JSPreview extends CodePreview {
     }
 
     private get html(): string {
-        console.log(P5JSPreview.iframeResizerScript)
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -71,10 +70,17 @@ export class P5JSPreview extends CodePreview {
         return URL.createObjectURL(htmlBlob);
     }
 
+    public get iframeStyle(): CSSStyleDeclaration {
+        return this.iframe.style
+    }
+
     constructor(root: HTMLElement, code?: string) {
         super(root, code)
+
         this.iframe = document.createElement("iframe") as HTMLIFrameElement
         this.iframe.id = this.id
+
+        if (code) { this.render() }
     }
 
     private startSetup = true

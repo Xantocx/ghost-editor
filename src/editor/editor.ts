@@ -155,14 +155,6 @@ export class GhostEditor implements ReferenceProvider {
         */
     }
 
-    private cachedLineChange: LineChange | null = null
-    private flushCachedChanges(): void {
-        if (this.cachedLineChange) {
-            this.vcs.applyChange(this.cachedLineChange)
-            this.cachedLineChange = null
-        }
-    }
-
     private manualContentChange = false
     setupContentEvents(): void {
 
@@ -170,19 +162,6 @@ export class GhostEditor implements ReferenceProvider {
 
             if (!this.manualContentChange) {
                 const changeSet = new ChangeSet(Date.now(), this.model, this.eol, event)
-
-                /*
-                // TODO: this mechanism for eliminating minimal changes and summarizing them may be optimized
-                if (changeSet.length === 1 && changeSet[0].changeBehaviour === ChangeBehaviour.Line) {
-                    const change = changeSet[0] as LineChange
-                    if (!this.cachedLineChange || this.cachedLineChange?.lineNumber === change.lineNumber) {
-                        this.cachedLineChange = change
-                        return
-                    } else {
-                        this.flushCachedChanges()
-                    }
-                }
-                */
 
                 // forEach is a bitch for anything but synchronous arrays...
                 const changedSnapshots = new Set(await this.vcs.applyChanges(changeSet))
@@ -196,8 +175,6 @@ export class GhostEditor implements ReferenceProvider {
     }
 
     update(text: string): void {
-        this.flushCachedChanges()
-        
         this.manualContentChange = true
         this.core.setValue(text)
         this.manualContentChange = false
@@ -209,7 +186,6 @@ export class GhostEditor implements ReferenceProvider {
 
     async loadFile(filePath: string, content: string): Promise<void> {
 
-        this.flushCachedChanges()
         this.vcs.unloadFile()
 
         const uri = monaco.Uri.file(filePath)
@@ -234,8 +210,6 @@ export class GhostEditor implements ReferenceProvider {
     }
 
     save(): void {
-        this.flushCachedChanges()
-
         // TODO: make sure files without a path can be saved at new path!
         window.ipcRenderer.invoke('save-file', { path: this.path, content: this.value })
         if (this.path) this.vcs.updatePath(this.path)
@@ -260,7 +234,6 @@ export class GhostEditor implements ReferenceProvider {
             })
 
             if (!overlappingSnapshot){
-                this.flushCachedChanges()
                 const snapshot = await GhostSnapshot.create(this, selection)
                 console.log(snapshot?.uuid)
                 if (snapshot) { this.snapshots.push(snapshot) }

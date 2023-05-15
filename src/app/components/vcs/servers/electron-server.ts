@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { VCSAdapter, AdaptableVCSServer } from "../vcs-provider"
+import { VCSAdapter, AdaptableVCSServer, VersionUUID, SnapshotUUID } from "../vcs-provider"
 
 export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSServer<Adapter> {
 
@@ -16,7 +16,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
     public static linesChangedChannel = "vcs-lines-Changed"
     public static applyChangeChannel = "vcs-apply-change"
     public static applyChangesChannel = "vcs-apply-changes"
-    public static getVersionsChannel = "vcs-get-versions"
+    public static saveCurrentVersionChannel = "vcs-save-current-version"
 
     constructor(adapter: Adapter) {
         super(adapter)
@@ -77,8 +77,8 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
             return this.applyChanges(changes)
         })
 
-        const getVersionsSubscription = ipcMain.handle(ElectronVCSServer.getVersionsChannel, (event, snapshot) => {
-            this.getVersions(snapshot)
+        const saveCurrentVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentVersionChannel, (event, uuid: SnapshotUUID) => {
+            return this.saveCurrentVersion(uuid)
         })
     }
 }

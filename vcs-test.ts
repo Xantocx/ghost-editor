@@ -2,16 +2,49 @@ const Diff = require('diff');
 import * as crypto from "crypto"
 import { BrowserWindow } from "electron";
 import { LineChange, MultiLineChange } from "./src/app/components/data/change";
-import { VCSSnapshotData, VCSSnapshot } from "./src/app/components/data/snapshot";
+import { VCSSnapshotData, VCSSnapshot, VCSVersion } from "./src/app/components/data/snapshot";
 import { IRange } from "./src/app/components/utils/range";
-import { BasicVCSServer, SnapshotUUID, VCSServer } from "./src/app/components/vcs/vcs-provider";
+import { BasicVCSServer, SnapshotUUID, VCSServer, VersionUUID } from "./src/app/components/vcs/vcs-provider";
 
 interface LineRange {
     startLine: number,
     endLine: number
 }
 
-type LineState = Map<TrackedLine, LineVersion>
+class LineState {
+
+    private readonly state: Map<TrackedLine, LineVersion>
+
+    constructor(state?: Map<TrackedLine, LineVersion>) {
+        this.state = state ? state : new Map<TrackedLine, LineVersion>()
+    }
+
+    public has(line: TrackedLine): boolean {
+        return this.state.has(line)
+    }
+
+    public get(line: TrackedLine): LineVersion {
+        return this.state.get(line)
+    }
+
+    public set(line: TrackedLine, version: LineVersion): void {
+        this.state.set(line, version)
+    }
+
+    public delete(line:TrackedLine): boolean {
+        return this.state.delete(line)
+    }
+
+    public apply(lines: TrackedLines): void {
+        lines.forEach(line => {
+            if (this.has(line)) {
+                this.get(line).apply()
+            } else {
+                line.history.start.apply()
+            }
+        })
+    }
+}
 
 interface TrackedLineRelation {
     previous?: TrackedLine | undefined
@@ -105,8 +138,8 @@ class TrackedBlock {
         }
     }
 
-    public get headsMap(): LineState {
-        return this.lines.headsMap
+    public get currentLineState(): LineState {
+        return this.lines.currentLineState
     }
 
     public get heads(): LineVersion[] {
@@ -440,7 +473,7 @@ class TrackedLine {
         this.file = file
         this.snapshots = relations?.snapshots ? relations.snapshots : []
 
-        const lineState = relations?.lineState ? relations.lineState : this.file.headsMap
+        const lineState = relations?.lineState ? relations.lineState : this.file.currentLineState
         this.history = new LineHistory(this, lineState, initialContent, loadedLine)
 
         if (relations) {
@@ -490,8 +523,8 @@ class TrackedLines {
         return this.lines.length
     }
 
-    public get headsMap(): LineState {
-        const heads = new Map<TrackedLine, LineVersion>()
+    public get currentLineState(): LineState {
+        const heads = new LineState()
         this.lines.forEach(line => { heads.set(line, line.history.head) })
         return heads
     }
@@ -680,7 +713,7 @@ class LineVersion {
     public previous: LineVersion | undefined
     public next: LineVersion | undefined
 
-    private readonly lineState: LineState = new Map<TrackedLine, LineVersion>()
+    private readonly lineState = new LineState()
 
     public get file(): TrackedFile {
         return this.line.file
@@ -742,9 +775,8 @@ class LineVersion {
         this.active = active
         this.content = content
 
-        this.lineState = relations?.lineState ? relations.lineState : this.file.headsMap
-
-        this.lineState.delete(this.line)
+        this.lineState = relations?.lineState ? relations.lineState : this.file.currentLineState
+        this.lineState.set(this.line, this)
 
         if (relations) {
             this.origin = relations.origin
@@ -770,18 +802,9 @@ class LineVersion {
         this.history.head = this
     }
 
-    public applyToLines(lines: TrackedLines, log?: boolean): void {
-        lines.forEach(line => {
-            if (log) { console.log(line.lineNumber + "(before): '" + line.currentContent + "' (" + line.history.head.active + ")") }
-            if (this.lineState.has(line)) {
-                this.lineState.get(line).apply()
-            } else if (line !== this.line) {
-                line.history.start.apply()
-            }
-            if (log) { console.log(line.lineNumber + "(after): '" + line.currentContent + "' (" + line.history.head.active + ")\n") }
-        })
-
-        this.apply()
+    public applyToLines(lines: TrackedLines): void {
+        this.lineState.apply(lines)
+        this.apply() // should be unnecessary
     }
 }
 
@@ -789,6 +812,8 @@ class Snapshot extends TrackedBlock {
 
     public readonly uuid = crypto.randomUUID()
     public readonly file: TrackedFile
+
+    public readonly savedVersions = new Map<VersionUUID, LineState>()
 
     public get nativeLineCount(): number {
         return this.lines.filter(line => !line.history.start.isPreInsertion).length
@@ -904,6 +929,30 @@ class Snapshot extends TrackedBlock {
         } else {
             version.applyToLines(this.lines)
         }
+    }
+
+    public save(): VCSVersion {
+        const versionId = crypto.randomUUID()
+        this.savedVersions.set(versionId, this.currentLineState)
+        return {
+            uuid: versionId,
+            name: `Version ${this.savedVersions.size + 1}`,
+            text: this.file.currentText,
+            automaticSuggestion: false
+        }
+    }
+
+    public loadVersion(uuid: VersionUUID): string {
+        const lineState = this.savedVersions.get(uuid)
+        lineState.apply(this.lines)
+        return this.currentText
+    }
+
+    public getTextForVersion(uuid: VersionUUID): string {
+        const recoveryPoint = this.currentLineState
+        const text = this.loadVersion(uuid)
+        recoveryPoint.apply(this.lines)
+        return text
     }
 
     public compress(): VCSSnapshotData {
@@ -1074,7 +1123,8 @@ export class GhostVCSServer extends BasicVCSServer {
         return affectedLines.map(line => line.snapshotUUIDs).flat()
     }
 
-    public getVersions(snapshot: VCSSnapshotData): void {
-        console.log("GET VERSION NOT IMPLEMENTED")
+    public async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
+        const snapshot = this.file.getSnapshot(uuid)
+        return snapshot.save()
     }
 }

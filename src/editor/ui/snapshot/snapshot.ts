@@ -92,14 +92,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
-    private get footerProtected(): boolean {
-        return this.footer?.protected
-    }
-
-    private get footerUpdateIssued(): boolean {
-        return this.footer?.removeIssued
-    }
-
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
         const snapshot = await editor.vcs.createSnapshot(range)
 

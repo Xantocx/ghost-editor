@@ -1,10 +1,10 @@
 import { ipcRenderer } from "electron"
-import { SnapshotUUID, Text, VCSClient } from "../vcs-provider"
+import { SnapshotUUID, Text, VCSClient, VersionUUID } from "../vcs-provider"
 import { ElectronVCSServer } from "../servers/electron-server"
 
 import { IRange } from "monaco-editor"
 import { Change, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
-import { VCSSnapshotData } from "../../data/snapshot"
+import { VCSSnapshotData, VCSVersion } from "../../data/snapshot"
 
 function invoke<Type>(channel: string, ...args: any): Promise<Type> {
     return ipcRenderer.invoke(channel, ...args)
@@ -64,7 +64,7 @@ export const ElectronVCSClient: VCSClient = {
         return invoke(ElectronVCSServer.applyChangesChannel, changes)
     },
 
-    getVersions(snapshot: VCSSnapshotData) {
-        invoke(ElectronVCSServer.getVersionsChannel, snapshot)
+    async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
+        return invoke(ElectronVCSServer.saveCurrentVersionChannel, uuid)
     },
 }

@@ -6,9 +6,11 @@ export abstract class Preview {
         this.root = root
     }
 
+    /*
     public remove(): void {
         this.root.remove()
     }
+    */
 }
 
 export abstract class CodePreview extends Preview {

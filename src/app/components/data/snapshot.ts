@@ -1,13 +1,20 @@
 import { IRange, Range } from "../utils/range"
-import { VCSProvider } from "../vcs/vcs-provider"
+import { SnapshotUUID, Text, VCSProvider, VersionUUID } from "../vcs/vcs-provider"
 import { RangeProvider } from "../../../editor/utils/line-locator"
 
 export interface VCSSnapshotData {
-    uuid: string
+    uuid: SnapshotUUID
     _startLine: number
     _endLine: number
     versionCount: number
     versionIndex: number
+}
+
+export interface VCSVersion {
+    uuid: VersionUUID
+    name: string
+    text: Text
+    automaticSuggestion: boolean
 }
 
 export class VCSSnapshot implements VCSSnapshotData, RangeProvider {

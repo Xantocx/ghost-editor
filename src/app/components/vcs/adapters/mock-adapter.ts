@@ -1,8 +1,8 @@
 import * as crypto from "crypto"
 import { Range, IRange } from "../../utils/range";
-import { BasicVCSAdapter, SnapshotUUID } from "../vcs-provider"
+import { BasicVCSAdapter, SnapshotUUID, VersionUUID } from "../vcs-provider"
 import { LineChange, MultiLineChange } from "../../data/change";
-import { VCSSnapshotData, VCSSnapshot } from "../../data/snapshot";
+import { VCSSnapshotData, VCSSnapshot, VCSVersion } from "../../data/snapshot";
 
 export class MockAdapter extends BasicVCSAdapter {
 
@@ -91,7 +91,7 @@ export class MockAdapter extends BasicVCSAdapter {
         return []
     }
 
-    public getVersions(snapshot: VCSSnapshotData): Promise<SnapshotUUID[]> {
+    public saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
         throw new Error("Method not implemented.")
     }
 }

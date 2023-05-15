@@ -1,9 +1,10 @@
 import { IRange } from "monaco-editor"
-import { VCSSnapshotData } from "../data/snapshot"
+import { VCSSnapshotData, VCSVersion } from "../data/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 
 export type Text = string
 export type SnapshotUUID = string
+export type VersionUUID = string
 
 // functionality that the VCS needs to provide
 export interface VCSProvider {
@@ -15,7 +16,7 @@ export interface VCSProvider {
 
     // snapshot interface
     createSnapshot(range: IRange): Promise<VCSSnapshotData | null>
-    getSnapshot(uuid: string): Promise<VCSSnapshotData>
+    getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData>
     getSnapshots(): Promise<VCSSnapshotData[]>
     updateSnapshot(snapshot: VCSSnapshotData): void
     applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text>
@@ -27,7 +28,7 @@ export interface VCSProvider {
     applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]>
 
     // version interface
-    getVersions(snapshot: VCSSnapshotData): void
+    saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion>
 }
 
 export abstract class BasicVCSProvider implements VCSProvider {
@@ -95,7 +96,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
         return uuids.flat()
     }
 
-    public getVersions(snapshot: VCSSnapshotData): void {
+    public saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
         throw new Error("Method not implemented.")
     }
 }
@@ -176,7 +177,7 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         return this.adapter.linesChanged(change)
     }
 
-    public getVersions(snapshot: VCSSnapshotData): void {
-        this.adapter.getVersions(snapshot)
+    public async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
+        return this.adapter.saveCurrentVersion(uuid)
     }
 }

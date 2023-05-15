@@ -40,7 +40,7 @@ export class GhostSnapshotBanner extends MouseTracker {
         return this.locator.range
     }
 
-    private get editor(): GhostEditor {
+    protected get editor(): GhostEditor {
         return this.snapshot.editor
     }
 

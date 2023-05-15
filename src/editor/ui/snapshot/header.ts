@@ -1,19 +1,20 @@
 import { GhostSnapshotBanner } from "../widgets/snapshot-banner"
 import { IRange } from "../../utils/types"
 import { Range } from "monaco-editor"
-import { SideScrollButtonList } from "../components/side-scroll-button-list"
+import { SideScrollVersionList } from "../components/version-list"
 import { Button } from "../components/button"
+import { VCSVersion } from "../../../app/components/data/snapshot"
 
 export class GhostSnapshotHeader extends GhostSnapshotBanner {
 
-    private versionList: SideScrollButtonList
+    private versionList: SideScrollVersionList
 
     protected override get lineNumber(): number {
         return this.snapshot.startLine
     }
 
     protected override get lineCount(): number {
-        return 3
+        return 10
     }
 
     protected override contentRange(): IRange {
@@ -40,12 +41,15 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         addButtonDiv.style.height = "100%"
         addButtonDiv.style.borderRight = "1px solid black"
 
-        const addButton = Button.addButton(addButtonDiv, () => { console.log("Safe Version!") })
+        const addButton = Button.addButton(addButtonDiv, async () => { 
+            const version = await this.editor.vcs.saveCurrentVersion(this.snapshot.uuid)
+            this.versionList.addVersion(version)
+        })
 
         container.appendChild(addButtonDiv)
     }
 
-    private createVersionList(container: HTMLElement, elements: string[]): SideScrollButtonList {
+    private createVersionList(container: HTMLElement, elements: VCSVersion[]): SideScrollVersionList {
         const versionDiv = document.createElement("div")
         versionDiv.style.flexGrow = "1"
         versionDiv.style.overflow = "hidden"
@@ -53,6 +57,6 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
 
         container.appendChild(versionDiv)
 
-        return new SideScrollButtonList(versionDiv, elements)
+        return new SideScrollVersionList(versionDiv, elements)
     }
 }

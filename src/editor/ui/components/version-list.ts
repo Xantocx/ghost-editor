@@ -1,8 +1,11 @@
+import { VCSVersion } from "../../../app/components/data/snapshot"
 import { Button } from "./button"
 
-class SideScrollButtonListElement {
+class SideScrollVersionListElement {
 
-    public readonly list: SideScrollButtonList
+    public readonly list: SideScrollVersionList
+    public readonly content: VCSVersion
+
     public readonly element: HTMLLIElement
     public readonly button: Button
 
@@ -18,11 +21,12 @@ class SideScrollButtonListElement {
         return this.button.style
     }
 
-    constructor(list: SideScrollButtonList, text: string, onClick?: () => void) {
+    constructor(list: SideScrollVersionList, content: VCSVersion, onClick?: () => void) {
         this.list = list
+        this.content = content
 
         this.element = document.createElement("li")
-        this.button  = Button.basicButton(this.element, text, onClick)
+        this.button  = Button.p5jsPreviewButton(this.element, this.content, onClick)
 
         this.htmlList.appendChild(this.element)
     }
@@ -33,7 +37,7 @@ class SideScrollButtonListElement {
     }
 }
 
-export class SideScrollButtonList {
+export class SideScrollVersionList {
 
     public readonly root: HTMLElement
     public readonly listContainer: HTMLDivElement
@@ -43,7 +47,7 @@ export class SideScrollButtonList {
     public readonly scrollRightButton: Button
 
     private readonly emptyPlaceholder: HTMLLIElement
-    private elements: SideScrollButtonListElement[] = []
+    private elements: SideScrollVersionListElement[] = []
 
     private readonly scrollSpeed: number = 100
     private readonly elementSpacing = 10
@@ -60,12 +64,18 @@ export class SideScrollButtonList {
         return this.list.style
     }
 
+    public get versions(): VCSVersion[] {
+        return this.elements.map(elem => elem.content)
+    }
+
+    /*
     public get rootHeight(): number {
         const computedRootStyle = window.getComputedStyle(this.root)
         return parseInt(computedRootStyle.height, 10)
     }
+    */
 
-    constructor(root: HTMLElement, elements?: string[], placeholderText?: string) {
+    constructor(root: HTMLElement, versions?: VCSVersion[], placeholderText?: string) {
         // set root style
         this.root = root
         this.rootStyle.display = "flex"
@@ -108,7 +118,7 @@ export class SideScrollButtonList {
         this.emptyPlaceholder.style.textAlign = "center"
 
         // load elements
-        if (elements) { this.fillList(elements) }
+        if (versions) { this.fillList(versions) }
     }
 
     public clearList(): void {
@@ -118,21 +128,27 @@ export class SideScrollButtonList {
         this.list.appendChild(this.emptyPlaceholder)
     }
 
-    public fillList(elements: string[]): void {
+    public fillList(versions: VCSVersion[]): void {
         this.emptyPlaceholder.remove()
 
-        if (elements.length === 0) {
+        if (versions.length === 0) {
             this.clearList()
         } else {
-            elements.forEach((element: string, index: number) => {
-                const listElem = new SideScrollButtonListElement(this, element, () => { console.log("Clicked " + element) })
-
-                if(index === 0) { listElem.elementStyle.marginLeft = `${this.elementSpacing}px` }
-                listElem.elementStyle.marginRight = `${this.elementSpacing}px`
-
-                this.elements.push(listElem)
+            versions.forEach((version: VCSVersion, index: number) => {
+                this.addVersion(version, index === 0)
             })
         }
+    }
+
+    public addVersion(version: VCSVersion, isFirst?: boolean): void {
+        if (!isFirst && this.elements.length === 0) {
+            this.emptyPlaceholder.remove()
+        }
+
+        const listElement = new SideScrollVersionListElement(this, version, () => { console.log("Clicked " + version.name) })
+        if(isFirst) { listElement.elementStyle.marginLeft = `${this.elementSpacing}px` }
+        listElement.elementStyle.marginRight = `${this.elementSpacing}px`
+        this.elements.push(listElement)
     }
 
     public remove(): void {
