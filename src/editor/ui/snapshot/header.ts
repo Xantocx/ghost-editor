@@ -22,6 +22,10 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         return new Range(startLine - this.lineCount, 1, startLine - 1, Number.MAX_SAFE_INTEGER)
     }
 
+    private get computedHeaderHeight(): number {
+        return this.editor.lineHeight * this.lineCount
+    }
+
     protected override setupContent(container: HTMLElement): void {
 
         // container style to allow for auto resizing of sub-elements
@@ -40,13 +44,12 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         addButtonDiv.style.alignItems = "center"
         addButtonDiv.style.height = "100%"
         addButtonDiv.style.borderRight = "1px solid black"
+        container.appendChild(addButtonDiv)
 
         const addButton = Button.addButton(addButtonDiv, async () => { 
             const version = await this.editor.vcs.saveCurrentVersion(this.snapshot.uuid)
             this.versionList.addVersion(version)
         })
-
-        container.appendChild(addButtonDiv)
     }
 
     private createVersionList(container: HTMLElement, elements: VCSVersion[]): SideScrollVersionList {
@@ -54,9 +57,11 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         versionDiv.style.flexGrow = "1"
         versionDiv.style.overflow = "hidden"
         versionDiv.style.height = "100%"
-
         container.appendChild(versionDiv)
 
-        return new SideScrollVersionList(versionDiv, elements)
+        return new SideScrollVersionList(versionDiv, elements, {
+            maxWidth: 350,
+            maxHeight: this.computedHeaderHeight - 20
+        })
     }
 }

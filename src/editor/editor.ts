@@ -16,7 +16,7 @@ export class GhostEditor implements ReferenceProvider {
     readonly root: HTMLElement
     readonly core: Editor
 
-    private readonly preview: VCSPreview
+    private readonly preview: P5JSPreview
 
     private keybindings: Disposable[] = []
     private snapshots: GhostSnapshot[] = []
@@ -94,8 +94,8 @@ export class GhostEditor implements ReferenceProvider {
         });
 
         const previewContainer = document.getElementById("preview")!
-        //this.preview = new P5JSPreview(previewContainer)
-        this.preview = new VCSPreview(previewContainer, this.model)
+        this.preview = new P5JSPreview(previewContainer)
+        //this.preview = new VCSPreview(previewContainer, this.model)
 
         this.setup()
     }
@@ -136,7 +136,6 @@ export class GhostEditor implements ReferenceProvider {
             },
         }));
 
-        /*
         this.keybindings.push(this.core.addAction({
             id: "p5-preview",
             label: "P5 Preview",
@@ -151,8 +150,7 @@ export class GhostEditor implements ReferenceProvider {
             run: function (core) {
                 parent.preview.update(parent.value)
             },
-        }));
-        */
+        }))
     }
 
     private manualContentChange = false
@@ -199,7 +197,7 @@ export class GhostEditor implements ReferenceProvider {
 
         this.core.setModel(model)
 
-        this.preview.updateEditor(model)
+        //this.preview.updateEditor(model)
 
         this.vcs.loadFile(filePath, this.eol, content)
         const snapshots = await this.vcs.getSnapshots()

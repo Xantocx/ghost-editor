@@ -1,6 +1,6 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
 import { Disposable } from "../../utils/types"
-import { P5JSPreview } from "../previews/ps5js-preview"
+import { P5JSPreview, SizeConstraints } from "../previews/ps5js-preview"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 
 export class Button extends SubscriptionManager {
@@ -52,8 +52,8 @@ export class Button extends SubscriptionManager {
         return button
     }
 
-    public static p5jsPreviewButton(root: HTMLElement, version: VCSVersion, onClick?: (button: Button) => void): Button {
-        return new P5JSPreviewButton(root, version, onClick)
+    public static p5jsPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): P5JSPreviewButton {
+        return new P5JSPreviewButton(root, version, sizeConstraints, onClick)
     }
 
     public readonly root: HTMLElement
@@ -119,29 +119,60 @@ export class P5JSPreviewButton extends Button {
     public readonly version: VCSVersion
     private readonly preview: P5JSPreview
 
-    constructor(root: HTMLElement, version: VCSVersion, onClick?: (button: Button) => void) {
+    private readonly sizeConstraints?: SizeConstraints
+    private readonly previewSize: number = 0.8
+
+    private get maxWidth(): number {
+        return this.sizeConstraints?.maxWidth ? this.sizeConstraints?.maxWidth : 350
+    }
+
+    private get maxHeight(): number {
+        return this.sizeConstraints?.maxHeight ? this.sizeConstraints?.maxHeight : 150
+    }
+
+    constructor(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void) {
         super(root, onClick)
         this.version = version
+        this.sizeConstraints = sizeConstraints
 
+        this.style.display = "inline-flex"
+        //this.style.flexDirection = "row"
+        //this.style.overflow = "hidden"
+        this.style.maxWidth = `${this.maxWidth}px`
+        this.style.maxHeight = `${this.maxHeight}px`
+        this.style.padding = "0 0"
+        this.style.margin = "0 0"
         this.style.backgroundColor = version.automaticSuggestion ? "gray" : "blue"
         this.style.border = "none"
         this.style.borderRadius = "8px"
-        this.style.display = "inline-block"
         this.style.cursor = "pointer"
 
-        /*
         const name = document.createElement("div")
         name.textContent = version.name
+        name.style.alignSelf = "center"
+        name.style.width = `${100 * (1 - this.previewSize)}%`
+        name.style.height = "100%"
+        name.style.padding = "0 5px"
+        name.style.margin = "0 0"
+        name.style.color = "white"
         name.style.textAlign = "center"
         name.style.textDecoration = "none"
         name.style.fontSize = '14px'
         this.button.appendChild(name)
-        */
 
-        console.log(version.text)
+        const previewDiv = document.createElement("div")
+        //previewDiv.style.overflow = "hidden"
+        previewDiv.style.width = `${100 * this.previewSize}%`
+        previewDiv.style.height = "100%"
+        previewDiv.style.padding = "0 0"
+        previewDiv.style.margin = "0 0"
+        this.button.appendChild(previewDiv)
 
-        this.preview = new P5JSPreview(this.button, version.text)
-        this.preview.iframeStyle.flexGrow = "1"
+        this.preview = new P5JSPreview(previewDiv, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: 5 })
+    }
+
+    public render(): void {
+        this.preview.render()
     }
 
     /*

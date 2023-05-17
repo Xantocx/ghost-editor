@@ -1,8 +1,11 @@
-export abstract class Preview {
+import { SubscriptionManager } from "../widgets/mouse-tracker"
+
+export abstract class Preview extends SubscriptionManager {
 
     public readonly root: HTMLElement
 
     constructor(root: HTMLElement) {
+        super()
         this.root = root
     }
 

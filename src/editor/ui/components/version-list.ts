@@ -1,5 +1,6 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
-import { Button } from "./button"
+import { SizeConstraints } from "../previews/ps5js-preview"
+import { Button, P5JSPreviewButton } from "./button"
 
 class SideScrollVersionListElement {
 
@@ -7,7 +8,7 @@ class SideScrollVersionListElement {
     public readonly content: VCSVersion
 
     public readonly element: HTMLLIElement
-    public readonly button: Button
+    public readonly button: P5JSPreviewButton
 
     public get htmlList(): HTMLUListElement {
         return this.list.list
@@ -21,14 +22,18 @@ class SideScrollVersionListElement {
         return this.button.style
     }
 
-    constructor(list: SideScrollVersionList, content: VCSVersion, onClick?: () => void) {
+    constructor(list: SideScrollVersionList, content: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: () => void) {
         this.list = list
         this.content = content
 
         this.element = document.createElement("li")
-        this.button  = Button.p5jsPreviewButton(this.element, this.content, onClick)
-
         this.htmlList.appendChild(this.element)
+
+        this.button  = Button.p5jsPreviewButton(this.element, this.content, sizeConstraints, onClick)
+    }
+
+    public update(): void {
+        this.button.render()
     }
 
     public remove(): void {
@@ -49,6 +54,7 @@ export class SideScrollVersionList {
     private readonly emptyPlaceholder: HTMLLIElement
     private elements: SideScrollVersionListElement[] = []
 
+    private readonly sizeConstraints?: SizeConstraints
     private readonly scrollSpeed: number = 100
     private readonly elementSpacing = 10
 
@@ -68,14 +74,10 @@ export class SideScrollVersionList {
         return this.elements.map(elem => elem.content)
     }
 
-    /*
-    public get rootHeight(): number {
-        const computedRootStyle = window.getComputedStyle(this.root)
-        return parseInt(computedRootStyle.height, 10)
-    }
-    */
+    constructor(root: HTMLElement, versions?: VCSVersion[], sizeConstraints?: SizeConstraints, placeholderText?: string) {
+        // set size constraints
+        this.sizeConstraints = sizeConstraints
 
-    constructor(root: HTMLElement, versions?: VCSVersion[], placeholderText?: string) {
         // set root style
         this.root = root
         this.rootStyle.display = "flex"
@@ -102,10 +104,10 @@ export class SideScrollVersionList {
 
         // set list style
         this.list = document.createElement("ul")
+        this.listStyle.display = "inline-flex"
         this.listStyle.listStyle = "none"
         this.listStyle.padding = "0 0"
         this.listStyle.margin = "0 0"
-        this.listStyle.display = "inline-flex"
         this.listContainer.appendChild(this.list)
 
         // setup placeholder in case list is empty
@@ -143,12 +145,17 @@ export class SideScrollVersionList {
     public addVersion(version: VCSVersion, isFirst?: boolean): void {
         if (!isFirst && this.elements.length === 0) {
             this.emptyPlaceholder.remove()
+            isFirst = true
         }
 
-        const listElement = new SideScrollVersionListElement(this, version, () => { console.log("Clicked " + version.name) })
+        const listElement = new SideScrollVersionListElement(this, version, this.sizeConstraints, () => { console.log("Clicked " + version.name) })
         if(isFirst) { listElement.elementStyle.marginLeft = `${this.elementSpacing}px` }
         listElement.elementStyle.marginRight = `${this.elementSpacing}px`
         this.elements.push(listElement)
+    }
+
+    public update(): void {
+        this.elements.forEach(element => element.update())
     }
 
     public remove(): void {

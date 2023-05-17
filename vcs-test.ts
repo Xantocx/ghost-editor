@@ -936,7 +936,7 @@ class Snapshot extends TrackedBlock {
         this.savedVersions.set(versionId, this.currentLineState)
         return {
             uuid: versionId,
-            name: `Version ${this.savedVersions.size + 1}`,
+            name: `Version ${this.savedVersions.size}`,
             text: this.file.currentText,
             automaticSuggestion: false
         }
