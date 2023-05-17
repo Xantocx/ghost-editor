@@ -14,7 +14,7 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
     }
 
     protected override get lineCount(): number {
-        return 10
+        return 5
     }
 
     protected override contentRange(): IRange {
@@ -61,7 +61,8 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
 
         return new SideScrollVersionList(versionDiv, elements, {
             maxWidth: 350,
-            maxHeight: this.computedHeaderHeight - 20
+            maxHeight: this.computedHeaderHeight - 20,
+            padding: 5
         })
     }
 }

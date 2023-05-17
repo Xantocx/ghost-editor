@@ -182,9 +182,14 @@ export class GhostEditor implements ReferenceProvider {
         })
     }
 
+    unloadFile(): void {
+        this.removeSnapshots()
+        this.vcs.unloadFile()
+    }
+
     async loadFile(filePath: string, content: string): Promise<void> {
 
-        this.vcs.unloadFile()
+        this.unloadFile()
 
         const uri = monaco.Uri.file(filePath)
 
@@ -219,6 +224,10 @@ export class GhostEditor implements ReferenceProvider {
 
     getSnapshot(uuid: string): GhostSnapshot | undefined {
         return this.snapshots.find(snapshot => { return snapshot.uuid === uuid })
+    }
+
+    removeSnapshots(): void {
+        this.snapshots.forEach(snapshot => snapshot.remove())
     }
 
     async highlightSelection(): Promise<void> {

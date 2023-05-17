@@ -6,17 +6,7 @@ import { SubscriptionManager } from "../widgets/mouse-tracker"
 export class Button extends SubscriptionManager {
 
     public static defaultButton(root: HTMLElement, text: string, onClick?: (button: Button) => void): Button {
-        const button = new TextButton(root, text, onClick)
-
-        button.style.border = "none"
-        button.style.borderRadius = "8px"
-        button.style.textAlign = "center"
-        button.style.textDecoration = "none"
-        button.style.display = "inline-block"
-        button.style.fontSize = '14px'
-        button.style.cursor = "pointer"
-
-        return button
+        return new TextButton(root, text, onClick)
     }
 
     public static basicButton(root: HTMLElement, text: string, onClick?: (button: Button) => void): Button {
@@ -52,8 +42,20 @@ export class Button extends SubscriptionManager {
         return button
     }
 
-    public static p5jsPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): P5JSPreviewButton {
+    public static versionButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
+        return new VersionButton(root, version, sizeConstraints, onClick)
+    }
+
+    public static p5jsPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
         return new P5JSPreviewButton(root, version, sizeConstraints, onClick)
+    }
+
+    public static versionPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
+        if (version.text.includes("setup") && version.text.includes("draw")) {
+            return this.p5jsPreviewButton(root, version, sizeConstraints, onClick)
+        } else {
+            return this.versionButton(root, version, sizeConstraints, onClick)
+        }
     }
 
     public readonly root: HTMLElement
@@ -70,6 +72,15 @@ export class Button extends SubscriptionManager {
 
         this.root = root
         this.button = document.createElement("button")
+
+        // default config
+        this.style.display = "inline-block"
+        this.style.border = "none"
+        this.style.borderRadius = "8px"
+        this.style.textAlign = "center"
+        this.style.textDecoration = "none"
+        this.style.fontSize = '14px'
+        this.style.cursor = "pointer"
 
         this.button.onclick = () => { this.onClickCallbacks.forEach(callback => callback(this)) }
         if (onClick) { this.onClick(onClick) }
@@ -113,6 +124,46 @@ export class TextButton extends Button {
     }
 }
 
+export class VersionButton extends TextButton {
+
+    private readonly sizeConstraints?: SizeConstraints
+
+    private get maxWidth(): number {
+        return this.sizeConstraints?.maxWidth ? this.sizeConstraints?.maxWidth : 350
+    }
+
+    private get maxHeight(): number {
+        return this.sizeConstraints?.maxHeight ? this.sizeConstraints?.maxHeight : 150
+    }
+
+    private get padding(): number {
+        return this.sizeConstraints?.padding ? this.sizeConstraints?.padding : 0
+    }
+
+    constructor(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void) {
+        super(root, version.name, onClick)
+        this.sizeConstraints = sizeConstraints
+
+        this.style.display = "inline-block"
+        this.style.maxWidth = `${this.maxWidth}px`
+        this.style.height = `${this.maxHeight}px`
+        this.style.padding = `${this.padding}px ${this.padding}px`
+        this.style.margin = "0 0"
+
+        this.style.backgroundColor = version.automaticSuggestion ? "gray" : "blue"
+        this.style.border = "none"
+        this.style.borderRadius = "8px"
+        this.style.cursor = "pointer"
+
+        this.style.color = "white"
+        this.style.textAlign = "center"
+        this.style.textDecoration = "none"
+        this.style.wordWrap = "break-word"
+        this.style.overflowWrap = "break-word"
+        this.style.fontSize = '14px'
+    }
+}
+
 
 export class P5JSPreviewButton extends Button {
 
@@ -137,7 +188,7 @@ export class P5JSPreviewButton extends Button {
 
         this.style.display = "inline-flex"
         //this.style.flexDirection = "row"
-        //this.style.overflow = "hidden"
+        this.style.overflow = "hidden"
         this.style.maxWidth = `${this.maxWidth}px`
         this.style.maxHeight = `${this.maxHeight}px`
         this.style.padding = "0 0"
@@ -149,36 +200,37 @@ export class P5JSPreviewButton extends Button {
 
         const name = document.createElement("div")
         name.textContent = version.name
+        name.style.display = "block"
         name.style.alignSelf = "center"
-        name.style.width = `${100 * (1 - this.previewSize)}%`
+        name.style.maxWidth = `${100 * (1 - this.previewSize)}%`
         name.style.height = "100%"
         name.style.padding = "0 5px"
         name.style.margin = "0 0"
         name.style.color = "white"
         name.style.textAlign = "center"
         name.style.textDecoration = "none"
+        name.style.wordWrap = "break-word"
+        name.style.overflowWrap = "break-word"
         name.style.fontSize = '14px'
         this.button.appendChild(name)
 
         const previewDiv = document.createElement("div")
-        //previewDiv.style.overflow = "hidden"
-        previewDiv.style.width = `${100 * this.previewSize}%`
+        previewDiv.style.overflow = "hidden"
+        previewDiv.style.maxWidth = `${100 * this.previewSize}%`
         previewDiv.style.height = "100%"
         previewDiv.style.padding = "0 0"
         previewDiv.style.margin = "0 0"
         this.button.appendChild(previewDiv)
 
-        this.preview = new P5JSPreview(previewDiv, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: 5 })
+        this.preview = new P5JSPreview(previewDiv, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: this.sizeConstraints?.padding }, "white")
+        this.preview.onResize((width, height) => {
+            // give up rest of maximum width for name (always >= 20%)
+            name.style.maxWidth = `${this.maxWidth - width}px`
+        })
     }
 
-    public render(): void {
-        this.preview.render()
-    }
-
-    /*
     public override remove(): void {
         this.preview.remove()
         super.remove()
     }
-    */
 }

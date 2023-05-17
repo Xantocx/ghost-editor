@@ -1,6 +1,6 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
 import { SizeConstraints } from "../previews/ps5js-preview"
-import { Button, P5JSPreviewButton } from "./button"
+import { Button } from "./button"
 
 class SideScrollVersionListElement {
 
@@ -8,7 +8,7 @@ class SideScrollVersionListElement {
     public readonly content: VCSVersion
 
     public readonly element: HTMLLIElement
-    public readonly button: P5JSPreviewButton
+    public readonly button: Button
 
     public get htmlList(): HTMLUListElement {
         return this.list.list
@@ -29,11 +29,9 @@ class SideScrollVersionListElement {
         this.element = document.createElement("li")
         this.htmlList.appendChild(this.element)
 
+        //this.button = Button.basicButton(this.element, content.name, onClick)
+        //this.button  = Button.versionPreviewButton(this.element, this.content, sizeConstraints, onClick)
         this.button  = Button.p5jsPreviewButton(this.element, this.content, sizeConstraints, onClick)
-    }
-
-    public update(): void {
-        this.button.render()
     }
 
     public remove(): void {
@@ -83,8 +81,6 @@ export class SideScrollVersionList {
         this.rootStyle.display = "flex"
         this.rootStyle.alignItems = "center"
 
-        console.log("Width: " + window.getComputedStyle(this.root.parentElement!).width)
-
         // scroll button left   
         this.scrollLeftButton = Button.fullFieldButton(this.root, "<", () => { this.listContainer.scrollLeft -= this.scrollSpeed })
         this.scrollLeftButton.style.borderRight = "1px solid black"
@@ -105,6 +101,7 @@ export class SideScrollVersionList {
         // set list style
         this.list = document.createElement("ul")
         this.listStyle.display = "inline-flex"
+        this.listStyle.alignItems = "center"
         this.listStyle.listStyle = "none"
         this.listStyle.padding = "0 0"
         this.listStyle.margin = "0 0"
@@ -152,10 +149,6 @@ export class SideScrollVersionList {
         if(isFirst) { listElement.elementStyle.marginLeft = `${this.elementSpacing}px` }
         listElement.elementStyle.marginRight = `${this.elementSpacing}px`
         this.elements.push(listElement)
-    }
-
-    public update(): void {
-        this.elements.forEach(element => element.update())
     }
 
     public remove(): void {

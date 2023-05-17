@@ -18,6 +18,8 @@ export class P5JSPreview extends CodePreview {
     private readonly iframe: HTMLIFrameElement
 
     private readonly sizeConstraints?: SizeConstraints
+    private readonly errorMessageColor: string
+
     private onResizeCallbacks: {(width: number, height: number): void}[] = []
 
     private get id(): string {
@@ -36,8 +38,8 @@ export class P5JSPreview extends CodePreview {
 
                 <style>
                     body {
-                        padding: 0;
-                        margin: 0;
+                        padding: ${this.padding}px ${this.padding}px;
+                        margin: 0 0;
                     }
                 </style>
 
@@ -49,11 +51,10 @@ export class P5JSPreview extends CodePreview {
                     // setup config object of iFrameResizer
                     window.iFrameResizer = {
                         onMessage: (data) => {
-                            console.log("MESSAGE")
                             p5Canvas = document.getElementsByClassName("p5Canvas")
                             for (let i = 0; i < p5Canvas.length; i++) {
                                 const canvas = p5Canvas[i]
-                                canvas.style.width = data.width + "px"
+                                canvas.style.width  = data.width  + "px"
                                 canvas.style.height = data.height + "px"
                             }
                         }
@@ -68,13 +69,19 @@ export class P5JSPreview extends CodePreview {
                         errorMessage.setAttribute("data-iframe-width", "")
                         errorMessage.innerText = text
 
+                        errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${this.desiredWidth  - 8}px"
+                        errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${this.desiredHeight - 8}px"
+                        errorMessage.style.padding = "3px 3px"
+                        errorMessage.style.color = "${this.errorMessageColor}"
+                        errorMessage.style.border = "1px solid ${this.errorMessageColor}"
+
                         document.body.appendChild(errorMessage);
                     }
 
                     const code = ${JSON.stringify(this.code)}
 
                     if (!code.includes("setup") || !code.includes("draw")) {
-                        createErrorMessage("Your code must include a setup and a draw function to be rendered in this P5JS preview.")
+                        createErrorMessage("Your code must include a 'setup' and a 'draw' function to be rendered in this P5JS preview.")
                     } else {
                         try {
                             eval(code)
@@ -119,9 +126,20 @@ export class P5JSPreview extends CodePreview {
         return this.sizeConstraints?.maxHeight
     }
 
-    constructor(root: HTMLElement, code?: string, sizeConstraints?: SizeConstraints) {
+    private get desiredWidth(): number {
+        const rootWidth = parseFloat(window.getComputedStyle(this.root).width)
+        return this.padValue(this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth)
+    }
+
+    private get desiredHeight(): number {
+        const rootHeight = parseFloat(window.getComputedStyle(this.root).height)
+        return this.padValue(this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight)
+    }
+
+    constructor(root: HTMLElement, code?: string, sizeConstraints?: SizeConstraints, errorMessageColor?: string) {
         super(root, code)
         this.sizeConstraints = sizeConstraints
+        this.errorMessageColor = errorMessageColor ? errorMessageColor : "black"
 
         this.iframe = document.createElement("iframe") as HTMLIFrameElement
         this.iframe.id = this.id
@@ -129,7 +147,7 @@ export class P5JSPreview extends CodePreview {
         // make sure preview is displayed with minimal unused space
         this.iframe.frameBorder = "0"
         this.style.border = "none"
-        this.style.padding = `${this.padding}px ${this.padding}px`
+        this.style.padding = "0 0" //`${this.padding}px ${this.padding}px`
         this.style.margin = "0 0"
 
         let loadHandler: () => void
@@ -149,7 +167,7 @@ export class P5JSPreview extends CodePreview {
                                             checkOrigin: ["file://"], 
                                             sizeWidth: true, 
                                             widthCalculationMethod: 'taggedElement', 
-                                            tolerance: 5,
+                                            tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
                                             onResized: onResize
                                           }, `#${this.id}`)[0]
     }
@@ -159,11 +177,10 @@ export class P5JSPreview extends CodePreview {
     }
 
     private resize(iframe: any, renderWidth: number, renderHeight: number): void {
-        const computedStyle = window.getComputedStyle(this.root);
-        const width  = this.padValue(Math.min(this.maxWidth  ? this.maxWidth  : Number.MAX_SAFE_INTEGER, parseFloat(computedStyle.width)))
-        const height = this.padValue(Math.min(this.maxHeight ? this.maxHeight : Number.MAX_SAFE_INTEGER, parseFloat(computedStyle.height)))
+        const scaleFactor = Math.min(this.desiredWidth / renderWidth, this.desiredHeight / renderHeight)
+        const width  = renderWidth  * scaleFactor
+        const height = renderHeight * scaleFactor
 
-        /*
         console.log("CURRENT")
         console.log(iframe.style.width)
         console.log(iframe.style.height)
@@ -171,7 +188,6 @@ export class P5JSPreview extends CodePreview {
         console.log(width)
         console.log(height)
         console.log("---------------------")
-        */
 
         iframe.iFrameResizer.sendMessage({ width: width, height: height })
         iframe.style.width = width
