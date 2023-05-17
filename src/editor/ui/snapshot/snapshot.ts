@@ -15,6 +15,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     private readonly locator: LineLocator
 
     public readonly viewZonesOnly: boolean
+    public readonly toggleMode: boolean
 
     private header: GhostSnapshotHeader
     private highlight: GhostSnapshotHighlight
@@ -92,6 +93,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
     }
 
+    public get menuVisible(): boolean {
+        return this.header.visible
+    }
+
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
         const snapshot = await editor.vcs.createSnapshot(range)
 
@@ -103,11 +108,12 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return new GhostSnapshot(editor, snapshot)
     }
 
-    constructor(editor: GhostEditor, snapshot: VCSSnapshotData, viewZonesOnly?: boolean) {
+    constructor(editor: GhostEditor, snapshot: VCSSnapshotData, viewZonesOnly?: boolean, toggleMode?: boolean) {
         super()
 
         this.editor = editor
         this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true //TODO: fix positioning of banners when using overlays instead of viewzones
+        this.toggleMode = toggleMode ? toggleMode : true
 
         this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
@@ -136,7 +142,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
 
-        this.header    = new GhostSnapshotHeader(this, this.locator, this.viewZonesOnly)
+        this.setupHeader()
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
         this.setupFooter()
 
@@ -150,8 +156,26 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             }
         }))
 
-        if (!this.viewZonesOnly) {
-            this.setupHeaderHiding()
+        //if (this.toggleMode) { this.hideMenu() }
+    }
+
+    private setupHeader(): void {
+
+        this.header = new GhostSnapshotHeader(this, this.locator, this.viewZonesOnly)
+
+        if (!this.viewZonesOnly && !this.toggleMode) {
+            this.addSubscription(this.header.onMouseEnter((mouseOn: boolean) => {
+                if (!mouseOn && !this.highlight.mouseOn) {
+                    this.header.hide()
+                }
+            }))
+            this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
+                if (mouseOn) {
+                    this.header.show()
+                } else {
+                    if(!this.header.mouseOn) { this.header.hide() }
+                }
+            }))
         }
     }
 
@@ -166,33 +190,20 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }))
 
         // footer hiding
-        this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
-            if (!mouseOn && !this.highlight?.mouseOn) {
-                this.footer.hide()
-            }
+        if (!this.toggleMode) {
+            this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
+                if (!mouseOn && !this.highlight?.mouseOn) {
+                    this.footer.hide()
+                }
+            }))
+            this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
+                if (mouseOn) {
+                    this.footer.show()
+                } else {
+                    if(!this.footer.mouseOn) { this.footer.hide() }
+                }
         }))
-        this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
-            if (mouseOn) {
-                this.footer.show()
-            } else {
-                if(!this.footer.mouseOn) { this.footer.hide() }
-            }
-        }))
-    }
-
-    private setupHeaderHiding(): void {
-        this.addSubscription(this.header.onMouseEnter((mouseOn: boolean) => {
-            if (!mouseOn && !this.highlight.mouseOn) {
-                this.header.hide()
-            }
-        }))
-        this.addSubscription(this.highlight.onMouseEnter((mouseOn: boolean) => {
-            if (mouseOn) {
-                this.header.show()
-            } else {
-                if(!this.header.mouseOn) { this.header.hide() }
-            }
-        }))
+        }
     }
 
     /*
@@ -208,6 +219,30 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }
     }
     */
+
+    public containsLine(lineNumber: number): boolean {
+        return this.startLine <= lineNumber && this.endLine >= lineNumber
+    }
+
+    public showMenu(): void {
+        this.header?.show()
+        this.footer?.show()
+    }
+
+    public hideMenu(): void {
+        this.editor.core.changeViewZones(accessor => {
+            this.header?.batchHide(accessor)
+            this.footer?.batchHide(accessor)
+        })
+    }
+
+    public toggleMenu(): void {
+        if (this.menuVisible) {
+            this.hideMenu()
+        } else {
+            this.showMenu()
+        }
+    }
 
     public override remove(): void {
         super.remove()

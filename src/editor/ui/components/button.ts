@@ -187,7 +187,6 @@ export class P5JSPreviewButton extends Button {
         this.sizeConstraints = sizeConstraints
 
         this.style.display = "inline-flex"
-        //this.style.flexDirection = "row"
         this.style.overflow = "hidden"
         this.style.maxWidth = `${this.maxWidth}px`
         this.style.maxHeight = `${this.maxHeight}px`

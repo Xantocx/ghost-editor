@@ -60,7 +60,7 @@ export class GhostSnapshotHeader extends GhostSnapshotBanner {
         container.appendChild(versionDiv)
 
         return new SideScrollVersionList(versionDiv, elements, {
-            maxWidth: 350,
+            maxWidth: 200,
             maxHeight: this.computedHeaderHeight - 20,
             padding: 5
         })

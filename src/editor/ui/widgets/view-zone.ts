@@ -1,3 +1,4 @@
+import * as monaco from "monaco-editor"
 import { Editor, ViewZone, Disposable } from "../../utils/types"
 import { DomMouseTracker } from "./mouse-tracker"
 
@@ -64,6 +65,13 @@ export class GhostViewZone extends DomMouseTracker {
             this.editor.changeViewZones(accessor => {
                 if (this.id) { accessor.removeZone(this.id) }
             })
+            this.visible = false
+        }
+    }
+
+    public batchHide(accessor: monaco.editor.IViewZoneChangeAccessor): void {
+        if (this.visible) {
+            if (this.id) { accessor.removeZone(this.id) }
             this.visible = false
         }
     }

@@ -1,3 +1,4 @@
+import * as monaco from "monaco-editor"
 import { IRange, Editor } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshot } from "../snapshot/snapshot"
@@ -165,6 +166,14 @@ export class GhostSnapshotBanner extends MouseTracker {
         if (this.visible) {
             this.overlay.hide()
             this.viewZone.hide()
+            this.content.hide()
+        }
+    }
+
+    public batchHide(accessor: monaco.editor.IViewZoneChangeAccessor): void {
+        if (this.visible) {
+            this.overlay.hide()
+            this.viewZone.batchHide(accessor)
             this.content.hide()
         }
     }

@@ -119,23 +119,6 @@ export class GhostEditor implements ReferenceProvider {
 
         const parent = this
 
-        // https://microsoft.github.io/monaco-editor/playground.html?source=v0.37.1#example-interacting-with-the-editor-adding-an-action-to-an-editor-instance
-        this.keybindings.push(this.core.addAction({
-            id: "ghost-tracking",
-            label: "Track with Ghost",
-            keybindings: [
-                monaco.KeyMod.Alt | monaco.KeyCode.KeyY,
-            ],
-            precondition: undefined, // maybe add condition for selection
-            keybindingContext: undefined,
-            contextMenuGroupId: "z_ghost", // z for last spot in order
-            contextMenuOrder: 1,
-        
-            run: function (core) {
-                parent.highlightSelection()
-            },
-        }));
-
         this.keybindings.push(this.core.addAction({
             id: "p5-preview",
             label: "P5 Preview",
@@ -144,13 +127,57 @@ export class GhostEditor implements ReferenceProvider {
             ],
             precondition: undefined, // maybe add condition for selection
             keybindingContext: undefined,
-            contextMenuGroupId: "z_p5_preview", // z for last spot in order
-            contextMenuOrder: 2,
+            contextMenuGroupId: "y_p5_preview", // z for last spot in order
+            contextMenuOrder: 1,
         
             run: function (core) {
                 parent.preview.update(parent.value)
             },
         }))
+
+        // https://microsoft.github.io/monaco-editor/playground.html?source=v0.37.1#example-interacting-with-the-editor-adding-an-action-to-an-editor-instance
+        this.keybindings.push(this.core.addAction({
+            id: "ghost-tracking",
+            label: "Add/Remove Snapshot",
+            keybindings: [
+                monaco.KeyMod.Alt | monaco.KeyCode.KeyY,
+            ],
+            precondition: "editorHasSelection", // maybe add condition for selection
+            keybindingContext: "editorTextFocus",
+            contextMenuGroupId: "z_ghost", // z for last spot in order
+            contextMenuOrder: 1,
+        
+            run: function (core) {
+                parent.highlightSelection()
+            },
+        }));
+
+
+        /*
+        const hasSnapshotSelectionKey = this.core.createContextKey<boolean>('hasSnapshotSelection', false);
+        this.core.onDidChangeCursorPosition((event) => {
+            const snapshots = this.getSnapshots(event.position.lineNumber)
+            hasSnapshotSelectionKey.set(snapshots.length > 0);
+        });
+
+        this.keybindings.push(this.core.addAction({
+            id: "ghost-menu",
+            label: "Show Ghost Menu",
+            keybindings: [
+                monaco.KeyMod.Alt | monaco.KeyCode.KeyX,
+            ],
+            precondition: 'hasSnapshotSelection', // maybe add condition for selection
+            keybindingContext: undefined,
+            contextMenuGroupId: "z_ghost", // z for last spot in order
+            contextMenuOrder: 2,
+        
+            run: function (core) {
+                const lineNumber = parent.core.getPosition()?.lineNumber
+                const snapshots: GhostSnapshot[] = lineNumber ? parent.getSnapshots(lineNumber) : []
+                snapshots.forEach(snapshot => snapshot.toggleMenu())
+            },
+        }));
+        */
     }
 
     private manualContentChange = false
@@ -163,12 +190,21 @@ export class GhostEditor implements ReferenceProvider {
 
                 // forEach is a bitch for anything but synchronous arrays...
                 const changedSnapshots = new Set(await this.vcs.applyChanges(changeSet))
-                console.log("UPDATING SNAPSHOTS: " + changedSnapshots.size)
-                console.log(changedSnapshots)
                 changedSnapshots.forEach(uuid => {
                     this.getSnapshot(uuid)?.update()
                 })
             }
+        })
+
+        const curserSubscription = this.core.onDidChangeCursorPosition(async event => {
+            const lineNumber = this.core.getPosition()?.lineNumber
+            this.snapshots.forEach(snapshot => {
+                if (lineNumber && snapshot.containsLine(lineNumber)) {
+                    snapshot.showMenu()
+                } else {
+                    snapshot.hideMenu()
+                }
+            })
         })
     }
 
@@ -226,6 +262,10 @@ export class GhostEditor implements ReferenceProvider {
         return this.snapshots.find(snapshot => { return snapshot.uuid === uuid })
     }
 
+    getSnapshots(lineNumber: number): GhostSnapshot[] {
+        return this.snapshots.filter(snapshot => { return snapshot.startLine <= lineNumber && snapshot.endLine >= lineNumber })
+    }
+
     removeSnapshots(): void {
         this.snapshots.forEach(snapshot => snapshot.remove())
     }
@@ -242,7 +282,6 @@ export class GhostEditor implements ReferenceProvider {
 
             if (!overlappingSnapshot){
                 const snapshot = await GhostSnapshot.create(this, selection)
-                console.log(snapshot?.uuid)
                 if (snapshot) { this.snapshots.push(snapshot) }
             } else {
                 console.warn(`You cannot create a snapshot overlapping with ${overlappingSnapshot.snapshot.uuid}}!`)
@@ -259,5 +298,5 @@ const editorElement = document.getElementById('editor')
 if (editorElement) {
     const editor = new GhostEditor(editorElement)
 } else {
-    console.log("FATAL ERROR: No editor element in HTML")
+    console.error("FATAL ERROR: No editor element in HTML")
 }
