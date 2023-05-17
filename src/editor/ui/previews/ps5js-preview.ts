@@ -63,12 +63,21 @@ export class P5JSPreview extends CodePreview {
                 <script src="${P5JSPreview.iframeResizerScript}"></script>
 
                 <script>
+                    // not perfect, but gets the job done
+                    function stopP5() {
+                        noLoop()
+                        p5Canvas = document.getElementsByClassName("p5Canvas")
+                        for (let i = 0; i < p5Canvas.length; i++) { p5Canvas[i].remove() }
+                    }
+
                     function createErrorMessage(text) {
                         const errorMessage = document.createElement("div")
 
                         errorMessage.setAttribute("data-iframe-width", "")
                         errorMessage.innerText = text
 
+                        // the way maxHeight is used should probably be made more explicit
+                        ${this.maxHeight ? 'errorMessage.style.display = "inline-block"' : ""}
                         errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${this.desiredWidth  - 8}px"
                         errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${this.desiredHeight - 8}px"
                         errorMessage.style.padding = "3px 3px"
@@ -85,6 +94,34 @@ export class P5JSPreview extends CodePreview {
                     } else {
                         try {
                             eval(code)
+
+                            const userSetup = window.setup
+                            const userDraw  = window.draw
+
+                            if (userSetup && userDraw) {
+                                window.setup = () => {
+                                    try {
+                                        userSetup.call(this);
+                                    } catch (error) {
+                                        stopP5()
+                                        createErrorMessage("Message: " + error.message${this.desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
+                                    }
+                                }
+
+                                window.draw = () => {
+                                    try {
+                                        userDraw.call(this);
+                                    } catch (error) {
+                                        stopP5()
+                                        createErrorMessage("Message: " + error.message${this.desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
+                                    }
+                                }
+                            } else {
+                                window.setup = undefined
+                                window.draw  = undefined
+                                createErrorMessage("Your code must include a 'setup' and a 'draw' function to be rendered in this P5JS preview.")
+                            }
+
                         } catch (error) {
                             createErrorMessage(error.message)
                         }
