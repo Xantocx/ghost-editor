@@ -1,5 +1,5 @@
-import { Disposable } from "../../utils/types";
-import { uuid } from "../../utils/uuid";
+import { Disposable } from "../../../utils/types";
+import { uuid } from "../../../utils/uuid";
 import { CodePreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
 

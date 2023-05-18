@@ -1,6 +1,6 @@
 import * as monaco from "monaco-editor"
 import { Preview } from "./preview";
-import { Model } from "../../utils/types";
+import { Model } from "../../../utils/types";
 
 export class VCSPreview extends Preview {
 

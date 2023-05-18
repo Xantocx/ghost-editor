@@ -1,6 +1,6 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
 import { Disposable } from "../../utils/types"
-import { P5JSPreview, SizeConstraints } from "../previews/ps5js-preview"
+import { P5JSPreview, SizeConstraints } from "../views/previews/ps5js-preview"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 
 export class Button extends SubscriptionManager {

@@ -1,11 +1,11 @@
-import { GhostSnapshotBanner } from "../widgets/snapshot-banner"
+import { InlineEditorBanner } from "../widgets/inline-editor-banner"
 import { IRange } from "../../utils/types"
 import { Range } from "monaco-editor"
 import { SideScrollVersionList } from "../components/version-list"
 import { Button } from "../components/button"
 import { VCSVersion } from "../../../app/components/data/snapshot"
 
-export class GhostSnapshotHeader extends GhostSnapshotBanner {
+export class GhostSnapshotHeader extends InlineEditorBanner {
 
     private versionList: SideScrollVersionList
 

@@ -1,6 +1,6 @@
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 
-export abstract class Preview extends SubscriptionManager {
+export abstract class View extends SubscriptionManager {
 
     public readonly root: HTMLElement
 
@@ -8,15 +8,9 @@ export abstract class Preview extends SubscriptionManager {
         super()
         this.root = root
     }
-
-    /*
-    public remove(): void {
-        this.root.remove()
-    }
-    */
 }
 
-export abstract class CodePreview extends Preview {
+export abstract class CodeView extends View {
 
     protected code: string | undefined
 

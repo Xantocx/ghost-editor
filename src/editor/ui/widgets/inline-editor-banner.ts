@@ -2,13 +2,13 @@ import * as monaco from "monaco-editor"
 import { IRange, Editor } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshot } from "../snapshot/snapshot"
-import { MouseTracker } from "../widgets/mouse-tracker"
-import { GhostViewZone } from "../widgets/view-zone"
-import { GhostOverlayWidget } from "../widgets/overlay-widget"
-import { GhostContentWidget } from "../widgets/content-widget"
+import { MouseTracker } from "./mouse-tracker"
+import { GhostViewZone } from "./view-zone"
+import { GhostOverlayWidget } from "./overlay-widget"
+import { GhostContentWidget } from "./content-widget"
 import { LineLocator } from "../../utils/line-locator"
 
-export class GhostSnapshotBanner extends MouseTracker {
+export class InlineEditorBanner extends MouseTracker {
 
     protected readonly snapshot: GhostSnapshot
     protected readonly locator: LineLocator

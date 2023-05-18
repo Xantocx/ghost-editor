@@ -1,9 +1,9 @@
-import { GhostSnapshotBanner } from "../widgets/snapshot-banner";
+import { InlineEditorBanner } from "../widgets/inline-editor-banner";
 import { Disposable, IRange } from "../../utils/types";
 import { Range } from "monaco-editor";
 import { Slider } from "../components/slider";
 
-export class GhostSnapshotFooter extends GhostSnapshotBanner {
+export class GhostSnapshotFooter extends InlineEditorBanner {
 
     private slider: Slider
 
