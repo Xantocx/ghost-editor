@@ -218,6 +218,7 @@ export class P5JSPreview extends CodePreview {
         const width  = renderWidth  * scaleFactor
         const height = renderHeight * scaleFactor
 
+        /*
         console.log("CURRENT")
         console.log(iframe.style.width)
         console.log(iframe.style.height)
@@ -225,6 +226,7 @@ export class P5JSPreview extends CodePreview {
         console.log(width)
         console.log(height)
         console.log("---------------------")
+        */
 
         iframe.iFrameResizer.sendMessage({ width: width, height: height })
         iframe.style.width = width
@@ -241,7 +243,7 @@ export class P5JSPreview extends CodePreview {
         return this.addSubscription({
             dispose(): void {
                 const index = parent.onResizeCallbacks.indexOf(callback, 0)
-                if (index > -1) { parent.onResizeCallbacks = parent.onResizeCallbacks.splice(index, 1) }
+                if (index > -1) { parent.onResizeCallbacks.splice(index, 1) }
             }
         })
     }

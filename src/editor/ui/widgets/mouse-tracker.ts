@@ -13,7 +13,7 @@ export abstract class SubscriptionManager {
             dispose() {
                 subscription.dispose()
                 const index = parent.subscriptions.indexOf(subscription, 0)
-                if (index > -1)  { parent.subscriptions = parent.subscriptions.splice(index, 1) }
+                if (index > -1)  { parent.subscriptions.splice(index, 1) }
             }
         }
     }

@@ -49,6 +49,10 @@ export class MockAdapter extends BasicVCSAdapter {
         return snapshot
     }
 
+    public deleteSnapshot(uuid: SnapshotUUID): void {
+        throw new Error("Method not implemented.")
+    }
+
     async getSnapshot(uuid: string): Promise<VCSSnapshotData> {
         return this.snapshots.find(snapshot => {
             return snapshot.uuid === uuid

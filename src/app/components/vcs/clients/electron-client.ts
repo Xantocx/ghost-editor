@@ -32,6 +32,10 @@ export const ElectronVCSClient: VCSClient = {
         return invoke(ElectronVCSServer.createSnapshotChannel, range)
     },
 
+    deleteSnapshot(uuid: SnapshotUUID): void {
+        invoke(ElectronVCSServer.deleteSnapshotChannel, uuid)
+    },
+
     async getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData> {
         return invoke(ElectronVCSServer.getSnapshotChannel, uuid)
     },

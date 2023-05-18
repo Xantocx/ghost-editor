@@ -16,6 +16,7 @@ export interface VCSProvider {
 
     // snapshot interface
     createSnapshot(range: IRange): Promise<VCSSnapshotData | null>
+    deleteSnapshot(uuid: SnapshotUUID): void
     getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData>
     getSnapshots(): Promise<VCSSnapshotData[]>
     updateSnapshot(snapshot: VCSSnapshotData): void
@@ -53,7 +54,11 @@ export abstract class BasicVCSProvider implements VCSProvider {
         throw new Error("Method not implemented.")
     }
 
-    getSnapshot(uuid: string): Promise<VCSSnapshotData> {
+    public deleteSnapshot(uuid: SnapshotUUID): void {
+        throw new Error("Method not implemented.")
+    }
+
+    public getSnapshot(uuid: string): Promise<VCSSnapshotData> {
         throw new Error("Method not implemented.")
     }
 
@@ -151,6 +156,10 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
         return this.adapter.createSnapshot(range)
+    }
+
+    public deleteSnapshot(uuid: SnapshotUUID): void {
+        this.adapter.deleteSnapshot(uuid)
     }
 
     public async getSnapshot(uuid: string): Promise<VCSSnapshotData> {

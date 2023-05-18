@@ -96,7 +96,7 @@ export class Button extends SubscriptionManager {
         return this.addSubscription({
             dispose() {
                 const index = parent.onClickCallbacks.indexOf(callback, 0)
-                if (index > -1) { parent.onClickCallbacks = parent.onClickCallbacks.splice(index, 1) }
+                if (index > -1) { parent.onClickCallbacks.splice(index, 1) }
             }
         })
     }

@@ -5,7 +5,7 @@ import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
 import { VCSSnapshotData, VCSSnapshot } from "../../../app/components/data/snapshot"
-import { SnapshotUUID } from "../../../app/components/vcs/vcs-provider"
+import { SnapshotUUID, VCSClient } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 
 export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
@@ -31,6 +31,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public get model(): Model {
         return this.editor.model
+    }
+
+    public get vcs(): VCSClient {
+        return this.editor.vcs
     }
 
     public get range(): IRange {
@@ -115,27 +119,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true //TODO: fix positioning of banners when using overlays instead of viewzones
         this.toggleMode = toggleMode ? toggleMode : true
 
-        this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
+        this.snapshot = VCSSnapshot.create(this.vcs, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
 
         this.display()
-    }
-
-    public manualUpdate(): void {
-        this.update(true)
-    }
-
-    public async update(manualUpdate?: boolean): Promise<void> {
-        const snapshot = await this.editor.vcs.getSnapshot(this.uuid)
-        
-        this.snapshot = VCSSnapshot.create(this.editor.vcs, snapshot)
-        this.locator.rangeProvider = this.snapshot
-
-        this.header?.update()
-        this.highlight?.update()
-        this.footer?.update()
-
-        if (!manualUpdate) { this.footer?.updateSlider() }
     }
 
     private display(): void {
@@ -185,7 +172,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         // value updating
         this.addSubscription(this.footer.onChange(async value => {
-            const newText = await this.editor.vcs.applySnapshotVersionIndex(this.uuid, value)
+            const newText = await this.vcs.applySnapshotVersionIndex(this.uuid, value)
             this.editor.update(newText)
         }))
 
@@ -224,6 +211,27 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return this.startLine <= lineNumber && this.endLine >= lineNumber
     }
 
+    public overlapsWith(range: IRange): boolean {
+        return this.startLine <= range.endLineNumber && this.endLine >= range.startLineNumber
+    }
+
+    public manualUpdate(): void {
+        this.update(true)
+    }
+
+    public async update(manualUpdate?: boolean): Promise<void> {
+        const snapshot = await this.vcs.getSnapshot(this.uuid)
+        
+        this.snapshot = VCSSnapshot.create(this.vcs, snapshot)
+        this.locator.rangeProvider = this.snapshot
+
+        this.header?.update()
+        this.highlight?.update()
+        this.footer?.update()
+
+        if (!manualUpdate) { this.footer?.updateSlider() }
+    }
+
     public showMenu(): void {
         this.header?.show()
         this.footer?.show()
@@ -249,5 +257,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.header?.remove()
         this.highlight?.remove()
         this.footer?.remove()
+    }
+
+    public delete(): void {
+        this.remove()
+        this.vcs.deleteSnapshot(this.uuid)
     }
 }

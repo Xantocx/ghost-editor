@@ -364,6 +364,12 @@ class TrackedFile extends TrackedBlock {
         return snapshot
     }
 
+    public deleteSnapshot(uuid: SnapshotUUID): void {
+        const snapshot = this.getSnapshot(uuid)
+        snapshot.removeLines()
+        this.snapshots.delete(uuid)
+    }
+
     public addSnapshot(snapshot: Snapshot): void {
         this.snapshots.set(snapshot.uuid, snapshot)
     }
@@ -503,9 +509,9 @@ class TrackedLine {
         this.snapshots.push(snapshot)
     }
 
-    public removeFromSnapshot(snapshot: Snapshot): void {
+    public removeSnapshot(snapshot: Snapshot): void {
         const index = this.snapshots.indexOf(snapshot, 0)
-        if (index > -1) { this.snapshots = this.snapshots.splice(index, 1) }
+        if (index > -1) { this.snapshots.splice(index, 1) }
     }
 }
 
@@ -563,7 +569,7 @@ class TrackedLines {
     public remove(line: TrackedLine): TrackedLines {
         const index = this.indexOf(line, 0)
         if (index > -1) { 
-            return  this.splice(index, 1)
+            return this.splice(index, 1)
         } else {
             return this
         }
@@ -870,9 +876,9 @@ class Snapshot extends TrackedBlock {
         return this.computeUnorderedTimeline().sort((versionA, versionB) => { return versionA.timestamp - versionB.timestamp })
     }
 
-    private removeLines(): void {
+    public removeLines(): void {
         this.lines.forEach(line => {
-            line.removeFromSnapshot(this)
+            line.removeSnapshot(this)
         })
     }
 
@@ -1006,6 +1012,10 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
         return this.file.createSnapshot(range)?.compress()
+    }
+
+    public deleteSnapshot(uuid: string): void {
+        this.file.deleteSnapshot(uuid)
     }
 
     public async getSnapshot(uuid: string): Promise<VCSSnapshotData> {
