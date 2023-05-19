@@ -20,7 +20,7 @@ export class P5JSPreview extends CodePreview {
     private readonly sizeConstraints?: SizeConstraints
     private readonly errorMessageColor: string
 
-    private onResizeCallbacks: {(width: number, height: number): void}[] = []
+    private onResizeCallbacks: {(iframe: HTMLIFrameElement, width: number, height: number, scaleFactor: number): void}[] = []
 
     private get id(): string {
         return `p5js-preview-${this.uuid}`
@@ -51,12 +51,23 @@ export class P5JSPreview extends CodePreview {
                     // setup config object of iFrameResizer
                     window.iFrameResizer = {
                         onMessage: (data) => {
-                            p5Canvas = document.getElementsByClassName("p5Canvas")
+                            const p5Canvas = document.getElementsByClassName("p5Canvas")
                             for (let i = 0; i < p5Canvas.length; i++) {
                                 const canvas = p5Canvas[i]
                                 canvas.style.width  = data.width  + "px"
                                 canvas.style.height = data.height + "px"
                             }
+
+                            // this should handle the size error messages, making sure they are shrinked to the actual width (in case aspect ratio was adjusted for height)
+                            const errorMessage = document.getElementById("error-message")
+                            if (errorMessage) {
+                                errorMessage.style.maxWidth  = (data.width  - 8) + "px"
+                                errorMessage.style.maxHeight = (data.height - 8) + "px"
+                            }
+
+                            // update body size to prevent random overflow that comes up when replacing the canvas with an error message (probably due to internal workings of P5JS)
+                            document.body.style.maxWidth  = (data.width)  + "px"
+                            document.body.style.maxHeight = (data.height) + "px"
                         }
                     }
                 </script>
@@ -66,20 +77,21 @@ export class P5JSPreview extends CodePreview {
                     // not perfect, but gets the job done
                     function stopP5() {
                         noLoop()
-                        p5Canvas = document.getElementsByClassName("p5Canvas")
+                        const p5Canvas = document.getElementsByClassName("p5Canvas")
                         for (let i = 0; i < p5Canvas.length; i++) { p5Canvas[i].remove() }
                     }
 
                     function createErrorMessage(text) {
                         const errorMessage = document.createElement("div")
 
+                        errorMessage.id = "error-message"
                         errorMessage.setAttribute("data-iframe-width", "")
                         errorMessage.innerText = text
 
                         // the way maxHeight is used should probably be made more explicit
                         ${this.maxHeight ? 'errorMessage.style.display = "inline-block"' : ""}
-                        errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${this.desiredWidth  - 8}px"
-                        errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${this.desiredHeight - 8}px"
+                        errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${this.desiredWidth  - 8}px" // -8 for message padding and border
+                        errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${this.desiredHeight - 8}px" // -8 for message padding and border
                         errorMessage.style.padding = "3px 3px"
                         errorMessage.style.color = "${this.errorMessageColor}"
                         errorMessage.style.border = "1px solid ${this.errorMessageColor}"
@@ -131,7 +143,7 @@ export class P5JSPreview extends CodePreview {
                 <script>
                     // workaround to allow the use of taggedElement for width calculation when sizing the iframe
                     window.addEventListener("load", event => {
-                        p5Canvas = document.getElementsByClassName("p5Canvas")
+                        const p5Canvas = document.getElementsByClassName("p5Canvas")
                         for (let i = 0; i < p5Canvas.length; i++) {
                             p5Canvas[i].setAttribute("data-iframe-width", "")
                         }
@@ -186,6 +198,7 @@ export class P5JSPreview extends CodePreview {
         this.style.border = "none"
         this.style.padding = "0 0" //`${this.padding}px ${this.padding}px`
         this.style.margin = "0 0"
+        this.style.textAlign = "center"
 
         let loadHandler: () => void
         loadHandler = () => {
@@ -213,12 +226,21 @@ export class P5JSPreview extends CodePreview {
         return value - 2 * this.padding
     }
 
+    private unpadValue(value: number): number {
+        return value + 2 * this.padding
+    }
+
     private resize(iframe: any, renderWidth: number, renderHeight: number): void {
         const scaleFactor = Math.min(this.desiredWidth / renderWidth, this.desiredHeight / renderHeight)
+
+        // these values are padded, meaning they assume a padding will be added around them
         const width  = renderWidth  * scaleFactor
         const height = renderHeight * scaleFactor
 
-        /*
+        // full size of this preview
+        const unpaddedWidth  = this.unpadValue(width)
+        const unpaddedHeight = this.unpadValue(height)
+
         console.log("CURRENT")
         console.log(iframe.style.width)
         console.log(iframe.style.height)
@@ -226,16 +248,15 @@ export class P5JSPreview extends CodePreview {
         console.log(width)
         console.log(height)
         console.log("---------------------")
-        */
 
         iframe.iFrameResizer.sendMessage({ width: width, height: height })
-        iframe.style.width = width
-        iframe.style.width = height
+        iframe.style.width  = unpaddedWidth
+        iframe.style.height = unpaddedHeight
 
-        this.onResizeCallbacks.forEach(callback => callback(width, height))
+        this.onResizeCallbacks.forEach(callback => callback(iframe, unpaddedWidth, unpaddedHeight, scaleFactor))
     }
 
-    public onResize(callback: (width: number, height: number) => void): Disposable {
+    public onResize(callback: (iframe: HTMLIFrameElement, width: number, height: number, scaleFactor: number) => void): Disposable {
         this.onResizeCallbacks.push(callback)
 
         const parent = this

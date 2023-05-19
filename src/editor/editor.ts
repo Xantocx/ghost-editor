@@ -10,13 +10,18 @@ import { SnapshotUUID, VCSClient } from "../app/components/vcs/vcs-provider"
 import { P5JSPreview } from "./ui/views/previews/ps5js-preview"
 import { Preview } from "./ui/views/previews/preview"
 import { VCSPreview } from "./ui/views/previews/vcs-preview"
+import { MetaView, ViewIdentifier } from "./ui/views/meta-view"
+import { VersionsView } from "./ui/views/versions-view"
+import { VCSVersion } from "../app/components/data/snapshot"
 
 export class GhostEditor implements ReferenceProvider {
 
     public readonly root: HTMLElement
     public readonly core: Editor
 
-    private readonly preview: P5JSPreview
+    public metaView: MetaView
+    public viewIdentifiers: Record<string, ViewIdentifier>
+    private defaultSideView: ViewIdentifier
 
     private keybindings: Disposable[] = []
     private snapshots: GhostSnapshot[] = []
@@ -93,10 +98,6 @@ export class GhostEditor implements ReferenceProvider {
             automaticLayout: true
         });
 
-        const previewContainer = document.getElementById("preview")!
-        this.preview = new P5JSPreview(previewContainer)
-        //this.preview = new VCSPreview(previewContainer, this.model)
-
         this.setup()
     }
 
@@ -104,6 +105,7 @@ export class GhostEditor implements ReferenceProvider {
         this.setupElectronCommunication()
         this.setupContentEvents()
         this.setupShortcuts()
+        this.setupMetaView()
 
         // load empty new file
         this.vcs.loadFile(null, this.eol, this.value)
@@ -175,7 +177,8 @@ export class GhostEditor implements ReferenceProvider {
             contextMenuOrder: 1,
         
             run: function (core) {
-                parent.preview.update(parent.value)
+                //parent.preview.update(parent.value)
+                parent.metaView.update(parent.viewIdentifiers.p5js, parent.value)
             },
         }))
 
@@ -241,6 +244,37 @@ export class GhostEditor implements ReferenceProvider {
         }));
     }
 
+    private setupMetaView(): void {
+        const secondaryViewContainer = document.getElementById("preview")!
+        this.metaView = new MetaView(secondaryViewContainer)
+
+        const vcsPreview = this.metaView.addView("vcs", root => {
+            return new VCSPreview(root, this.model)
+        }, (view: VCSPreview, model: Model) => {
+            view.updateEditor(model)
+        })
+
+        const p5jsPreview = this.metaView.addView("p5js", root => {
+            return new P5JSPreview(root)
+        }, (view: P5JSPreview, code: string) => {
+            view.update(code)
+        })
+
+        const versionsView = this.metaView.addView("versions", root => {
+            return new VersionsView(root)
+        }, (view: VersionsView, versions: VCSVersion[]) => {
+            view.showVersions(versions)
+        })
+
+        this.viewIdentifiers = this.metaView.identifiers
+        this.defaultSideView = this.viewIdentifiers.vcs
+        this.showDefaultSideView()
+    }
+
+    public showDefaultSideView(): void {
+        this.metaView.showView(this.defaultSideView)
+    }
+
     public unloadFile(): void {
         this.removeSnapshots()
         this.vcs.unloadFile()
@@ -262,6 +296,7 @@ export class GhostEditor implements ReferenceProvider {
         this.core.setModel(model)
 
         //this.preview.updateEditor(model)
+        this.metaView.update(this.viewIdentifiers.vcs, model)
 
         this.vcs.loadFile(filePath, this.eol, content)
         const snapshots = await this.vcs.getSnapshots()

@@ -171,7 +171,8 @@ export class P5JSPreviewButton extends Button {
     private readonly preview: P5JSPreview
 
     private readonly sizeConstraints?: SizeConstraints
-    private readonly previewSize: number = 0.8
+    private readonly previewSize: number = 0.75
+    private readonly namePadding = 5
 
     private get maxWidth(): number {
         return this.sizeConstraints?.maxWidth ? this.sizeConstraints?.maxWidth : 350
@@ -202,8 +203,7 @@ export class P5JSPreviewButton extends Button {
         name.style.display = "block"
         name.style.alignSelf = "center"
         name.style.maxWidth = `${100 * (1 - this.previewSize)}%`
-        name.style.height = "100%"
-        name.style.padding = "0 5px"
+        name.style.padding = `${this.namePadding}px ${this.namePadding}px`
         name.style.margin = "0 0"
         name.style.color = "white"
         name.style.textAlign = "center"
@@ -213,18 +213,21 @@ export class P5JSPreviewButton extends Button {
         name.style.fontSize = '14px'
         this.button.appendChild(name)
 
-        const previewDiv = document.createElement("div")
-        previewDiv.style.overflow = "hidden"
-        previewDiv.style.maxWidth = `${100 * this.previewSize}%`
-        previewDiv.style.height = "100%"
-        previewDiv.style.padding = "0 0"
-        previewDiv.style.margin = "0 0"
-        this.button.appendChild(previewDiv)
+        const previewContainer = document.createElement("div")
+        previewContainer.style.display = "flex"
+        previewContainer.style.alignItems = "center"
+        previewContainer.style.overflow = "hidden"
+        previewContainer.style.maxWidth = `${100 * this.previewSize}%`
+        previewContainer.style.height = "100%"
+        previewContainer.style.padding = "0 0"
+        previewContainer.style.margin = "0 0"
+        this.button.appendChild(previewContainer)
 
-        this.preview = new P5JSPreview(previewDiv, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: this.sizeConstraints?.padding }, "white")
-        this.preview.onResize((width, height) => {
-            // give up rest of maximum width for name (always >= 20%)
-            name.style.maxWidth = `${this.maxWidth - width}px`
+        this.preview = new P5JSPreview(previewContainer, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: this.sizeConstraints?.padding }, "white")
+        this.preview.onResize((iframe, width, height, scaleFactor) => {
+            // give up rest of maximum width for name (always >= 25%)
+            console.log(width)
+            name.style.maxWidth = `${this.maxWidth - width - 2 * this.namePadding}px`
         })
     }
 

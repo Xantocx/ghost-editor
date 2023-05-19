@@ -4,9 +4,10 @@ import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
-import { VCSSnapshotData, VCSSnapshot } from "../../../app/components/data/snapshot"
+import { VCSSnapshotData, VCSSnapshot, VCSVersion } from "../../../app/components/data/snapshot"
 import { SnapshotUUID, VCSClient } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
+import { MetaView } from "../views/meta-view"
 
 export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
 
@@ -20,6 +21,9 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     private header: GhostSnapshotHeader
     private highlight: GhostSnapshotHighlight
     private footer: GhostSnapshotFooter
+
+    private readonly metaViewIdentifier = "versions"
+    private versions: VCSVersion[] = []
 
     public get uuid(): SnapshotUUID {
         return this.snapshot.uuid
@@ -35,6 +39,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public get vcs(): VCSClient {
         return this.editor.vcs
+    }
+
+    public get metaView(): MetaView {
+        return this.editor.metaView
     }
 
     public get range(): IRange {
@@ -143,6 +151,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             }
         }))
 
+        this.showVersionsView()
+
         //if (this.toggleMode) { this.hideMenu() }
     }
 
@@ -193,6 +203,24 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }
     }
 
+    private showVersionsView(): void {
+        this.metaView.showView(this.metaViewIdentifier)
+        this.updateVersionsView()
+    }
+
+    private hideVersionsView(): void {
+        this.editor.showDefaultSideView()
+    }
+
+    private updateVersionsView(): void {
+        this.metaView.update(this.metaViewIdentifier, this.versions)
+    }
+
+    public updateVersions(versions: VCSVersion[]): void {
+        this.versions = versions
+        this.updateVersionsView()
+    }
+
     /*
     public protectedRemove(callback?: () => void): void {
         if (this.footerProtected) {
@@ -235,6 +263,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     public showMenu(): void {
         this.header?.show()
         this.footer?.show()
+        this.showVersionsView()
     }
 
     public hideMenu(): void {
@@ -242,6 +271,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             this.header?.batchHide(accessor)
             this.footer?.batchHide(accessor)
         })
+
+        this.hideVersionsView()
     }
 
     public toggleMenu(): void {

@@ -8,6 +8,9 @@ export class VersionsView extends View {
     private readonly versions = new Map<VCSVersion, Button>()
 
     private readonly codeContainer: HTMLDivElement
+
+    private readonly minWidth = 150
+    private readonly minHeight = 100
     
     public get versionsContainerStyle(): CSSStyleDeclaration {
         return this.versionsContainer.style
@@ -29,7 +32,8 @@ export class VersionsView extends View {
         this.versionsContainerStyle.margin = "0 0"
 
         this.versionsContainerStyle.display = "grid"
-        this.versionsContainerStyle.gridTemplateColumns = "repeat(auto-fill, minmax(20px, 1fr))"
+        this.versionsContainerStyle.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
+        this.versionsContainerStyle.gridAutoRows = `minmax(${this.minHeight}px, auto)`
         this.versionsContainerStyle.gap = "10px"
 
         this.root.appendChild(this.versionsContainer)
@@ -48,7 +52,7 @@ export class VersionsView extends View {
     public showVersions(versions: VCSVersion[]): void {
         this.removeVersions()
         versions.forEach(version => {
-            const button = Button.p5jsPreviewButton(this.versionsContainer, version, {}, () => console.log("Clicked."))
+            const button = Button.p5jsPreviewButton(this.versionsContainer, version, { padding: 5 }, () => console.log("Clicked."))
             this.versions.set(version, button)
         })
     }
