@@ -1,7 +1,53 @@
 import { Disposable } from "../../../utils/types";
 import { uuid } from "../../../utils/uuid";
+import { SubscriptionManager } from "../../widgets/mouse-tracker";
 import { CodePreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
+
+class IFrameResizer extends SubscriptionManager {
+
+    public static instance = new IFrameResizer()
+
+    private readonly registrations = new Map<string, () => void>()
+
+    private constructor() {
+        super()
+
+        const onResize = (data: any) => {
+            this.resize(data.iframe)
+        }
+
+        iframeResize({ /*log: true,*/ 
+                        checkOrigin: ["file://"], 
+                        sizeWidth: true, 
+                        widthCalculationMethod: 'taggedElement', 
+                        tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
+                        onResized: onResize
+                     })
+    }
+
+    private resizeId(id: string): (() => void) | undefined {
+        return this.registrations.get(id)
+    }
+
+    private resize(iframe: HTMLIFrameElement): void {
+        const id = iframe.id
+        if (this.registrations.has(id)) {
+            this.resizeId(id)!()
+        }
+    }
+
+    public registerIFrame(id: string, callback: () => void): Disposable {
+        this.registrations.set(id, callback)
+
+        const parent = this
+        return this.addSubscription({
+            dispose(): void {
+                parent.registrations.delete(id)
+            },
+        })
+    }
+}
 
 export interface SizeConstraints {
     maxWidth?: number
