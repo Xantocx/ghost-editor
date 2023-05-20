@@ -52,7 +52,7 @@ export class VersionsView extends View {
     public showVersions(versions: VCSVersion[]): void {
         this.removeVersions()
         versions.forEach(version => {
-            const button = Button.p5jsPreviewButton(this.versionsContainer, version, { padding: 5 }, () => console.log("Clicked."))
+            const button = Button.p5jsPreviewToggleButton(this.versionsContainer, version, { padding: 5 }, () => console.log("Clicked."))
             this.versions.set(version, button)
         })
     }

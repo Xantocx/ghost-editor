@@ -260,6 +260,7 @@ export class P5JSPreview extends CodePreview {
     private resize(iframeWidth: number, iframeHeight: number): void {
         //console.log(`RESIZE ID ${this.id}`)
 
+        // includes padding
         const scaleFactor = Math.min(this.desiredWidth / iframeWidth, this.desiredHeight / iframeHeight)
 
         this.style.transformOrigin = "top left"
@@ -280,6 +281,7 @@ export class P5JSPreview extends CodePreview {
         */
 
         // TODO: SCALE DOWN UNUSED DISPLAY WIDTH!
+        // This has to be done in the callbacks
 
         this.onResizeCallbacks.forEach(callback => callback(displayWidth, displayHeight, scaleFactor))
     }

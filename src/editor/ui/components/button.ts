@@ -50,6 +50,10 @@ export class Button extends SubscriptionManager {
         return new P5JSPreviewButton(root, version, sizeConstraints, onClick)
     }
 
+    public static p5jsPreviewToggleButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onSelect?: (version: VCSVersion, selected: boolean) => void): Button {
+        return new P5JSPreviewToggleButton (root, version, undefined, sizeConstraints, onSelect)
+    }
+
     public static versionPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
         if (version.text.includes("setup") && version.text.includes("draw")) {
             return this.p5jsPreviewButton(root, version, sizeConstraints, onClick)
@@ -61,7 +65,7 @@ export class Button extends SubscriptionManager {
     public readonly root: HTMLElement
     public readonly button: HTMLButtonElement
 
-    private onClickCallbacks: {(button: Button): void}[] = []
+    protected onClickCallbacks: {(button: Button): void}[] = []
 
     public get style(): CSSStyleDeclaration {
         return this.button.style
@@ -171,7 +175,7 @@ export class P5JSPreviewButton extends Button {
     private readonly preview: P5JSPreview
 
     private readonly sizeConstraints?: SizeConstraints
-    private readonly previewSize: number = 0.75
+    private readonly previewSize: number = 0.7
     private readonly namePadding = 5
 
     private get maxWidth(): number {
@@ -232,7 +236,6 @@ export class P5JSPreviewButton extends Button {
 
         this.preview.onResize((width, height, scaleFactor) => {
             // give up rest of maximum width for name (always >= 25%)
-            //console.log(width)
             name.style.maxWidth = `${this.maxWidth - width - 2 * this.namePadding}px`
         })
     }
@@ -240,5 +243,50 @@ export class P5JSPreviewButton extends Button {
     public override remove(): void {
         this.preview.remove()
         super.remove()
+    }
+}
+
+
+export class P5JSPreviewToggleButton extends P5JSPreviewButton {
+
+    private readonly colors?: {selected?: string, default?: string}
+
+    private get selectedColor(): string {
+        return this.colors?.selected ? this.colors.selected : "green"
+    }
+
+    private get defaultColor(): string {
+        return this.colors?.default ? this.colors.default : "gray"
+    }
+
+    private _selected: boolean
+    private get selected(): boolean { return this._selected }
+    private set selected(selected: boolean) { 
+        this._selected = selected
+        this.style.backgroundColor = selected ? this.selectedColor : this.defaultColor
+    }
+
+    constructor(root: HTMLElement, 
+                version: VCSVersion, 
+                colors?: {selected?: string, default?: string}, 
+                sizeConstraints?: SizeConstraints, 
+                onSelect?: (version: VCSVersion, selected: boolean) => void) {
+
+        super(root, version, sizeConstraints)
+        this.colors = colors
+
+        this.button.onclick = () => {
+            this.selected = !this.selected
+            this.onClickCallbacks.forEach(callback => callback(this)) 
+        }
+
+        this.selected = false
+        if (onSelect) { this.onSelect(onSelect) }
+    }
+
+    public onSelect(callback: (version: VCSVersion, selected: boolean) => void): Disposable {
+        return super.onClick(button => {
+            callback(this.version, this.selected)
+        })
     }
 }
