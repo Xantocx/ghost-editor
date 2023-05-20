@@ -61,7 +61,7 @@ export class P5JSPreview extends CodePreview {
     private static iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
 
     private readonly uuid: string = uuid(16)
-    private readonly iframe: HTMLIFrameElement
+    private iframe: HTMLIFrameElement
 
     private readonly sizeConstraints?: SizeConstraints
     private readonly errorMessageColor: string
@@ -209,6 +209,10 @@ export class P5JSPreview extends CodePreview {
         return this.iframe.style
     }
 
+    public get iFrameResizer(): any | undefined {
+        return (this.iframe as any).iFrameResizer
+    }
+
     private get padding(): number {
         return this.sizeConstraints?.padding ? this.sizeConstraints.padding : 0
     }
@@ -249,7 +253,7 @@ export class P5JSPreview extends CodePreview {
         let loadHandler: () => void
         loadHandler = () => {
             this.iframe.removeEventListener("load", loadHandler)
-            this.setup()
+            this.setupResizing()
             if (this.code) { this.render() }
         }
 
@@ -257,15 +261,15 @@ export class P5JSPreview extends CodePreview {
         this.root.appendChild(this.iframe)
     }
 
-    private setup(): void {
-        const onResize  = (data) => { this.resize(data.iframe, data.width, data.height) }
-        const betterIframe = iframeResize({ /*log: true,*/ 
-                                            checkOrigin: ["file://"], 
-                                            sizeWidth: true, 
-                                            widthCalculationMethod: 'taggedElement', 
-                                            tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
-                                            onResized: onResize
-                                          }, `#${this.id}`)[0]
+    private setupResizing(): void {
+        const onResize  = (data: any) => { this.resize(data.iframe, data.width, data.height) }
+        this.iframe = iframeResize({ /*log: true,*/ 
+                                        checkOrigin: ["file://"], 
+                                        sizeWidth: true, 
+                                        widthCalculationMethod: 'taggedElement', 
+                                        tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
+                                        onResized: onResize
+                                   }, `#${this.id}`)[0]
     }
 
     private padValue(value: number): number {
@@ -317,5 +321,10 @@ export class P5JSPreview extends CodePreview {
 
     public override async render(): Promise<void> {
         this.iframe.src = this.htmlUrl
+    }
+
+    public override remove(): void {
+        this.iFrameResizer?.close()
+        super.remove()
     }
 }
