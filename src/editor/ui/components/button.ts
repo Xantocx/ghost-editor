@@ -202,8 +202,7 @@ export class P5JSPreviewButton extends Button {
         name.textContent = version.name
         name.style.display = "block"
         name.style.alignSelf = "center"
-        //name.style.maxWidth = `${100 * (1 - this.previewSize)}%`
-        name.style.flex = "1"
+        name.style.maxWidth = `${(1 - this.previewSize) * this.maxWidth}px`
         name.style.padding = `${this.namePadding}px ${this.namePadding}px`
         name.style.margin = "0 0"
         name.style.color = "white"
@@ -215,20 +214,26 @@ export class P5JSPreviewButton extends Button {
         this.button.appendChild(name)
 
         const previewContainer = document.createElement("div")
-        previewContainer.style.display = "flex"
-        //previewContainer.style.alignItems = "center"
-        //previewContainer.style.overflow = "hidden"
         previewContainer.style.width = `${this.previewSize * this.maxWidth}px`
         previewContainer.style.height = "100%"
         previewContainer.style.padding = "0 0"
         previewContainer.style.margin = "0 0"
         this.button.appendChild(previewContainer)
 
-        this.preview = new P5JSPreview(previewContainer, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: this.sizeConstraints?.padding }, "white")
+        this.preview = new P5JSPreview(previewContainer, 
+                                       version.text, 
+                                       { 
+                                         minWidth: this.sizeConstraints?.minWidth,
+                                         minHeight: this.sizeConstraints?.minHeight, 
+                                         maxHeight: this.maxHeight, 
+                                         padding: this.sizeConstraints?.padding 
+                                       }, 
+                                       "white")
+
         this.preview.onResize((width, height, scaleFactor) => {
             // give up rest of maximum width for name (always >= 25%)
             //console.log(width)
-            //name.style.maxWidth = `${this.maxWidth - width - 2 * this.namePadding}px`
+            name.style.maxWidth = `${this.maxWidth - width - 2 * this.namePadding}px`
         })
     }
 

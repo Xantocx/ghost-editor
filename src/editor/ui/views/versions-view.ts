@@ -9,7 +9,7 @@ export class VersionsView extends View {
 
     private readonly codeContainer: HTMLDivElement
 
-    private readonly minWidth = 150
+    private readonly minWidth = 200
     private readonly minHeight = 100
     
     public get versionsContainerStyle(): CSSStyleDeclaration {

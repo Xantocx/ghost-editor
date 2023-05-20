@@ -5,6 +5,8 @@ import { iframeResize } from "iframe-resizer"
 
 
 export interface SizeConstraints {
+    minWidth?: number
+    minHeight?: number
     maxWidth?: number
     maxHeight?: number
     padding?: number
@@ -16,6 +18,8 @@ export class P5JSPreview extends CodePreview {
     private static iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
 
     private readonly uuid: string = uuid(16)
+
+    private readonly iframeContainer: HTMLDivElement
     private iframe: HTMLIFrameElement
 
     private readonly sizeConstraints?: SizeConstraints
@@ -36,14 +40,6 @@ export class P5JSPreview extends CodePreview {
                 <meta http-equiv="X-UA-Compatible" content="IE=edge">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>p5.js Live Preview</title>
-
-                <style>
-                    body {
-                        padding: ${this.padding}px ${this.padding}px;
-                        margin: 0 0;
-                    }
-                </style>
-
                 <script src="${P5JSPreview.p5jsScript}"></script>
                 <script src="${P5JSPreview.iframeResizerScript}"></script>
             </head>
@@ -167,6 +163,14 @@ export class P5JSPreview extends CodePreview {
         return this.sizeConstraints?.padding ? this.sizeConstraints.padding : 0
     }
 
+    private get minWidth(): number {
+        return this.sizeConstraints?.minWidth ? this.sizeConstraints.minWidth : 50
+    }
+
+    private get minHeight(): number {
+        return this.sizeConstraints?.minHeight ? this.sizeConstraints.minHeight : 50
+    }
+
     private get maxWidth(): number | undefined {
         return this.sizeConstraints?.maxWidth
     }
@@ -176,13 +180,13 @@ export class P5JSPreview extends CodePreview {
     }
 
     private get desiredWidth(): number {
-        const rootWidth = parseFloat(window.getComputedStyle(this.root).width)
-        return this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth
+        const rootWidth = Math.max(parseFloat(window.getComputedStyle(this.root).width), this.minWidth)
+        return this.padValue(this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth)
     }
 
     private get desiredHeight(): number {
-        const rootHeight = parseFloat(window.getComputedStyle(this.root).height)
-        return this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight
+        const rootHeight = Math.max(parseFloat(window.getComputedStyle(this.root).height), this.minHeight)
+        return this.padValue(this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight)
     }
 
     constructor(root: HTMLElement, code?: string, sizeConstraints?: SizeConstraints, errorMessageColor?: string) {
@@ -190,15 +194,32 @@ export class P5JSPreview extends CodePreview {
         this.sizeConstraints = sizeConstraints
         this.errorMessageColor = errorMessageColor ? errorMessageColor : "black"
 
+        this.iframeContainer = document.createElement("div")
+        this.iframeContainer.style.position = "relative"
+        this.iframeContainer.style.width  = "100%"
+        this.iframeContainer.style.height = "100%"
+        this.iframeContainer.style.minWidth = `${this.minWidth}px`
+        this.iframeContainer.style.maxWidth = `${this.maxWidth}px`
+        this.iframeContainer.style.minHeight = `${this.minHeight}px`
+        this.iframeContainer.style.maxHeight = `${this.maxHeight}px`
+        this.iframeContainer.style.overflow = "hidden"
+        this.root.appendChild(this.iframeContainer)
+
         this.iframe = document.createElement("iframe") as HTMLIFrameElement
         this.iframe.id = this.id
+        this.iframe.frameBorder = "0"
 
         // make sure preview is displayed with minimal unused space
-        this.iframe.frameBorder = "0"
-        this.style.border = "none"
-        this.style.padding = "0 0" //`${this.padding}px ${this.padding}px`
+        this.style.position = "absolute"
+        this.style.top = "50%"
+        this.style.left = "50%"
+        this.style.width = "100%"
+        this.style.height = "100%"
+        this.style.transform = "translate(-50%, -50%)"
+
+        this.style.padding = "0 0"
         this.style.margin = "0 0"
-        this.style.textAlign = "center"
+        this.style.border = "none"
 
         let loadHandler: () => void
         loadHandler = () => {
@@ -208,7 +229,15 @@ export class P5JSPreview extends CodePreview {
         }
 
         this.iframe.addEventListener("load", loadHandler)
-        this.root.appendChild(this.iframe)
+        this.iframeContainer.appendChild(this.iframe)
+    }
+
+    private padValue(value: number): number {
+        return value - 2 * this.padding
+    }
+
+    private unpadValue(value: number): number {
+        return value + 2 * this.padding
     }
 
     private setupResizing(): void {
@@ -233,10 +262,14 @@ export class P5JSPreview extends CodePreview {
 
         const scaleFactor = Math.min(this.desiredWidth / iframeWidth, this.desiredHeight / iframeHeight)
 
-        // these values are padded, meaning they assume a padding will be added around them
-        const displayWidth  = iframeWidth  * scaleFactor
-        const displayHeight = iframeHeight * scaleFactor
+        this.style.transformOrigin = "top left"
+        this.style.transform = `scale(${scaleFactor}) translate(-50%, -50%)` // translate is used to center element vertically
 
+        // these values are padded, meaning they assume a padding will be added around them
+        const displayWidth  = this.unpadValue(iframeWidth  * scaleFactor)
+        const displayHeight = this.unpadValue(iframeHeight * scaleFactor)
+
+        /*
         console.log("CURRENT")
         console.log(iframeWidth)
         console.log(iframeHeight)
@@ -244,9 +277,9 @@ export class P5JSPreview extends CodePreview {
         console.log(displayWidth)
         console.log(displayHeight)
         console.log("---------------------")
+        */
 
-        this.style.transformOrigin = "top left"
-        this.style.transform = `scale(${scaleFactor})`
+        // TODO: SCALE DOWN UNUSED DISPLAY WIDTH!
 
         this.onResizeCallbacks.forEach(callback => callback(displayWidth, displayHeight, scaleFactor))
     }
