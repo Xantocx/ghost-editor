@@ -216,17 +216,16 @@ export class P5JSPreviewButton extends Button {
 
         const previewContainer = document.createElement("div")
         previewContainer.style.display = "flex"
-        previewContainer.style.alignItems = "center"
-        previewContainer.style.overflow = "hidden"
-        //previewContainer.style.maxWidth = `${100 * this.previewSize}%`
-        previewContainer.style.flex = "3"
+        //previewContainer.style.alignItems = "center"
+        //previewContainer.style.overflow = "hidden"
+        previewContainer.style.width = `${this.previewSize * this.maxWidth}px`
         previewContainer.style.height = "100%"
         previewContainer.style.padding = "0 0"
         previewContainer.style.margin = "0 0"
         this.button.appendChild(previewContainer)
 
         this.preview = new P5JSPreview(previewContainer, version.text, { maxHeight: this.sizeConstraints?.maxHeight, padding: this.sizeConstraints?.padding }, "white")
-        this.preview.onResize((iframe, width, height, scaleFactor) => {
+        this.preview.onResize((width, height, scaleFactor) => {
             // give up rest of maximum width for name (always >= 25%)
             //console.log(width)
             //name.style.maxWidth = `${this.maxWidth - width - 2 * this.namePadding}px`

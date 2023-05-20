@@ -21,7 +21,7 @@ export class P5JSPreview extends CodePreview {
     private readonly sizeConstraints?: SizeConstraints
     private readonly errorMessageColor: string
 
-    private onResizeCallbacks: {(iframe: HTMLIFrameElement, width: number, height: number, scaleFactor: number): void}[] = []
+    private onResizeCallbacks: {(width: number, height: number, scaleFactor: number): void}[] = []
 
     private get id(): string {
         return `p5js-preview-${this.uuid}`
@@ -45,53 +45,9 @@ export class P5JSPreview extends CodePreview {
                 </style>
 
                 <script src="${P5JSPreview.p5jsScript}"></script>
+                <script src="${P5JSPreview.iframeResizerScript}"></script>
             </head>
             <body>
-
-                <script>
-                    // setup config object of iFrameResizer
-                    window.iFrameResizer = {
-                        onMessage: (data) => {
-
-                            const p5Canvas = document.getElementsByClassName("p5Canvas")
-                            const iframe = window.parentIFrame
-
-                            if (data?.width && data?.height) {
-                                for (let i = 0; i < p5Canvas.length; i++) {
-                                    const canvas = p5Canvas[i]
-                                    canvas.style.width  = data.width  + "px"
-                                    canvas.style.height = data.height + "px"
-                                }
-
-                                // this should handle the size error messages, making sure they are shrinked to the actual width (in case aspect ratio was adjusted for height)
-                                const errorMessage = document.getElementById("error-message")
-                                if (errorMessage) {
-                                    errorMessage.style.maxWidth  = (data.width  - 8) + "px"
-                                    errorMessage.style.maxHeight = (data.height - 8) + "px"
-                                }
-
-                                // update body size to prevent random overflow that comes up when replacing the canvas with an error message (probably due to internal workings of P5JS)
-                                document.body.style.maxWidth  = (data.width)  + "px"
-                                document.body.style.maxHeight = (data.height) + "px"
-                            } else if (iframe) {
-                                let width  = 0
-                                let height = 0
-
-                                for (let i = 0; i < p5Canvas.length; i++) {
-                                    const canvas = p5Canvas[i]
-                                    width  = Math.max(width,  parseFloat(canvas.style.width))
-                                    height = Math.max(height, parseFloat(canvas.style.height))
-                                }
-
-                                iframe.sendMessage({
-                                    width:  width,
-                                    height: height
-                                })
-                            }
-                        }
-                    }
-                </script>
-                <script src="${P5JSPreview.iframeResizerScript}"></script>
 
                 <script>
                     let pauseTimeoutId = undefined
@@ -221,12 +177,12 @@ export class P5JSPreview extends CodePreview {
 
     private get desiredWidth(): number {
         const rootWidth = parseFloat(window.getComputedStyle(this.root).width)
-        return this.padValue(this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth)
+        return this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth
     }
 
     private get desiredHeight(): number {
         const rootHeight = parseFloat(window.getComputedStyle(this.root).height)
-        return this.padValue(this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight)
+        return this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight
     }
 
     constructor(root: HTMLElement, code?: string, sizeConstraints?: SizeConstraints, errorMessageColor?: string) {
@@ -255,78 +211,47 @@ export class P5JSPreview extends CodePreview {
         this.root.appendChild(this.iframe)
     }
 
-    private padValue(value: number): number {
-        return value - 2 * this.padding
-    }
-
-    private unpadValue(value: number): number {
-        return value + 2 * this.padding
-    }
-
     private setupResizing(): void {
-        const onResize  = (data: any) => { this.resize(data.iframe, data.width,         data.height) }
-        const onMessage = (data: any) => { this.resize(data.iframe, data.message.width, data.message.height) }
+        const onResize  = (data: any) => { this.resize(data.width, data.height) }
         this.iframe = iframeResize({ /*log: true,*/ 
                                         checkOrigin: ["file://"], 
                                         sizeWidth: true, 
                                         widthCalculationMethod: "taggedElement",
                                         tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
-                                        onResized: onResize,
-                                        onMessage: onMessage
+                                        onResized: onResize
                                    }, `#${this.id}`)[0]
 
         window.addEventListener("resize", (event) => {
-            if (this.iFrameResizer) {
-                console.log("RESIZE ROOT")
-                this.iFrameResizer!.sendMessage(null)
-            }
+            const width  = parseFloat(this.iframe.style.width)
+            const height = parseFloat(this.iframe.style.height)
+            this.resize(width, height)
         })
     }
 
-    private resize(iframe: any, renderWidth: number, renderHeight: number): void {
+    private resize(iframeWidth: number, iframeHeight: number): void {
         //console.log(`RESIZE ID ${this.id}`)
 
-        const scaleFactor = Math.min(this.desiredWidth / renderWidth, this.desiredHeight / renderHeight)
+        const scaleFactor = Math.min(this.desiredWidth / iframeWidth, this.desiredHeight / iframeHeight)
 
         // these values are padded, meaning they assume a padding will be added around them
-        const width  = renderWidth  * scaleFactor
-        const height = renderHeight * scaleFactor
-
-        // full size of this preview
-        const unpaddedWidth  = this.unpadValue(width)
-        const unpaddedHeight = this.unpadValue(height)
+        const displayWidth  = iframeWidth  * scaleFactor
+        const displayHeight = iframeHeight * scaleFactor
 
         console.log("CURRENT")
-        console.log(renderWidth)
-        console.log(renderHeight)
+        console.log(iframeWidth)
+        console.log(iframeHeight)
         console.log("DESIRED")
-        console.log(width)
-        console.log(height)
+        console.log(displayWidth)
+        console.log(displayHeight)
         console.log("---------------------")
 
-        iframe.iFrameResizer.sendMessage({ width: width, height: height })
-        iframe.style.width  = unpaddedWidth
-        iframe.style.height = unpaddedHeight
+        this.style.transformOrigin = "top left"
+        this.style.transform = `scale(${scaleFactor})`
 
-        this.onResizeCallbacks.forEach(callback => callback(iframe, unpaddedWidth, unpaddedHeight, scaleFactor))
-
-        /*
-        this.cachedWidth  = width
-        this.cachedHeight = height
-        */
+        this.onResizeCallbacks.forEach(callback => callback(displayWidth, displayHeight, scaleFactor))
     }
 
-    /*
-    private cachedWidth?:  number = undefined
-    private cachedHeight?: number = undefined
-    private cachedResize(): void {
-        if (this.iFrameResizer && this.cachedWidth && this.cachedHeight) {
-            this.resize(this.iframe, this.cachedWidth, this.cachedHeight)
-        }
-    }
-    */
-
-    public onResize(callback: (iframe: HTMLIFrameElement, width: number, height: number, scaleFactor: number) => void): Disposable {
+    public onResize(callback: (width: number, height: number, scaleFactor: number) => void): Disposable {
         this.onResizeCallbacks.push(callback)
 
         const parent = this
