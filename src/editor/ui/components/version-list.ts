@@ -1,5 +1,5 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
-import { SizeConstraints } from "../views/previews/ps5js-preview"
+import { SizeConstraints } from "../views/previews/p5js-preview"
 import { Button } from "./button"
 
 class SideScrollVersionListElement {

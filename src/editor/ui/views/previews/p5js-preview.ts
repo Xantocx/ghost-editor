@@ -1,53 +1,8 @@
 import { Disposable } from "../../../utils/types";
 import { uuid } from "../../../utils/uuid";
-import { SubscriptionManager } from "../../widgets/mouse-tracker";
 import { CodePreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
 
-class IFrameResizer extends SubscriptionManager {
-
-    public static instance = new IFrameResizer()
-
-    private readonly registrations = new Map<string, () => void>()
-
-    private constructor() {
-        super()
-
-        const onResize = (data: any) => {
-            this.resize(data.iframe)
-        }
-
-        iframeResize({ /*log: true,*/ 
-                        checkOrigin: ["file://"], 
-                        sizeWidth: true, 
-                        widthCalculationMethod: 'taggedElement', 
-                        tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
-                        onResized: onResize
-                     })
-    }
-
-    private resizeId(id: string): (() => void) | undefined {
-        return this.registrations.get(id)
-    }
-
-    private resize(iframe: HTMLIFrameElement): void {
-        const id = iframe.id
-        if (this.registrations.has(id)) {
-            this.resizeId(id)!()
-        }
-    }
-
-    public registerIFrame(id: string, callback: () => void): Disposable {
-        this.registrations.set(id, callback)
-
-        const parent = this
-        return this.addSubscription({
-            dispose(): void {
-                parent.registrations.delete(id)
-            },
-        })
-    }
-}
 
 export interface SizeConstraints {
     maxWidth?: number
@@ -97,29 +52,64 @@ export class P5JSPreview extends CodePreview {
                     // setup config object of iFrameResizer
                     window.iFrameResizer = {
                         onMessage: (data) => {
+
                             const p5Canvas = document.getElementsByClassName("p5Canvas")
-                            for (let i = 0; i < p5Canvas.length; i++) {
-                                const canvas = p5Canvas[i]
-                                canvas.style.width  = data.width  + "px"
-                                canvas.style.height = data.height + "px"
-                            }
+                            const iframe = window.parentIFrame
 
-                            // this should handle the size error messages, making sure they are shrinked to the actual width (in case aspect ratio was adjusted for height)
-                            const errorMessage = document.getElementById("error-message")
-                            if (errorMessage) {
-                                errorMessage.style.maxWidth  = (data.width  - 8) + "px"
-                                errorMessage.style.maxHeight = (data.height - 8) + "px"
-                            }
+                            if (data?.width && data?.height) {
+                                for (let i = 0; i < p5Canvas.length; i++) {
+                                    const canvas = p5Canvas[i]
+                                    canvas.style.width  = data.width  + "px"
+                                    canvas.style.height = data.height + "px"
+                                }
 
-                            // update body size to prevent random overflow that comes up when replacing the canvas with an error message (probably due to internal workings of P5JS)
-                            document.body.style.maxWidth  = (data.width)  + "px"
-                            document.body.style.maxHeight = (data.height) + "px"
+                                // this should handle the size error messages, making sure they are shrinked to the actual width (in case aspect ratio was adjusted for height)
+                                const errorMessage = document.getElementById("error-message")
+                                if (errorMessage) {
+                                    errorMessage.style.maxWidth  = (data.width  - 8) + "px"
+                                    errorMessage.style.maxHeight = (data.height - 8) + "px"
+                                }
+
+                                // update body size to prevent random overflow that comes up when replacing the canvas with an error message (probably due to internal workings of P5JS)
+                                document.body.style.maxWidth  = (data.width)  + "px"
+                                document.body.style.maxHeight = (data.height) + "px"
+                            } else if (iframe) {
+                                let width  = 0
+                                let height = 0
+
+                                for (let i = 0; i < p5Canvas.length; i++) {
+                                    const canvas = p5Canvas[i]
+                                    width  = Math.max(width,  parseFloat(canvas.style.width))
+                                    height = Math.max(height, parseFloat(canvas.style.height))
+                                }
+
+                                iframe.sendMessage({
+                                    width:  width,
+                                    height: height
+                                })
+                            }
                         }
                     }
                 </script>
                 <script src="${P5JSPreview.iframeResizerScript}"></script>
 
                 <script>
+                    let pauseTimeoutId = undefined
+                    function playP5() {
+                        if (pauseTimeoutId) {
+                            clearTimeout(pauseTimeoutId)
+                            pauseTimeoutId = undefined
+                        }
+
+                        loop()
+                    }
+
+                    function pauseP5(ms) {
+                        pauseTimeoutId = setTimeout(() => {
+                            noLoop()
+                        }, ms)
+                    }
+
                     // not perfect, but gets the job done
                     function stopP5() {
                         noLoop()
@@ -174,6 +164,10 @@ export class P5JSPreview extends CodePreview {
                                         createErrorMessage("Message: " + error.message${this.desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
                                     }
                                 }
+
+                                window.addEventListener("mousedown", (event) => { playP5() })
+                                window.addEventListener("mouseup", (event) => { pauseP5(3000) })
+                                pauseP5(3000)
                             } else {
                                 window.setup = undefined
                                 window.draw  = undefined
@@ -261,17 +255,6 @@ export class P5JSPreview extends CodePreview {
         this.root.appendChild(this.iframe)
     }
 
-    private setupResizing(): void {
-        const onResize  = (data: any) => { this.resize(data.iframe, data.width, data.height) }
-        this.iframe = iframeResize({ /*log: true,*/ 
-                                        checkOrigin: ["file://"], 
-                                        sizeWidth: true, 
-                                        widthCalculationMethod: 'taggedElement', 
-                                        tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
-                                        onResized: onResize
-                                   }, `#${this.id}`)[0]
-    }
-
     private padValue(value: number): number {
         return value - 2 * this.padding
     }
@@ -280,7 +263,29 @@ export class P5JSPreview extends CodePreview {
         return value + 2 * this.padding
     }
 
+    private setupResizing(): void {
+        const onResize  = (data: any) => { this.resize(data.iframe, data.width,         data.height) }
+        const onMessage = (data: any) => { this.resize(data.iframe, data.message.width, data.message.height) }
+        this.iframe = iframeResize({ /*log: true,*/ 
+                                        checkOrigin: ["file://"], 
+                                        sizeWidth: true, 
+                                        widthCalculationMethod: "taggedElement",
+                                        tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
+                                        onResized: onResize,
+                                        onMessage: onMessage
+                                   }, `#${this.id}`)[0]
+
+        window.addEventListener("resize", (event) => {
+            if (this.iFrameResizer) {
+                console.log("RESIZE ROOT")
+                this.iFrameResizer!.sendMessage(null)
+            }
+        })
+    }
+
     private resize(iframe: any, renderWidth: number, renderHeight: number): void {
+        //console.log(`RESIZE ID ${this.id}`)
+
         const scaleFactor = Math.min(this.desiredWidth / renderWidth, this.desiredHeight / renderHeight)
 
         // these values are padded, meaning they assume a padding will be added around them
@@ -292,8 +297,8 @@ export class P5JSPreview extends CodePreview {
         const unpaddedHeight = this.unpadValue(height)
 
         console.log("CURRENT")
-        console.log(iframe.style.width)
-        console.log(iframe.style.height)
+        console.log(renderWidth)
+        console.log(renderHeight)
         console.log("DESIRED")
         console.log(width)
         console.log(height)
@@ -304,7 +309,22 @@ export class P5JSPreview extends CodePreview {
         iframe.style.height = unpaddedHeight
 
         this.onResizeCallbacks.forEach(callback => callback(iframe, unpaddedWidth, unpaddedHeight, scaleFactor))
+
+        /*
+        this.cachedWidth  = width
+        this.cachedHeight = height
+        */
     }
+
+    /*
+    private cachedWidth?:  number = undefined
+    private cachedHeight?: number = undefined
+    private cachedResize(): void {
+        if (this.iFrameResizer && this.cachedWidth && this.cachedHeight) {
+            this.resize(this.iframe, this.cachedWidth, this.cachedHeight)
+        }
+    }
+    */
 
     public onResize(callback: (iframe: HTMLIFrameElement, width: number, height: number, scaleFactor: number) => void): Disposable {
         this.onResizeCallbacks.push(callback)
