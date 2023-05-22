@@ -1,20 +1,9 @@
-/*
-function applyMixins(derivedCtor: any, constructors: any[]) {
-    constructors.forEach((baseCtor) => {
-        Object.getOwnPropertyNames(baseCtor.prototype).forEach((name) => {
-            Object.defineProperty(
-            derivedCtor.prototype,
-            name,
-            Object.getOwnPropertyDescriptor(baseCtor.prototype, name) ||
-                Object.create(null)
-            );
-        });
-    });
-}
-*/
-
-import { VCSSnapshotData } from "./src/app/components/data/snapshot"
+import { BrowserWindow } from "electron"
+import { VCSSnapshotData, VCSVersion } from "./src/app/components/data/snapshot"
 import { IRange } from "./src/app/components/utils/range"
+import { BasicVCSServer, SnapshotUUID } from "./src/app/components/vcs/vcs-provider"
+import { LineChange, MultiLineChange } from "./src/app/components/data/change"
+import * as crypto from "crypto"
 
 type Timestamp = number
 class TimestampProvider {
@@ -43,8 +32,8 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
         this.list = list
     }
 
-    public getPosition():          number { return this.previous ? this.previous.getPosition()  + 1 : 0 }
-    public getPreviousNodeCount(): number { return this.getPosition() }
+    public getIndex():             number { return this.previous ? this.previous.getIndex() + 1 : 0 }
+    public getPreviousNodeCount(): number { return this.getIndex() }
     public getNextNodeCount():     number { return this.next     ? this.next.getNextNodeCount() + 1 : 0 }
 
     public findPrevious(check: (previous: Node) => boolean): Node | null {
@@ -58,13 +47,18 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
         while (next && !check(next)) { next = next.next }
         return next
     }
+
+    public remove(): void {
+        if (this.previous) { this.previous.next = this.next }
+        if (this.next)     { this.next.previous = this.previous }
+    }
 }
 
 abstract class LinkedList<Node extends LinkedListNode<Node>> {
     public first?: Node
     public last?: Node
 
-    public getLength(): number { return this.last.getPosition() + 1 }
+    public getLength(): number { return this.last.getIndex() + 1 }
 
     public contains(node: Node): boolean { 
         return this.find(testedNode => testedNode === node) ? true : false 
@@ -88,6 +82,18 @@ abstract class LinkedList<Node extends LinkedListNode<Node>> {
         while (node && !check(node, index)) {
             node = node.next
             index++
+        }
+
+        return node
+    }
+
+    public findReversed(check: (node: Node, index: number) => boolean): Node {
+        let node  = this.last
+        let index = node.getIndex()
+
+        while (node && !check(node, index)) {
+            node = node.previous
+            index--
         }
 
         return node
@@ -143,6 +149,7 @@ class Line extends LinkedListNode<Line> {
         this.history  = new LineHistory(this, content)
 
         this.knownBlocks = relations?.knownBlocks ? relations.knownBlocks : []
+        this.addBlock(this.block)
 
         if (relations) {
             this.previous = relations.previous
@@ -155,6 +162,8 @@ class Line extends LinkedListNode<Line> {
 
     public getPreviousActiveLine(): Line | null { return this.findPrevious(line => line.isActive) }
     public getNextActiveLine():     Line | null { return this.findNext    (line => line.isActive) }
+
+    public getVersionCount(): number { return this.history.getLength() }
 
     public getLineNumber(): number | null { 
         if (!this.isActive) { return null }
@@ -172,7 +181,7 @@ class Line extends LinkedListNode<Line> {
 
     public update(content: LineContent): LineVersion {
         if (content === this.currentContent)      { return this.history.head }
-        if (this.block.lastModifiedLine === this) { return this.history.updateCurrentVersion(content) }
+        if (this.block.getLastModifiedLine() === this) { return this.history.updateCurrentVersion(content) }
         return this.history.createNewVersion(true, content)
     }
 
@@ -180,13 +189,27 @@ class Line extends LinkedListNode<Line> {
         return this.history.deleteLine()
     }
 
+    public getBlockIds(): BlockId[] {
+        return this.knownBlocks.map(block => block.id)
+    }
+
     public addBlock(block: Block): void {
         if (!this.knownBlocks.includes(block)) { this.knownBlocks.push(block) }
     }
 
-    public removeBlock(block: Block): void {
-        const index = this.knownBlocks.indexOf(block, 0)
-        if (index > -1) { this.knownBlocks.splice(index, 1) }
+    public removeBlock(block: Block, deleting?: boolean): Block[] {
+        if (block !== this.block) {
+            const index = this.knownBlocks.indexOf(block, 0)
+            if (index > -1) { this.knownBlocks.splice(index, 1) }
+            return [block]
+        } else if (deleting) {
+            return this.deleteObject()
+        }
+    }
+
+    public deleteObject(): Block[] {
+        this.remove()
+        return this.knownBlocks
     }
 }
 
@@ -197,13 +220,8 @@ class LineHistory extends LinkedList<LineVersion> {
     private _head: LineVersion
     private headTracking = new Map<Timestamp, LineVersion>()
 
-    public get head(): LineVersion { return this._head }
-    public set head(version: LineVersion) { 
-        this._head = version
-        if (this.head.timestamp < this.lastVersion.timestamp) {
-            this.headTracking.set(this.getTimestamp(), version)
-        }
-    } 
+    public  get head(): LineVersion { return this._head }
+    private set head(version: LineVersion) { this._head = version } 
 
     public get firstVersion(): LineVersion | undefined { return this.first }
     public get lastVersion():  LineVersion | undefined { return this.last }
@@ -218,11 +236,11 @@ class LineHistory extends LinkedList<LineVersion> {
         this.line = line
 
         if (this.line.isOriginal) {
-            this.firstVersion = new LineVersion(this, this.getTimestamp(), true, content)
+            this.firstVersion = new LineVersion(this, this.getNewTimestamp(), true, content)
             this.lastVersion  = this.firstVersion
         } else if (this.line.isInserted) {
-            this.firstVersion = new LineVersion(this, this.getTimestamp(), false, "")
-            this.lastVersion  = new LineVersion(this, this.getTimestamp(), true, content, { previous: this.firstVersion })
+            this.firstVersion = new LineVersion(this, this.getNewTimestamp(), false, "")
+            this.lastVersion  = new LineVersion(this, this.getNewTimestamp(), true, content, { previous: this.firstVersion })
         } else {
             throw new Error(`Cannot create LineHistory for line with type "${this.line.lineType}"!`)
         }
@@ -230,39 +248,65 @@ class LineHistory extends LinkedList<LineVersion> {
         this.head = this.lastVersion
     }
 
-    private getTimestamp(): number { return TimestampProvider.getTimestamp() }
+    private getNewTimestamp():      Timestamp   { return TimestampProvider.getTimestamp() }
+    public  getTrackedTimestamps(): Timestamp[] { return Array.from(this.headTracking.keys()) }
 
     public getVersions(): LineVersion[] { return this.toArray() }
 
-    public getVersion(timestamp: Timestamp): LineVersion {
-        // search forward through history for this line and find biggest timestamp smaller or equal to the searched timestamp
-        let version = this.find(version => {
-            const smallerTimestamp    = version.timestamp <= timestamp
-            const nextTimestampBigger = !version.next || version.next.timestamp > timestamp
-            return smallerTimestamp && nextTimestampBigger
-        })
+    public updateHead(version: LineVersion): void {
+        if (version.isHead) { return }
+        this.head = version
+        this.headTracking.set(this.getNewTimestamp(), version)
+    }
 
-        // search backwards through the keys (aka timestamps) of the tracked timestamps and find the biggest timestamp bigger than the previously found one, but smaller or equal to the searched one
-        const trackedTimestamps = Array.from(this.headTracking.keys())
-        for (let i = trackedTimestamps.length - 1; i >= 0; i--) {
-            const trackedTimestamp = trackedTimestamps[i]
-            if (trackedTimestamp > version.timestamp && trackedTimestamp <= timestamp) {
-                version = this.headTracking.get(trackedTimestamp)
-                break
-            }
-        }
+    /*
+    public getVersion(timestamp: Timestamp): LineVersion {
+
+        console.log("----------------")
+        console.log("Searched Timestamp: " + timestamp)
+
+        const version = this.getVersionDebug(timestamp)
+
+        console.log("Found Timestamp: " + version?.timestamp)
+        console.log("Position: " + version?.line?.getIndex())
+        console.log("Line Content: " + version?.content)
+        console.log("----------------")
 
         return version
+    }
+    */
+
+    public getVersion(timestamp: Timestamp): LineVersion {
+        if (this.line.isInserted && this.firstVersion.timestamp > timestamp) {
+            return this.firstVersion
+        } else {
+            const version = this.findReversed(version => { return version.timestamp <= timestamp })
+
+            // search backwards through the keys (aka timestamps) of the tracked timestamps and find the biggest timestamp bigger than the previously found one, but smaller or equal to the searched one
+            const trackedTimestamps = this.getTrackedTimestamps()
+            for (let i = trackedTimestamps.length - 1; i >= 0; i--) {
+                const trackedTimestamp = trackedTimestamps[i]
+                if (trackedTimestamp > version.timestamp && trackedTimestamp <= timestamp) {
+                    return this.headTracking.get(trackedTimestamp)
+                }
+            }
+    
+            return version
+        }
     }
 
     public loadTimestamp(timestamp: Timestamp): LineVersion {
-        const version = this.getVersion(timestamp)
-        version.apply()
-        return version
+        if (this.head.timestamp < timestamp && this.head.isLatestVersion()) {
+            return this.head
+        } else {
+            const version = this.getVersion(timestamp)
+            version.apply()
+            return version
+        }
     }
 
     public cloneHeadToEnd(): LineVersion {
-        this.lastVersion = this.head.clone(this.getTimestamp(), { previous: this.lastVersion })
+        this.lastVersion = this.head.clone(this.getNewTimestamp(), { previous: this.lastVersion })
         this.head        = this.lastVersion
         return this.head
     }
@@ -270,7 +314,7 @@ class LineHistory extends LinkedList<LineVersion> {
     public createNewVersion(isActive: boolean, content: LineContent): LineVersion {
         if (this.head !== this.lastVersion) { this.cloneHeadToEnd() }
 
-        this.lastVersion = new LineVersion(this, this.getTimestamp(), isActive, content, { previous: this.lastVersion })
+        this.lastVersion = new LineVersion(this, this.getNewTimestamp(), isActive, content, { previous: this.lastVersion })
         this.head        = this.lastVersion
 
         return this.head
@@ -314,7 +358,6 @@ class LineVersion extends LinkedListNode<LineVersion> {
 
     public get isClone(): boolean { return this.origin ? true : false }
 
-
     public constructor(history: LineHistory, timestamp: Timestamp, isActive: boolean, content: LineContent, relations?: LineVersionRelations) {
         super(history)
 
@@ -335,8 +378,14 @@ class LineVersion extends LinkedListNode<LineVersion> {
         }
     }
 
-    public apply():                      void { this.history.head = this }
-    public update(content: LineContent): void { this.content = content }
+    public isLatestVersion(): boolean {
+        const trackedTimestamps = this.history.getTrackedTimestamps()
+        const greatestTrackedTimestamp = trackedTimestamps.length > 0 ? trackedTimestamps[trackedTimestamps.length - 1] : 0
+        return this.isLast && this.timestamp >= greatestTrackedTimestamp
+    }
+
+    public apply():                      void { this.history.updateHead(this) }
+    public update(content: LineContent): void {  this.content = content }
 
     public applyTo(block: Block): void {
         block.forEach(line => {
@@ -361,14 +410,17 @@ interface LineRange {
 
 class Block extends LinkedList<Line> {
 
-    public readonly identifier = BlockProvider.newBlockIdentifier()
+    public readonly id: BlockId
     public isDeleted = false
 
-    public readonly eol: string
+    public readonly eol:     string
     public readonly parent?: Block
-    public readonly children = new Map<BlockIdentifier, Block>()
 
-    public lastModifiedLine: Line | undefined = undefined
+    public readonly children = new Map<BlockId, Block>()
+    public readonly tags     = new Map<TagId, Tag>()
+
+    private enableVersionMerging = false
+    private lastModifiedLine: Line | null = null
 
     public get firstLine(): Line | undefined { return this.first }
     public get lastLine():  Line | undefined { return this.last }
@@ -376,8 +428,9 @@ class Block extends LinkedList<Line> {
     public set firstLine(line: Line | undefined) { this.first = line }
     public set lastLine (line: Line | undefined) { this.last  = line }
 
-    public static create(eol: string, content: string): Block {
-        const block       = new Block(eol)
+    public static create(eol: string, content: string, fileName?: string): Block {
+        const id          = BlockProvider.createBlockIdFrom(fileName)
+        const block       = new Block(eol, {id})
         const lineStrings = content.split(eol)
 
         const lines = lineStrings.map(content => {
@@ -388,9 +441,10 @@ class Block extends LinkedList<Line> {
         return block
     }
 
-    public constructor(eol: string, options?: { parent?: Block, firstLine?: Line, lastLine?: Line }) {
+    public constructor(eol: string, options?: { id?: BlockId, parent?: Block, firstLine?: Line, lastLine?: Line }) {
         super()
 
+        this.id  = options?.id ? options.id : BlockProvider.newBlockId()
         this.eol = eol
 
         this.parent    = options?.parent
@@ -414,14 +468,34 @@ class Block extends LinkedList<Line> {
 
     public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.currentContent) }
     public getCurrentText(): string        { return this.getLineContent().join(this.eol) }
+    public getFullText():    string        { return this.parent ? this.parent.getFullText() : this.getCurrentText() }
     
-    public getVersions():    LineVersion[] { return this.flatMap(line => line.history.getVersions()) }
+    public getVersions(): LineVersion[] { return this.flatMap(line => line.history.getVersions()) }
 
-    public addToLines():      void { this.forEach(line => line.addBlock(this)) }
-    public removeFromLines(): void { this.forEach(line => line.removeBlock(this)) }
+    public addToLines():                        void { this.forEach(line => line.addBlock(this)) }
+    public removeFromLines(deleting?: boolean): void { this.forEach(line => line.removeBlock(this, deleting)) }
 
-    public setupVersionMerging(line: Line): void { this.lastModifiedLine = line }
-    public resetVersionMerging():           void { this.lastModifiedLine = undefined }
+    public getLastModifiedLine(): Line | null { 
+        return this.parent ? this.parent.getLastModifiedLine() : this.lastModifiedLine
+    }
+
+    public setupVersionMerging(line: Line): void { 
+        if (!this.enableVersionMerging) { return }
+
+        if (this.parent) {
+            this.parent.setupVersionMerging(line)
+        } else {
+            this.lastModifiedLine = line
+        }
+    }
+
+    public resetVersionMerging(): void {
+        if (this.parent) {
+            this.parent.resetVersionMerging()
+        } else {
+            this.lastModifiedLine = null
+        }
+    }
 
     public containsLineNumber(lineNumber: number): boolean { 
         return this.getFirstLineNumber() <= lineNumber && lineNumber <= this.getLastLineNumber()
@@ -574,7 +648,7 @@ class Block extends LinkedList<Line> {
     public createChild(range: IRange): Block | null {
 
         const lineRange = { startLine: range.startLineNumber, endLine: range.endLineNumber }
-        const overlappingSnapshot = Array.from(this.children.values()).find(snapshot => snapshot.overlapsWith(lineRange))
+        const overlappingSnapshot = this.getChildren().find(snapshot => snapshot.overlapsWith(lineRange))
 
         if (overlappingSnapshot) { 
             console.warn("Could not create snapshot due to overlap!")
@@ -591,16 +665,20 @@ class Block extends LinkedList<Line> {
     }
 
     public addChild(block: Block): void {
-        this.children.set(block.identifier, block)
+        this.children.set(block.id, block)
     }
 
-    public getChild(identifier: string): Block {
-        if (!this.children.has(identifier)) { throw new Error(`Child Block with Identifier ${identifier} does not exist!`) }
-        return this.children.get(identifier)
+    public getChild(id: string): Block {
+        if (!this.children.has(id)) { throw new Error(`Child Block with ID ${id} does not exist!`) }
+        return this.children.get(id)
+    }
+
+    public getChildren(): Block[] { 
+        return Array.from(this.children.values())
     }
 
     public getChildrenContaining(lineNumber: number): Block[] {
-        return Array.from(this.children.values()).filter(child => child.containsLineNumber(lineNumber))
+        return this.getChildren().filter(child => child.containsLineNumber(lineNumber))
     }
 
     public updateChild(update: VCSSnapshotData): Block {
@@ -609,20 +687,20 @@ class Block extends LinkedList<Line> {
         return child
     }
 
-    public deleteChild(identifier: string): void {
-        this.getChild(identifier).delete()
-        this.children.delete(identifier)
+    public deleteChild(id: string): void {
+        this.getChild(id).delete()
+        this.children.delete(id)
     }
 
     public delete(): Block[] {
 
-        this.removeFromLines()
-        this.parent?.children.delete(this.identifier)
+        this.removeFromLines(true)
+        this.parent?.children.delete(this.id)
 
         this.firstLine = undefined
         this.lastLine  = undefined
 
-        const deletedBlocks = Array.from(this.children.values()).flatMap(child => child.delete())
+        const deletedBlocks = this.getChildren().flatMap(child => child.delete())
         deletedBlocks.push(this)
 
         this.isDeleted = true
@@ -632,7 +710,7 @@ class Block extends LinkedList<Line> {
 
     // ---------------------- SNAPSHOT FUNCTIONALITY ------------------------
 
-    public get heads(): LineVersion[] { return this.map(line => line.currentVersion) }
+    public getHeads(): LineVersion[] { return this.map(line => line.currentVersion) }
 
     public getOriginalLineCount(): number { return this.filter(line => !line.isInserted).length }
     public getUserVersionCount():  number { return this.getUnsortedTimeline().length - this.getOriginalLineCount() + 1 }
@@ -648,8 +726,8 @@ class Block extends LinkedList<Line> {
     }
 
     public getCurrentVersion(): LineVersion {
-        return this.heads.filter(head          => !head.isPreInsertion)
-                         .sort( (headA, headB) => headB.timestamp - headA.timestamp)[0]
+        return this.getHeads().filter(head          => !head.isPreInsertion)
+                              .sort( (headA, headB) => headB.timestamp - headA.timestamp)[0]
     }
 
     public getCurrentVersionIndex(): number {
@@ -680,7 +758,7 @@ class Block extends LinkedList<Line> {
         // case, then just apply the next version, aka the pre-insertion version, to hide it again.
         // The great thing about this method is, that, if the user jumps to the insertion version, it will be handled logically, even if the jump came from non-adjacent versions.
 
-        this.parent?.resetVersionMerging()
+        this.resetVersionMerging()
         const timeline = this.getTimeline()
 
         targetIndex += this.getOriginalLineCount() - 1
@@ -714,7 +792,7 @@ class Block extends LinkedList<Line> {
         this.lastLine  = this.parent.getLine(range._endLine)
         this.addToLines()
 
-        const updatedBlocks = Array.from(this.children.values()).flatMap(child => {
+        const updatedBlocks = this.getChildren().flatMap(child => {
             const childRange = child.compress()
             if (childRange._startLine === currentStartLine || childRange._endLine === currentEndLine) {
 
@@ -738,7 +816,7 @@ class Block extends LinkedList<Line> {
     public compress(): VCSSnapshotData {
         const parent = this
         return {
-            uuid:         parent.identifier,
+            uuid:         parent.id,
             _startLine:   parent.getFirstLineNumber(),
             _endLine:     parent.getLastLineNumber(),
             versionCount: parent.getUserVersionCount(),
@@ -746,43 +824,75 @@ class Block extends LinkedList<Line> {
         }
     }
 
-}
-
-type BlockIdentifier = string
-type TagIdentifier   = string
-
-// basically a fancy URL
-class BlockAddress {
-
-    public readonly parentIdentifier: BlockIdentifier
-    public readonly blockIdentifier:  BlockIdentifier
-    public readonly tagIdentifier:    TagIdentifier
-
-    public constructor(parentIdentifier: BlockIdentifier, blockIdentifier: BlockIdentifier, tagIdentifier: TagIdentifier) {
-        this.parentIdentifier = parentIdentifier
-        this.blockIdentifier  = blockIdentifier
-        this.tagIdentifier    = tagIdentifier
+    public getCompressedChildren(): VCSSnapshotData[] {
+        return this.getChildren().map(child => child.compress())
     }
+
+    // ---------------------- TAG FUNCTIONALITY ------------------------
+
+    private createCurrentTag(): Tag {
+        const heads = new Map<Line, LineVersion>()
+        this.forEach(line => heads.set(line, line.currentVersion))
+        return new Tag(this, heads)
+    }
+
+    public createTag(): VCSVersion {
+
+        const tag = this.createCurrentTag()
+        this.tags.set(tag.id, tag)
+
+        return {
+            uuid:                tag.id,
+            name:                `Version ${this.tags.size}`,
+            text:                this.getFullText(),
+            automaticSuggestion: false
+        }
+    }
+
+    public loadTag(id: TagId): string {
+        const tag = this.tags.get(id)
+        tag.applyTo(this)
+        return this.getFullText()
+    }
+
+    public getTextForVersion(id: TagId): string {
+        const recoveryPoint = this.createCurrentTag()
+        const text          = this.loadTag(id)
+
+        recoveryPoint.applyTo(this)
+
+        return text
+    }
+
 }
+
+type BlockId = string
+type TagId   = string
 
 class BlockProvider {
 
-    private readonly blocks = new Map<BlockIdentifier, Block>()
+    private readonly blocks = new Map<BlockId, Block>()
 
     public constructor(blocks?: Block[]) {
         blocks.forEach(block => { this.loadBlock(block) })
     }
 
-    public static newBlockIdentifier(): BlockIdentifier { return crypto.randomUUID() }
+    public static newBlockId(): BlockId { return crypto.randomUUID() }
+
+    public static createBlockIdFrom(text?: string): BlockId {
+        return text ? text : this.newBlockId()
+    }
 
     public loadBlock(block: Block): void {
-        this.blocks.set(block.identifier, block)
+        this.blocks.set(block.id, block)
         block.children.forEach(child => this.loadBlock(child))
     }
 }
 
 
-class VersionTag {
+class Tag {
+
+    public readonly id: TagId = crypto.randomUUID()
 
     protected readonly block:    Block
     protected readonly versions: Map<Line, LineVersion>
@@ -821,3 +931,163 @@ class VersionTag {
 }
 
 type GhostFile = Block
+
+export class GhostVCSServerV2 extends BasicVCSServer {
+
+    private file: GhostFile | null = null
+    private browserWindow: BrowserWindow | undefined
+
+    constructor(browserWindow?: BrowserWindow) {
+        super()
+        this.browserWindow = browserWindow
+    }
+
+    private updatePreview() {
+        const versionCounts = this.file.getActiveLines().map(line => { return line.getVersionCount() })
+        this.browserWindow?.webContents.send("update-vcs-preview", this.file.getCurrentText(), versionCounts)
+    }
+
+    public loadFile(filePath: string | null, eol: string, content: string | null): void {
+        this.file = Block.create(eol, content, filePath)
+        this.updatePreview()
+    }
+
+    public unloadFile(): void {
+        this.file = null
+    }
+
+    public updatePath(filePath: string): void {
+        console.log("UPDATING FILE PATH IS NOT IMPLEMNETED")
+        //this.file.filePath = filePath
+    }
+
+    public cloneToPath(filePath: string): void {
+        console.log("CLONE TO PATH NOT IMPLEMENTED")
+    }
+
+    public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
+        return this.file.createChild(range)?.compress()
+    }
+
+    public deleteSnapshot(uuid: string): void {
+        this.file.deleteChild(uuid)
+    }
+
+    public async getSnapshot(uuid: string): Promise<VCSSnapshotData> {
+        return this.file.getChild(uuid).compress()
+    }
+
+    public async getSnapshots(): Promise<VCSSnapshotData[]> {
+        return this.file.getCompressedChildren()
+    }
+
+    public updateSnapshot(snapshot: VCSSnapshotData): void {
+        this.file.updateChild(snapshot)
+    }
+
+    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+        this.file.getChild(uuid).applyIndex(versionIndex)
+        this.updatePreview()
+        return this.file.getCurrentText()
+    }
+
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
+        const line = this.file.updateLine(change.lineNumber, change.lineText)
+        this.updatePreview()
+        return line.getBlockIds()
+    }
+
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+
+        this.file.resetVersionMerging()
+
+
+        const startsWithEol = change.insertedText[0] === this.file.eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
+
+        const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > this.file.getLine(change.modifiedRange.startLineNumber).currentContent.length
+
+        const insertedAtEnd   = change.modifiedRange.endColumn > this.file.getLine(change.modifiedRange.endLineNumber).currentContent.length
+
+        const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
+        const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
+
+        const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
+        const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
+
+        const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
+
+
+        const modifiedRange = {
+            startLine: change.modifiedRange.startLineNumber,
+            endLine:   change.modifiedRange.endLineNumber
+        }
+
+        let vcsLines: Line[] = []
+        const modifiedLines = change.lineText.split(this.file.eol)
+
+        if (modifyStartLine) {
+            vcsLines = this.file.getLineRange(modifiedRange)
+        } else {
+            // TODO: pushStartDown case not handled well yet, line tracking is off
+            if (pushStartLineUp) { 
+                modifiedRange.startLine--
+                modifiedRange.endLine--
+            }
+        }
+        
+
+        const parent = this
+        let affectedLines: Line[] = []
+        function deleteLine(line: Line): void {
+            line.delete()
+            affectedLines.push(line)
+        }
+
+        function updateLine(line: Line, newContent: string): void {
+            line.update(newContent)
+            affectedLines.push(line)
+        }
+
+        function insertLine(lineNumber: number, content: string): void {
+            const line = parent.file.insertLine(lineNumber, content)
+            affectedLines.push(line)
+        }
+
+
+
+        for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
+        }
+
+        /*
+        // inverse deletion order
+        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
+        }
+        */
+
+        if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
+
+        for (let i = 1; i < modifiedLines.length; i++) {
+            if (i < vcsLines.length) {
+                const line = vcsLines.at(i)
+                updateLine(line, modifiedLines[i])
+            } else {
+                insertLine(modifiedRange.startLine + i, modifiedLines[i])
+            }
+        }
+
+        this.updatePreview()
+
+        return affectedLines.map(line => line.getBlockIds()).flat()
+    }
+
+    public async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
+        const snapshot = this.file.getChild(uuid)
+        return snapshot.createTag()
+    }
+}

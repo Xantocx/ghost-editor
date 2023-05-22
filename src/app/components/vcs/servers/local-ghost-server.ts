@@ -1,10 +1,10 @@
 import { BrowserWindow } from "electron"
 import { ElectronVCSServer } from "./electron-server"
-import { GhostVCSServer } from "../../../../../vcs-test"
+import { GhostVCSServerV2 } from "../../../../../vcs-v2"
 
-export class LocalGhostVCSServer extends ElectronVCSServer<GhostVCSServer> {
+export class LocalGhostVCSServer extends ElectronVCSServer<GhostVCSServerV2> {
     constructor(browserWindow?: BrowserWindow) {
-        const adapter = new GhostVCSServer(browserWindow)
+        const adapter = new GhostVCSServerV2(browserWindow)
         super(adapter)
     }
 }
