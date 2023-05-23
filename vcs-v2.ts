@@ -250,6 +250,8 @@ class Line extends LinkedListNode<Line>  {
         this.history  = new LineHistory(this, this.versions, setup)
     }
 
+    public getAffectedBlockIds(): BlockId[] { return this.blockLine.getBlockIds() }
+
     public getVersionCount(): number { return this.history.getVersionCount() }
 
     public getPreviousActiveLine(): Line | null { return this.findPrevious(line => line.isActive) }
@@ -577,27 +579,10 @@ class Block extends LinkedList<Line> {
     public addToLines():                        void { this.forEach(line => line.addBlock(this)) }
     public removeFromLines(deleting?: boolean): void { this.forEach(line => line.removeBlock(this, deleting)) }
 
-    public getLastModifiedLine(): Line | null { 
-        return this.parent ? this.parent.getLastModifiedLine() : this.lastModifiedLine
-    }
-
-    public setupVersionMerging(line: Line): void { 
-        if (!this.enableVersionMerging) { return }
-
-        if (this.parent) {
-            this.parent.setupVersionMerging(line)
-        } else {
-            this.lastModifiedLine = line
-        }
-    }
-
-    public resetVersionMerging(): void {
-        if (this.parent) {
-            this.parent.resetVersionMerging()
-        } else {
-            this.lastModifiedLine = null
-        }
-    }
+    // TODO: make sure this is actually working correctly
+    public getLastModifiedLine(): Line | null { return this.lastModifiedLine }
+    public setupVersionMerging(line: Line): void { if (this.enableVersionMerging) { this.lastModifiedLine = line } }
+    public resetVersionMerging(): void { this.lastModifiedLine = null }
 
     public containsLineNumber(lineNumber: number): boolean { 
         return this.getFirstLineNumber() <= lineNumber && lineNumber <= this.getLastLineNumber()
@@ -1096,7 +1081,7 @@ export class GhostVCSServerV2 extends BasicVCSServer {
     public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         const line = this.file.updateLine(change.lineNumber, change.lineText)
         this.updatePreview()
-        return line.blockLine.getBlockIds()
+        return line.getAffectedBlockIds()
     }
 
     public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
@@ -1185,7 +1170,7 @@ export class GhostVCSServerV2 extends BasicVCSServer {
 
         this.updatePreview()
 
-        return affectedLines.map(line => line.blockLine.getBlockIds()).flat()
+        return affectedLines.map(line => line.getAffectedBlockIds()).flat()
     }
 
     public async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
