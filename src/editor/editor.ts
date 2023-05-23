@@ -11,7 +11,7 @@ import { P5JSPreview } from "./ui/views/previews/p5js-preview"
 import { Preview } from "./ui/views/previews/preview"
 import { VCSPreview } from "./ui/views/previews/vcs-preview"
 import { MetaView, ViewIdentifier } from "./ui/views/meta-view"
-import { VersionsView } from "./ui/views/versions-view"
+import { VersionsView } from "./ui/views/version-views/versions-view"
 import { VCSVersion } from "../app/components/data/snapshot"
 
 export class GhostEditor implements ReferenceProvider {
@@ -27,12 +27,19 @@ export class GhostEditor implements ReferenceProvider {
     private snapshots: GhostSnapshot[] = []
 
     private selectedRange:     IRange | undefined = undefined
-    private selectedSnapshots: GhostSnapshot[]    = []
+    public  selectedSnapshots: GhostSnapshot[]    = []
 
     private _activeSnapshot: GhostSnapshot | undefined = undefined
-    private get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
-    private set activeSnapshot(snapshot: GhostSnapshot | undefined) { 
-        this._activeSnapshot = snapshot
+    public  get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
+    public  set activeSnapshot(snapshot: GhostSnapshot | undefined) {
+        if (snapshot === this.activeSnapshot) { 
+            this.activeSnapshot?.updateVersionsView()
+        } else {
+            this._activeSnapshot?.hideVersionsView()
+            this._activeSnapshot = snapshot
+            this._activeSnapshot?.showVersionsView()
+        }
+
         this.updateShortcutPreconditions(true)
     }
 
@@ -158,24 +165,22 @@ export class GhostEditor implements ReferenceProvider {
         })
 
         const curserSubscription = this.core.onDidChangeCursorPosition(async event => {
-            /*
             const lineNumber = this.core.getPosition()?.lineNumber
             this.snapshots.forEach(snapshot => {
                 if (lineNumber && snapshot.containsLine(lineNumber)) {
                     snapshot.showMenu()
-                } else {
+                } else if (!snapshot.menuActive) {
                     snapshot.hideMenu()
                 }
             })
-            */
         })
     }
 
     private setupShortcutPreconditions(): void {
         this.hasActiveSnapshotKey       = this.core.createContextKey<boolean>(this.hasActiveSnapshot, false);
         this.canShowSelectedSnapshotKey = this.core.createContextKey<boolean>(this.canShowSelectedSnapshot, false);
-        this.canCreateSnapshotKey          = this.core.createContextKey<boolean>(this.canCreateSnapshot, false);
-        this.canDeleteSnapshotKey          = this.core.createContextKey<boolean>(this.canDeleteSnapshot, false);
+        this.canCreateSnapshotKey       = this.core.createContextKey<boolean>(this.canCreateSnapshot, false);
+        this.canDeleteSnapshotKey       = this.core.createContextKey<boolean>(this.canDeleteSnapshot, false);
 
         this.core.onDidChangeCursorPosition((event) => { this.updateShortcutPreconditions() });
     }
@@ -252,11 +257,8 @@ export class GhostEditor implements ReferenceProvider {
             contextMenuOrder: 2,
         
             run: function (core) {
-                parent.activeSnapshot?.hideVersionsView()
-                
                 const lineNumber = parent.core.getPosition()!.lineNumber
                 parent.activeSnapshot = parent.getSnapshots(lineNumber)[0] // TODO: How to handle overlap? Even relevant?
-                parent.activeSnapshot.showVersionsView() 
             },
         }));
 
@@ -272,7 +274,6 @@ export class GhostEditor implements ReferenceProvider {
             contextMenuOrder: 2,
         
             run: function (core) {
-                parent.activeSnapshot?.hideVersionsView()
                 parent.activeSnapshot = undefined
             },
         }));
@@ -297,6 +298,7 @@ export class GhostEditor implements ReferenceProvider {
         const versionsView = this.metaView.addView("versions", root => {
             return new VersionsView(root)
         }, (view: VersionsView, versions: VCSVersion[]) => {
+            //view.showCurrentCode(this.value)
             view.showVersions(versions)
         })
 
@@ -309,7 +311,7 @@ export class GhostEditor implements ReferenceProvider {
 
         this.hasActiveSnapshotKey.set(this.activeSnapshot !== undefined)
 
-        const position  = this.getCursorPosition()
+        const position   = this.getCursorPosition()
         const lineNumber = position?.lineNumber
         const snapshots  = lineNumber ? this.getSnapshots(lineNumber) : []
         const snapshot   = snapshots.length > 0 ? snapshots[0] : undefined

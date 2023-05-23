@@ -135,8 +135,12 @@ export class InlineEditorBanner extends MouseTracker {
     }
 
     private updateOverlaySize(height: number): void {
+
+        // dirty hack for now to make sure the slider does not disappear behind the minimap
+        const width = this.viewZoneMode ? Math.min(this.snapshot.editorWidth, this.snapshot.highlightWidth) : this.snapshot.highlightWidth
+
         this.overlayStyle.height = `${height}px`
-        this.overlayStyle.width  = `${this.snapshot.highlightWidth}px`
+        this.overlayStyle.width  = `${width}px`
     }
 
     private updateOverlayDimension(top: number, height: number): void {

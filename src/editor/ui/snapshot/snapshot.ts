@@ -11,6 +11,8 @@ import { MetaView } from "../views/meta-view"
 
 export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
 
+    private readonly color = "ghostHighlightGray"
+
     public readonly editor: GhostEditor
     public snapshot: VCSSnapshot
     private readonly locator: LineLocator
@@ -23,7 +25,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     private footer: GhostSnapshotFooter
 
     private readonly metaViewIdentifier = "versions"
-    private versions: VCSVersion[] = []
+    public  versions: VCSVersion[] = []
 
     public get uuid(): SnapshotUUID {
         return this.snapshot.uuid
@@ -70,7 +72,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public get editorWidth(): number {
-        return this.layoutInfo.minimap.minimapLeft - this.layoutInfo.contentLeft
+        return this.layoutInfo.minimap.minimapLeft - this.layoutInfo.contentLeft - 2 // -2 for style reasons
     }
 
     public get longestLineWidth(): number {
@@ -109,6 +111,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return this.header?.visible || this.footer?.visible
     }
 
+    public get menuActive(): boolean {
+        return this.header?.mouseOn || this.footer?.mouseOn
+    }
+
     public get versionsViewVisible(): boolean {
         return this.metaView.currentViewIdentifier === this.metaViewIdentifier
     }
@@ -138,11 +144,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     private display(): void {
-
-        const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
-
         //this.setupHeader()
-        this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
+        this.highlight = new GhostSnapshotHighlight(this, this.locator, this.color)
         this.setupFooter()
 
         this.addSubscription(this.highlight.onDidChange((event) => {
@@ -154,9 +157,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
                 this.footer?.update()
             }
         }))
-
-        if (this.toggleMode) { this.hideMenu() }
-        else                 { this.showVersionsView() }
     }
 
     private setupHeader(): void {
@@ -190,7 +190,13 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }))
 
         // footer hiding
-        if (!this.toggleMode) {
+        if (this.toggleMode) {
+            this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
+                if (!mouseOn && !this.highlight?.mouseOn && !this.editor.selectedSnapshots.includes(this)) {
+                    this.footer.hide()
+                }
+            }))
+        } else {
             this.addSubscription(this.footer.onMouseEnter((mouseOn: boolean) => {
                 if (!mouseOn && !this.highlight?.mouseOn) {
                     this.footer.hide()
@@ -202,7 +208,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
                 } else {
                     if(!this.footer.mouseOn) { this.footer.hide() }
                 }
-        }))
+            }))
         }
     }
 
@@ -223,7 +229,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }
     }
 
-    private updateVersionsView(): void {
+    public updateVersionsView(): void {
         this.metaView.update(this.metaViewIdentifier, this.versions)
     }
 

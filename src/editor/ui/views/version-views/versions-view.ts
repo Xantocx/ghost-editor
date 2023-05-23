@@ -1,6 +1,6 @@
-import { View } from "./view"
-import { VCSVersion } from "../../../app/components/data/snapshot"
-import { Button } from "../components/button"
+import { View } from "../view"
+import { VCSVersion } from "../../../../app/components/data/snapshot"
+import { Button } from "../../components/button"
 
 export class VersionsView extends View {
 
@@ -12,13 +12,8 @@ export class VersionsView extends View {
     private readonly minWidth = 200
     private readonly minHeight = 100
     
-    public get versionsContainerStyle(): CSSStyleDeclaration {
-        return this.versionsContainer.style
-    }
-
-    public get codeContainerStyle(): CSSStyleDeclaration {
-        return this.codeContainer.style
-    }
+    public get versionsStyle():        CSSStyleDeclaration { return this.versionsContainer.style }
+    public get codeStyle():            CSSStyleDeclaration { return this.codeContainer.style }
 
     public constructor(root: HTMLElement, versions?: VCSVersion[]) {
         super(root)
@@ -26,24 +21,24 @@ export class VersionsView extends View {
         // create and style container for versions
         this.versionsContainer = document.createElement("div")
 
-        this.versionsContainerStyle.width = "100%"
-        this.versionsContainerStyle.maxHeight = "25%"
-        this.versionsContainerStyle.padding = "0 0"
-        this.versionsContainerStyle.margin = "0 0"
+        this.versionsStyle.width = "100%"
+        this.versionsStyle.maxHeight = "15%"
+        this.versionsStyle.padding = "0 0"
+        this.versionsStyle.margin = "0 0"
 
-        this.versionsContainerStyle.display = "grid"
-        this.versionsContainerStyle.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
-        this.versionsContainerStyle.gridAutoRows = `minmax(${this.minHeight}px, auto)`
-        this.versionsContainerStyle.gap = "10px"
+        this.versionsStyle.display = "grid"
+        this.versionsStyle.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
+        this.versionsStyle.gridAutoRows = `minmax(${this.minHeight}px, auto)`
+        this.versionsStyle.gap = "10px"
 
         this.root.appendChild(this.versionsContainer)
 
         // create and style container for editors
         this.codeContainer = document.createElement("div")
-        this.codeContainerStyle.width = "100%"
-        this.codeContainerStyle.maxHeight = "75%"
-        this.codeContainerStyle.padding = "0 0"
-        this.codeContainerStyle.margin = "0 0"
+        this.codeStyle.width = "100%"
+        this.codeStyle.maxHeight = "75%"
+        this.codeStyle.padding = "0 0"
+        this.codeStyle.margin = "0 0"
         this.root.appendChild(this.codeContainer)
 
         if (versions) { this.showVersions(versions) }

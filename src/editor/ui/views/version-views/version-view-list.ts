@@ -1,5 +1,5 @@
-import { VCSVersion } from "../../../app/components/data/snapshot";
-import { View } from "./view";
+import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { View } from "../view";
 
 export class VersionView extends View {
 

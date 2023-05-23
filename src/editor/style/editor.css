@@ -23,3 +23,7 @@
 .ghostHighlightBlue {
     background: rgba(50, 50, 255, 0.2);
 }
+
+.ghostHighlightGray {
+    background: rgba(180, 200, 180, 0.1);
+}

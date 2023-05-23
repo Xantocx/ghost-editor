@@ -53,7 +53,6 @@ export class Slider extends SubscriptionManager {
     }
 
     public update(min: number, max: number, defaultValue: number): void {
-        console.log("SLIDER UPDATE")
         this.slider.min   = `${min}`;
         this.slider.max   = `${max}`;
         this.slider.value = `${defaultValue}`;
