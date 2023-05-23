@@ -125,38 +125,36 @@ abstract class LinkedList<Node extends LinkedListNode<Node>> {
 
 enum LineType { Original, Inserted }
 type LineContent = string
-interface LineRelations {
-    previous?:    Line | undefined
-    next?:        Line | undefined
+interface BlockLineRelations {
+    previous?:    BlockLine | undefined
+    next?:        BlockLine | undefined
     knownBlocks?: Block[]
 }
 
-class Line extends LinkedListNode<Line> {
+class BlockLine extends LinkedListNode<BlockLine> {
 
-    public readonly block:    Block
-    public readonly lineType: LineType
-    public readonly versions: VersionHistory<LineVersion>
-    public readonly history:  LineHistory
+    public readonly originBlock: Block
+    public readonly lineType:    LineType
+    public readonly versions:    VersionHistory<LineVersion>
 
-    public readonly knownBlocks: Block[]
+    public readonly lines = new Map<Block, Line>()
 
-    public get isOriginal(): boolean { return this.lineType === LineType.Original }
-    public get isInserted(): boolean { return this.lineType === LineType.Inserted }
+    public get isOriginal(): boolean  { return this.lineType === LineType.Original }
+    public get isInserted(): boolean  { return this.lineType === LineType.Inserted }
 
-    public get isActive():       boolean     { return this.history.isActive }
-    public get currentVersion(): LineVersion { return this.history.head }
-    public get currentContent(): LineContent { return this.currentVersion.content }
+    public get originLine(): Line { return this.getLine(this.originBlock) }
 
-    public constructor(block: Block, lineType: LineType, content: LineContent, relations?: LineRelations) {
-        super(block)
+    public constructor(originBlock: Block, lineType: LineType, content: LineContent, relations?: BlockLineRelations) {
+        super(originBlock)
 
-        this.block    = block
-        this.lineType = lineType
-        this.versions = new VersionHistory<LineVersion>()
-        this.history  = new LineHistory(this, this.versions, { content })
+        this.originBlock = originBlock
+        this.lineType    = lineType
+        this.versions    = new VersionHistory<LineVersion>()
 
-        this.knownBlocks = relations?.knownBlocks ? relations.knownBlocks : []
-        this.addBlock(this.block)
+        const originLine = new Line(this, originBlock, { content })
+        this.lines.set(originBlock, originLine)
+
+        relations?.knownBlocks?.forEach(block => this.addBlock(block))
 
         if (relations) {
             this.previous = relations.previous
@@ -165,6 +163,80 @@ class Line extends LinkedListNode<Line> {
             if (this.previous) { this.previous.next = this }
             if (this.next)     { this.next.previous = this }
         }
+    }
+
+    public getLineNumber(block: Block): number | undefined { return this.getLine(block)?.getLineNumber() }
+
+    public has(block: Block):     boolean          { return this.lines.has(block) }
+    public getLine(block: Block): Line | undefined { return this.lines.get(block) }
+
+    public getBlocks():   Block[]   { return Array.from(this.lines.keys()) }
+    public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
+
+    public getVersions(): LineVersion[] { return this.versions.getVersions() }
+
+    public addBlock(block: Block, head?: LineVersion): void {
+        if (!this.lines.has(block)) {
+            head = head ? head : this.originLine.currentVersion
+            const line = new Line(this, block, { head })
+            this.lines.set(block, line)
+        } else if (this.getLine(block).currentVersion !== head) {
+            throw new Error("This Block already exists for this line. It seems like your attempted to set the head to another version, but this is not the intended use of this function.")
+        }
+    }
+
+    public removeBlock(block: Block, deleting?: boolean): Block[] {
+        if (block == this.originBlock) {
+            return this.delete()
+        } else if (deleting) {
+            return this.lines.delete(block) ? [block] : []
+        }
+    }
+
+    public delete(): Block[] {
+        this.remove()
+        return this.getBlocks()
+    }
+}
+
+class Line extends LinkedListNode<Line>  {
+
+    public readonly blockLine:  BlockLine
+    public readonly block:      Block
+    public readonly history:    LineHistory
+
+    public get versions(): VersionHistory<LineVersion> { return this.blockLine.versions }
+
+    public get lineType():   LineType { return this.blockLine.lineType }
+    public get isOriginal(): boolean  { return this.blockLine.isOriginal }
+    public get isInserted(): boolean  { return this.blockLine.isInserted }
+
+    public get previous(): Line | undefined { return this.blockLine.previous?.getLine(this.block) }
+    public get next(): Line | undefined     { return this.blockLine.next?.getLine(this.block) }
+
+    public get isActive():       boolean     { return this.history.isActive }
+    public get currentVersion(): LineVersion { return this.history.head }
+    public get currentContent(): LineContent { return this.currentVersion.content }
+
+    public constructor(blockLine: BlockLine, block: Block, setup?: { content?: LineContent, head?: LineVersion }) {
+        super()
+        this.blockLine = blockLine
+        this.block    = block
+        this.history  = new LineHistory(this, this.versions, setup)
+    }
+
+    public findPrevious(check: (line: Line) => boolean): Line | undefined { 
+        return this.blockLine.findPrevious(blockLine => {
+            const line = blockLine.getLine(this.block)
+            return line ? check(line) : false
+        })?.getLine(this.block) 
+    }
+
+    public findNext(check: (line: Line) => boolean): Line | undefined { 
+        return this.blockLine.findNext(blockLine => {
+            const line = blockLine.getLine(this.block)
+            return line ? check(line) : false
+        })?.getLine(this.block) 
     }
 
     public getPreviousActiveLine(): Line | null { return this.findPrevious(line => line.isActive) }
@@ -194,29 +266,6 @@ class Line extends LinkedListNode<Line> {
 
     public delete(): LineVersion {
         return this.history.deleteLine()
-    }
-
-    public getBlockIds(): BlockId[] {
-        return this.knownBlocks.map(block => block.id)
-    }
-
-    public addBlock(block: Block): void {
-        if (!this.knownBlocks.includes(block)) { this.knownBlocks.push(block) }
-    }
-
-    public removeBlock(block: Block, deleting?: boolean): Block[] {
-        if (block !== this.block) {
-            const index = this.knownBlocks.indexOf(block, 0)
-            if (index > -1) { this.knownBlocks.splice(index, 1) }
-            return [block]
-        } else if (deleting) {
-            return this.deleteObject()
-        }
-    }
-
-    public deleteObject(): Block[] {
-        this.remove()
-        return this.knownBlocks
     }
 }
 
@@ -428,7 +477,7 @@ class LineVersion extends LinkedListNode<LineVersion> {
     public update(content: LineContent): void {  this.content = content }
 
     public applyTo(block: Block): void {
-        block.forEach(line => {
+        block.forEachLine(line => {
             if (line === this.line) {
                 this.apply()
             } else {
@@ -448,7 +497,12 @@ interface LineRange {
     endLine: number
 }
 
-class Block extends LinkedList<Line> {
+
+abstract class BlockLineList extends LinkedList<BlockLine> {
+
+}
+
+class Block extends BlockLineList {
 
     public readonly id: BlockId
     public isDeleted = false
@@ -462,11 +516,8 @@ class Block extends LinkedList<Line> {
     private enableVersionMerging = false
     private lastModifiedLine: Line | null = null
 
-    public get firstLine(): Line | undefined { return this.first }
-    public get lastLine():  Line | undefined { return this.last }
-
-    public set firstLine(line: Line | undefined) { this.first = line }
-    public set lastLine (line: Line | undefined) { this.last  = line }
+    public get firstLine(): Line | undefined { return this.first.getLine(this) }
+    public get lastLine():  Line | undefined { return this.last.getLine(this) }
 
     public static create(eol: string, content: string, fileName?: string): Block {
         const id          = BlockProvider.createBlockIdFrom(fileName)
@@ -474,25 +525,28 @@ class Block extends LinkedList<Line> {
         const lineStrings = content.split(eol)
 
         const lines = lineStrings.map(content => {
-            return new Line(block, LineType.Original, content)
+            return new BlockLine(block, LineType.Original, content)
         })
 
         block.setLines(lines)
         return block
     }
 
-    public constructor(eol: string, options?: { id?: BlockId, parent?: Block, firstLine?: Line, lastLine?: Line }) {
+    public constructor(eol: string, options?: { id?: BlockId, parent?: Block, firstLine?: BlockLine, lastLine?: BlockLine }) {
         super()
 
         this.id  = options?.id ? options.id : BlockProvider.newBlockId()
         this.eol = eol
 
         this.parent    = options?.parent
-        this.firstLine = options?.firstLine
-        this.lastLine  = options?.lastLine
+        this.first = options?.firstLine
+        this.last  = options?.lastLine
 
         this.addToLines()
     }
+
+    public getFirstActiveBlockLine(): BlockLine | null { return this.getFirstActiveLine().blockLine }
+    public getLastActiveBlockLine():  BlockLine | null { return this.getLastActiveLine().blockLine }
 
     public getFirstActiveLine(): Line | null { return this.firstLine.isActive ? this.firstLine : this.firstLine.getNextActiveLine() }
     public getLastActiveLine():  Line | null { return this.lastLine.isActive  ? this.lastLine  : this.lastLine.getPreviousActiveLine() }
@@ -503,14 +557,14 @@ class Block extends LinkedList<Line> {
     public getLineCount():       number        { return this.getLength() }
     public getActiveLineCount(): number | null { return this.getLastLineNumber() }
 
-    public getLines():       Line[] { return this.toArray() }
-    public getActiveLines(): Line[] { return this.filter(line => line.isActive) }
+    public getLines():       Line[] { return this.map(blockLine => blockLine.getLine(this)) }
+    public getActiveLines(): Line[] { return this.getLines().filter(line => line.isActive) }
 
     public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.currentContent) }
     public getCurrentText(): string        { return this.getLineContent().join(this.eol) }
     public getFullText():    string        { return this.parent ? this.parent.getFullText() : this.getCurrentText() }
     
-    public getVersions(): LineVersion[] { return this.flatMap(line => line.history.getVersions()) }
+    public getVersions(): LineVersion[] { return this.flatMap(line => line.getVersions()) }
 
     public addToLines():                        void { this.forEach(line => line.addBlock(this)) }
     public removeFromLines(deleting?: boolean): void { this.forEach(line => line.removeBlock(this, deleting)) }
@@ -551,13 +605,47 @@ class Block extends LinkedList<Line> {
         return this.getFirstLineNumber() <= range.endLine && this.getLastLineNumber() >= range.startLine
     }
 
-    public getLine(lineNumber: number): Line {
+    public containsLine(line: Line): boolean {
+        return this.contains(line.blockLine)
+    }
+
+    public forEachLine(callback: (line: Line, index: number) => void): void {
+        this.forEach((blockLine, index) => {
+            const line = blockLine.getLine(this)
+            if (line) { callback(line, index) }
+        })
+    }
+
+    public findLine(check: (line: Line) => boolean): Line | undefined {
+        return this.find(blockLine => {
+            const line = blockLine.getLine(this)
+            return line && check(line)
+        }).getLine(this)
+    }
+
+    public mapLines<Mapped>(mapper: (line: Line, index: number, lines: Line[]) => Mapped): Mapped[] {
+        const lines = this.getLines()
+        return this.map((blockLine, index) => {
+            const line = blockLine.getLine(this)
+            return line ? mapper(line, index, lines) : undefined
+        }).filter(line => line !== undefined)
+    }
+
+    public filterLines(check: (line: Line) => boolean): Line[] {
+        return this.getLines().filter(check)
+    }
+
+    public getBlockLine(lineNumber: number): BlockLine {
         if (!this.containsLineNumber(lineNumber)) { throw new Error(`Cannot read line for invalid line number ${lineNumber}!`) }
 
-        const line = this.find(line => line.getLineNumber() === lineNumber)
+        const line = this.find(blockLine => blockLine.getLine(this)?.getLineNumber() === lineNumber)
         if (!line) { throw new Error(`Could not find line for valid line number ${lineNumber}!`) }
 
         return line
+    }
+
+    public getLine(lineNumber: number): Line {
+        return this.getBlockLine(lineNumber).getLine(this)
     }
 
     public getLineRange(range: LineRange): Line[] {
@@ -577,19 +665,18 @@ class Block extends LinkedList<Line> {
         return lines
     }
 
-    public setLines(lines: Line[]): void {
+    public setLines(lines: BlockLine[]): void {
         const lineCount = lines.length
 
-        let previous: Line | undefined = undefined
-        lines.forEach((current: Line, index: number) => {
+        let previous: BlockLine | undefined = undefined
+        lines.forEach((current, index) => {
             current.previous = previous
             if (index + 1 < lineCount) { current.next = lines[index + 1] }
             previous = current
-            current.addBlock(this)
         })
 
-        this.firstLine = lineCount > 0 ? lines[0]             : undefined
-        this.lastLine  = lineCount > 0 ? lines[lineCount - 1] : undefined
+        this.first = lineCount > 0 ? lines[0]             : undefined
+        this.last  = lineCount > 0 ? lines[lineCount - 1] : undefined
     }
 
     public insertLine(lineNumber: number, content: LineContent): Line {
@@ -603,33 +690,33 @@ class Block extends LinkedList<Line> {
         const expandedChildren = this.getChildrenContaining(Math.min(adjustedLineNumber - 1, lastLineNumber))
         const affectedChildren = Array.from(new Set(includedChildren.concat(expandedChildren)))
 
-        let createdLine: Line
+        let createdLine: BlockLine
 
         if (adjustedLineNumber === 1) {
-            const firstActive = this.getFirstActiveLine()
-            createdLine = new Line(this, LineType.Inserted, content, { 
+            const firstActive = this.getFirstActiveBlockLine()
+            createdLine = new BlockLine(this, LineType.Inserted, content, { 
                 previous:    firstActive.previous,
                 next:        firstActive,
                 knownBlocks: affectedChildren
             })
 
             if (!createdLine.previous) { 
-                this.firstLine = createdLine
+                this.first = createdLine
             }
         } else if (adjustedLineNumber === newLastLine) {
-            const lastActive  = this.getLastActiveLine()
-            createdLine = new Line(this, LineType.Inserted, content, { 
+            const lastActive  = this.getLastActiveBlockLine()
+            createdLine = new BlockLine(this, LineType.Inserted, content, { 
                 previous:    lastActive,
                 next:        lastActive.next,
                 knownBlocks: affectedChildren
             })
 
             if (!createdLine.next) { 
-                this.lastLine = createdLine
+                this.last = createdLine
             }
         } else {
-            const currentLine = this.getLine(adjustedLineNumber)
-            createdLine  = new Line(this, LineType.Inserted, content, { 
+            const currentLine = this.getBlockLine(adjustedLineNumber)
+            createdLine  = new BlockLine(this, LineType.Inserted, content, { 
                 previous:    currentLine.previous, 
                 next:        currentLine,
                 knownBlocks: affectedChildren
@@ -638,14 +725,14 @@ class Block extends LinkedList<Line> {
 
         expandedChildren.forEach(child => {
             const snapshotData = child.compress()
-            const lineNumber   = createdLine.getLineNumber()
+            const lineNumber   = createdLine.getLineNumber(this)
             if (snapshotData._endLine < lineNumber) {
                 snapshotData._endLine = lineNumber
                 child.updateInParent(snapshotData)
             }
         })
 
-        return createdLine
+        return createdLine.getLine(this)
     }
 
     public insertLines(lineNumber: number, content: LineContent[]): Line[] {
@@ -695,8 +782,8 @@ class Block extends LinkedList<Line> {
             return null
         }
 
-        const firstLine = this.getLine(range.startLineNumber)
-        const lastLine  = this.getLine(range.endLineNumber)
+        const firstLine = this.getBlockLine(range.startLineNumber)
+        const lastLine  = this.getBlockLine(range.endLineNumber)
         const child     = new Block(this.eol, { parent: this, firstLine, lastLine })
 
         this.addChild(child)
@@ -737,8 +824,8 @@ class Block extends LinkedList<Line> {
         this.removeFromLines(true)
         this.parent?.children.delete(this.id)
 
-        this.firstLine = undefined
-        this.lastLine  = undefined
+        this.first = undefined
+        this.last  = undefined
 
         const deletedBlocks = this.getChildren().flatMap(child => child.delete())
         deletedBlocks.push(this)
@@ -750,7 +837,7 @@ class Block extends LinkedList<Line> {
 
     // ---------------------- SNAPSHOT FUNCTIONALITY ------------------------
 
-    public getHeads(): LineVersion[] { return this.map(line => line.currentVersion) }
+    public getHeads(): LineVersion[] { return this.mapLines(line => line.currentVersion) }
 
     public getOriginalLineCount(): number { return this.filter(line => !line.isInserted).length }
     public getUserVersionCount():  number { return this.getUnsortedTimeline().length - this.getOriginalLineCount() + 1 }
@@ -828,8 +915,8 @@ class Block extends LinkedList<Line> {
         const currentEndLine   = this.getLastLineNumber()
 
         this.removeFromLines()
-        this.firstLine = this.parent.getLine(range._startLine)
-        this.lastLine  = this.parent.getLine(range._endLine)
+        this.first = this.parent.getBlockLine(range._startLine)
+        this.last  = this.parent.getBlockLine(range._endLine)
         this.addToLines()
 
         const updatedBlocks = this.getChildren().flatMap(child => {
@@ -872,7 +959,7 @@ class Block extends LinkedList<Line> {
 
     private createCurrentTag(): Tag {
         const heads = new Map<Line, LineVersion>()
-        this.forEach(line => heads.set(line, line.currentVersion))
+        this.forEachLine(line => heads.set(line, line.currentVersion))
         return new Tag(this, heads)
     }
 
@@ -959,10 +1046,10 @@ class Tag {
     }
 
     public applyTo(block: Block): void {
-        block.forEach((line: Line) => {
+        block.forEachLine(line => {
             if (this.has(line)) {
                 this.get(line).apply()
-            } else if (this.block?.contains(line)) {
+            } else if (this.block?.containsLine(line)) {
                 if (line.isInserted) { line.history.firstVersion.apply() }
                 else                 { throw new Error("This tag does not allow for valid manipulation of this line. Potentially it was not defined correctly.") }
             }
@@ -1034,7 +1121,7 @@ export class GhostVCSServerV2 extends BasicVCSServer {
     public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
         const line = this.file.updateLine(change.lineNumber, change.lineText)
         this.updatePreview()
-        return line.getBlockIds()
+        return line.blockLine.getBlockIds()
     }
 
     public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
@@ -1123,7 +1210,7 @@ export class GhostVCSServerV2 extends BasicVCSServer {
 
         this.updatePreview()
 
-        return affectedLines.map(line => line.getBlockIds()).flat()
+        return affectedLines.map(line => line.blockLine.getBlockIds()).flat()
     }
 
     public async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
