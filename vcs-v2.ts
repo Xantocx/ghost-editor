@@ -55,10 +55,15 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
 }
 
 abstract class LinkedList<Node extends LinkedListNode<Node>> {
+
     public first?: Node
     public last?: Node
 
-    public getLength(): number { return this.last.getIndex() + 1 }
+    public get hasFirst():      boolean { return this.first ? true : false }
+    public get hasLast():       boolean { return this.last  ? true : false }
+    public get isInitialized(): boolean { return this.hasFirst && this.hasLast }
+
+    public getLength(): number  { return this.last.getIndex() + 1 }
 
     public contains(node: Node): boolean { 
         return this.find(testedNode => testedNode === node) ? true : false 
@@ -130,6 +135,7 @@ class Line extends LinkedListNode<Line> {
 
     public readonly block:    Block
     public readonly lineType: LineType
+    public readonly versions: VersionHistory<LineVersion>
     public readonly history:  LineHistory
 
     public readonly knownBlocks: Block[]
@@ -146,7 +152,8 @@ class Line extends LinkedListNode<Line> {
 
         this.block    = block
         this.lineType = lineType
-        this.history  = new LineHistory(this, content)
+        this.versions = new VersionHistory<LineVersion>()
+        this.history  = new LineHistory(this, this.versions, { content })
 
         this.knownBlocks = relations?.knownBlocks ? relations.knownBlocks : []
         this.addBlock(this.block)
@@ -163,7 +170,7 @@ class Line extends LinkedListNode<Line> {
     public getPreviousActiveLine(): Line | null { return this.findPrevious(line => line.isActive) }
     public getNextActiveLine():     Line | null { return this.findNext    (line => line.isActive) }
 
-    public getVersionCount(): number { return this.history.getLength() }
+    public getVersionCount(): number { return this.history.getVersionCount() }
 
     public getLineNumber(): number | null { 
         if (!this.isActive) { return null }
@@ -213,9 +220,23 @@ class Line extends LinkedListNode<Line> {
     }
 }
 
-class LineHistory extends LinkedList<LineVersion> {
+
+class VersionHistory<Version extends LinkedListNode<Version>> extends LinkedList<Version> {
+
+    public get firstVersion(): Version | undefined { return this.first }
+    public get lastVersion():  Version | undefined { return this.last }
+
+    public set firstVersion(line: Version) { this.first = line }
+    public set lastVersion (line: Version) { this.last  = line }  
+    
+    public getVersions(): Version[] { return this.toArray() }
+}
+
+
+class LineHistory {
 
     public readonly line: Line
+    public readonly versions: VersionHistory<LineVersion>
 
     private _head: LineVersion
     private headTracking = new Map<Timestamp, LineVersion>()
@@ -223,17 +244,35 @@ class LineHistory extends LinkedList<LineVersion> {
     public  get head(): LineVersion { return this._head }
     private set head(version: LineVersion) { this._head = version } 
 
-    public get firstVersion(): LineVersion | undefined { return this.first }
-    public get lastVersion():  LineVersion | undefined { return this.last }
+    public get firstVersion(): LineVersion | undefined { return this.versions.firstVersion }
+    public get lastVersion():  LineVersion | undefined { return this.versions.lastVersion }
 
-    public set firstVersion(line: LineVersion) { this.first = line }
-    public set lastVersion (line: LineVersion) { this.last  = line }
+    public set firstVersion(line: LineVersion) { this.versions.firstVersion = line }
+    public set lastVersion (line: LineVersion) { this.versions.lastVersion  = line }
 
     public get isActive(): boolean  { return this.head.isActive }
 
-    public constructor(line: Line, content: LineContent) {
-        super()
+    public constructor(line: Line, versions: VersionHistory<LineVersion>, setup?: { content?: LineContent, head?: LineVersion }) {
         this.line = line
+        this.versions = versions
+
+        const content = setup?.content
+        const head    = setup?.head
+
+        // empty strings count as "false"
+        if      (content !== undefined && head)        { console.warn("You attempt to initialize this version history and set its head which is incompatiple in a single operation. Head will be ignored.") }
+        else if (head && !this.versions.isInitialized) { throw new Error("Cannot set head for an uninitialized version history! Please initialize history first.") }
+
+        if      (content !== undefined) { this.setupContent(content) }
+        else if (head)                  { this.updateHead(head) }
+        else if (this.lastVersion)      { this.updateHead(this.lastVersion) }
+        else                            { throw new Error("Cannot set head as no acceptable version is available!") }
+
+        this.head = this.lastVersion
+    }
+
+    private setupContent(content: LineContent): void {
+        if (this.versions.isInitialized) { throw new Error("This line is already setup with initial content! This process cannot be preformed multiple times.") }
 
         if (this.line.isOriginal) {
             this.firstVersion = new LineVersion(this, this.getNewTimestamp(), true, content)
@@ -251,7 +290,8 @@ class LineHistory extends LinkedList<LineVersion> {
     private getNewTimestamp():      Timestamp   { return TimestampProvider.getTimestamp() }
     public  getTrackedTimestamps(): Timestamp[] { return Array.from(this.headTracking.keys()) }
 
-    public getVersions(): LineVersion[] { return this.toArray() }
+    public getVersions():     LineVersion[] { return this.versions.getVersions() }
+    public getVersionCount(): number        { return this.versions.getLength() }
 
     public updateHead(version: LineVersion): void {
         if (version.isHead) { return }
@@ -280,7 +320,7 @@ class LineHistory extends LinkedList<LineVersion> {
         if (this.line.isInserted && this.firstVersion.timestamp > timestamp) {
             return this.firstVersion
         } else {
-            const version = this.findReversed(version => { return version.timestamp <= timestamp })
+            const version = this.versions.findReversed(version => { return version.timestamp <= timestamp })
 
             // search backwards through the keys (aka timestamps) of the tracked timestamps and find the biggest timestamp bigger than the previously found one, but smaller or equal to the searched one
             const trackedTimestamps = this.getTrackedTimestamps()
@@ -359,7 +399,7 @@ class LineVersion extends LinkedListNode<LineVersion> {
     public get isClone(): boolean { return this.origin ? true : false }
 
     public constructor(history: LineHistory, timestamp: Timestamp, isActive: boolean, content: LineContent, relations?: LineVersionRelations) {
-        super(history)
+        super(history.versions)
 
         this.history = history
         
