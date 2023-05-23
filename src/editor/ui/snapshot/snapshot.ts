@@ -213,6 +213,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public showVersionManager(): void {
+        this.updateVersionManager()
         this.metaView.showView(this.metaViewIdentifier)
         this.updateVersionManager()
     }

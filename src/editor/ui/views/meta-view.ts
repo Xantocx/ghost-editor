@@ -11,16 +11,14 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
 
     private isVisible: boolean = false
 
-    public get containerStyle(): CSSStyleDeclaration {
-        return this.container.style
-    }
-
     public constructor(root: HTMLElement, builder?: (root: HTMLElement) => WrappedView, updateCallback?: (view: WrappedView, args: UpdateArguments) => void, show?: boolean) {
         super(root)
         
         this.container = document.createElement("div")
-        this.containerStyle.width  = "100%"
-        this.containerStyle.height = "100%"
+        this.container.style.width   = "100%"
+        this.container.style.height  = "100%"
+        this.container.style.padding = "0 0"
+        this.container.style.margin  = "0 0"
 
         if (builder) { this.wrap(builder, updateCallback) }
         if (show) { this.show() }

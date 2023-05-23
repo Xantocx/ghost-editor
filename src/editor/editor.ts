@@ -297,8 +297,7 @@ export class GhostEditor implements ReferenceProvider {
         const versionManager = this.metaView.addView("versionManager", root => {
             return new VersionManagerView(root)
         }, (view: VersionManagerView, versions: VCSVersion[]) => {
-            //view.showCurrentCode(this.value)
-            view.showVersions(versions)
+            view.applyDiff(versions)
         })
 
         this.viewIdentifiers = this.metaView.identifiers
@@ -342,6 +341,7 @@ export class GhostEditor implements ReferenceProvider {
     }
 
     public unloadFile(): void {
+        this.selectedRange = undefined
         this.removeSnapshots()
         this.vcs.unloadFile()
     }
@@ -417,11 +417,15 @@ export class GhostEditor implements ReferenceProvider {
 
     public deleteSnapshot(uuid: SnapshotUUID): GhostSnapshot | undefined {
         const snapshot = this.getSnapshot(uuid)
-        snapshot?.delete()
 
         if (snapshot) {
+            snapshot.delete()
+            
             const index = this.snapshots.indexOf(snapshot, 0)
             if (index > -1) { this.snapshots.splice(index, 1) }
+
+            if (this.activeSnapshot === snapshot) { this.activeSnapshot = undefined }
+            else                                  { this.updateShortcutPreconditions() }
         }
 
         return snapshot
@@ -442,6 +446,8 @@ export class GhostEditor implements ReferenceProvider {
     public removeSnapshots(): void {
         this.snapshots.forEach(snapshot => snapshot.remove())
         this.snapshots = []
+        this.activeSnapshot = undefined
+        this.selectedSnapshots = []
     }
 }
 
