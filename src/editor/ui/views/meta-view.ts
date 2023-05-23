@@ -72,7 +72,7 @@ export class MetaView extends View {
     public identifiers: Record<string, string> = {}
 
     private readonly views = new Map<ViewIdentifier, AnyWrappedView>()
-    private currentViewIdentifier?: ViewIdentifier
+    public currentViewIdentifier?: ViewIdentifier
 
     private get currentWrappedView(): AnyWrappedView | undefined {
         return this.currentViewIdentifier ? this.getWrappedView(this.currentViewIdentifier) : undefined

@@ -26,6 +26,26 @@ export class GhostEditor implements ReferenceProvider {
     private keybindings: Disposable[] = []
     private snapshots: GhostSnapshot[] = []
 
+    private selectedRange:     IRange | undefined = undefined
+    private selectedSnapshots: GhostSnapshot[]    = []
+
+    private _activeSnapshot: GhostSnapshot | undefined = undefined
+    private get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
+    private set activeSnapshot(snapshot: GhostSnapshot | undefined) { 
+        this._activeSnapshot = snapshot
+        this.updateShortcutPreconditions(true)
+    }
+
+    private hasActiveSnapshot = "hasActiveSnapshot"
+    private canShowSelectedSnapshot = "canShowSelectedSnapshot"
+    private canCreateSnapshot = "canCreateSnapshot"
+    private canDeleteSnapshot = "canDeleteSnapshot"
+
+    private hasActiveSnapshotKey: monaco.editor.IContextKey<boolean>
+    private canShowSelectedSnapshotKey: monaco.editor.IContextKey<boolean>
+    private canCreateSnapshotKey: monaco.editor.IContextKey<boolean>
+    private canDeleteSnapshotKey: monaco.editor.IContextKey<boolean>
+
     public get model(): Model {
         let model = this.core.getModel()
 
@@ -137,8 +157,8 @@ export class GhostEditor implements ReferenceProvider {
             }
         })
 
-        /*
         const curserSubscription = this.core.onDidChangeCursorPosition(async event => {
+            /*
             const lineNumber = this.core.getPosition()?.lineNumber
             this.snapshots.forEach(snapshot => {
                 if (lineNumber && snapshot.containsLine(lineNumber)) {
@@ -147,22 +167,24 @@ export class GhostEditor implements ReferenceProvider {
                     snapshot.hideMenu()
                 }
             })
+            */
         })
-        */
+    }
+
+    private setupShortcutPreconditions(): void {
+        this.hasActiveSnapshotKey       = this.core.createContextKey<boolean>(this.hasActiveSnapshot, false);
+        this.canShowSelectedSnapshotKey = this.core.createContextKey<boolean>(this.canShowSelectedSnapshot, false);
+        this.canCreateSnapshotKey          = this.core.createContextKey<boolean>(this.canCreateSnapshot, false);
+        this.canDeleteSnapshotKey          = this.core.createContextKey<boolean>(this.canDeleteSnapshot, false);
+
+        this.core.onDidChangeCursorPosition((event) => { this.updateShortcutPreconditions() });
     }
 
     private setupShortcuts(): void {
 
+        this.setupShortcutPreconditions()
+
         const parent = this
-
-        // precondition keys
-        const hasSnapshotSelection = "hasSnapshotSelection"
-        const hasSnapshotSelectionKey = this.core.createContextKey<boolean>(hasSnapshotSelection, false);
-        this.core.onDidChangeCursorPosition((event) => {
-            const snapshots = this.getSnapshots(event.position.lineNumber)
-            hasSnapshotSelectionKey.set(snapshots.length > 0);
-        });
-
 
         // keybindings
         this.keybindings.push(this.core.addAction({
@@ -184,62 +206,74 @@ export class GhostEditor implements ReferenceProvider {
 
         // https://microsoft.github.io/monaco-editor/playground.html?source=v0.37.1#example-interacting-with-the-editor-adding-an-action-to-an-editor-instance
         this.keybindings.push(this.core.addAction({
-            id: "ghost-tracking",
-            label: "Add/Remove Snapshot",
+            id: "ghost-create-snapshot",
+            label: "Create Snapshot",
             keybindings: [
                 monaco.KeyMod.Alt | monaco.KeyCode.KeyY,
             ],
-            precondition: undefined, // maybe add condition for selection
+            precondition: this.canCreateSnapshot, // maybe add condition for selection
             keybindingContext: "editorTextFocus",
             contextMenuGroupId: "z_ghost", // z for last spot in order
             contextMenuOrder: 1,
         
             run: function (core) {
-
-                const selection = parent.getSelection()
-                const position = parent.getCursorPosition()
-
-                let range: IRange | undefined = undefined
-                let snapshots: GhostSnapshot[] | undefined = undefined
-
-                if (selection) {
-                    range = selection
-                    snapshots = parent.getOverlappingSnapshots(selection)
-                } else if (position) {
-                    const lineNumber = position.lineNumber
-                    range = new monaco.Range(lineNumber, 1, lineNumber, Number.MAX_SAFE_INTEGER)
-                    snapshots = parent.getSnapshots(lineNumber)
-                }
-
-                if (snapshots) {
-                    if (snapshots.length === 0 && range) {
-                        parent.createSnapshot(range)
-                    } else if (snapshots.length === 1) {
-                        parent.deleteSnapshot(snapshots[0].uuid)
-                    } else {
-                        console.warn("Cannot handle multiple overlapping snapshots for creation or deletion right now!")
-                    }
-                } else {
-                    console.warn("Could not extract correct selection of cursor position to create or delete snapshot!")
-                }
+                parent.canCreateSnapshotKey.set(false)
+                parent.createSnapshot(parent.selectedRange!)
+                    .then(() => parent.updateShortcutPreconditions())
             },
         }));
 
         this.keybindings.push(this.core.addAction({
-            id: "ghost-menu",
-            label: "Show Ghost Menu",
+            id: "ghost-remove-snapshot",
+            label: "Remove Snapshot",
+            keybindings: [
+                monaco.KeyMod.Alt | monaco.KeyCode.KeyY,
+            ],
+            precondition: this.canDeleteSnapshot, // maybe add condition for selection
+            keybindingContext: "editorTextFocus",
+            contextMenuGroupId: "z_ghost", // z for last spot in order
+            contextMenuOrder: 1,
+        
+            run: function (core) {
+                parent.deleteSnapshot(parent.selectedSnapshots[0].uuid)
+                parent.updateShortcutPreconditions()
+            },
+        }));
+
+        this.keybindings.push(this.core.addAction({
+            id: "ghost-show-versions",
+            label: "Show Versions",
             keybindings: [
                 monaco.KeyMod.Alt | monaco.KeyCode.KeyX,
             ],
-            precondition: hasSnapshotSelection, // maybe add condition for selection
-            keybindingContext: undefined,
+            precondition: this.canShowSelectedSnapshot,
+            keybindingContext: "editorTextFocus",
             contextMenuGroupId: "z_ghost", // z for last spot in order
             contextMenuOrder: 2,
         
             run: function (core) {
-                const lineNumber = parent.core.getPosition()?.lineNumber
-                const snapshots: GhostSnapshot[] = lineNumber ? parent.getSnapshots(lineNumber) : []
-                snapshots.forEach(snapshot => snapshot.toggleMenu())
+                parent.activeSnapshot?.hideVersionsView()
+                
+                const lineNumber = parent.core.getPosition()!.lineNumber
+                parent.activeSnapshot = parent.getSnapshots(lineNumber)[0] // TODO: How to handle overlap? Even relevant?
+                parent.activeSnapshot.showVersionsView() 
+            },
+        }));
+
+        this.keybindings.push(this.core.addAction({
+            id: "ghost-hide-versions",
+            label: "Hide Versions",
+            keybindings: [
+                monaco.KeyMod.Alt | monaco.KeyCode.KeyX,
+            ],
+            precondition: this.hasActiveSnapshot + " && !" + this.canShowSelectedSnapshot, // maybe add condition for selection
+            keybindingContext: "editorTextFocus",
+            contextMenuGroupId: "z_ghost", // z for last spot in order
+            contextMenuOrder: 2,
+        
+            run: function (core) {
+                parent.activeSnapshot?.hideVersionsView()
+                parent.activeSnapshot = undefined
             },
         }));
     }
@@ -269,6 +303,37 @@ export class GhostEditor implements ReferenceProvider {
         this.viewIdentifiers = this.metaView.identifiers
         this.defaultSideView = this.viewIdentifiers.vcs
         this.showDefaultSideView()
+    }
+
+    private updateShortcutPreconditions(skipSelectionUpdate?: boolean): void {
+
+        this.hasActiveSnapshotKey.set(this.activeSnapshot !== undefined)
+
+        const position  = this.getCursorPosition()
+        const lineNumber = position?.lineNumber
+        const snapshots  = lineNumber ? this.getSnapshots(lineNumber) : []
+        const snapshot   = snapshots.length > 0 ? snapshots[0] : undefined
+        const canShowSelectedSnapshot = snapshot && snapshot !== this.activeSnapshot
+        this.canShowSelectedSnapshotKey.set(canShowSelectedSnapshot ? canShowSelectedSnapshot : false);
+
+        if (!skipSelectionUpdate) {
+            const selection = this.getSelection()
+
+            if (selection) {
+                this.selectedRange = selection
+                this.selectedSnapshots = this.getOverlappingSnapshots(selection)
+            } else if (position) {
+                const lineNumber       = position.lineNumber
+                this.selectedRange     = new monaco.Range(lineNumber, 1, lineNumber, Number.MAX_SAFE_INTEGER)
+                this.selectedSnapshots = this.getSnapshots(lineNumber)
+            } else {
+                this.selectedRange     = undefined
+                this.selectedSnapshots = []
+            }
+
+            this.canCreateSnapshotKey.set(this.selectedSnapshots.length === 0 && this.selectedRange !== undefined)
+            this.canDeleteSnapshotKey.set(this.selectedSnapshots.length > 0)
+        }
     }
 
     public showDefaultSideView(): void {

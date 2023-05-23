@@ -106,7 +106,11 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public get menuVisible(): boolean {
-        return this.header.visible
+        return this.header?.visible || this.footer?.visible
+    }
+
+    public get versionsViewVisible(): boolean {
+        return this.metaView.currentViewIdentifier === this.metaViewIdentifier
     }
 
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
@@ -125,7 +129,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         this.editor = editor
         this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true //TODO: fix positioning of banners when using overlays instead of viewzones
-        this.toggleMode = toggleMode ? toggleMode : true
+        this.toggleMode    = toggleMode    ? toggleMode    : true
 
         this.snapshot = VCSSnapshot.create(this.vcs, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
@@ -137,7 +141,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         const color = this.range.startLineNumber < 30 ? "ghostHighlightRed" : "ghostHighlightGreen"
 
-        this.setupHeader()
+        //this.setupHeader()
         this.highlight = new GhostSnapshotHighlight(this, this.locator, color)
         this.setupFooter()
 
@@ -145,15 +149,14 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             const newRange = this.highlight.range
             if (newRange) {
                 this.range = newRange
-                this.header.update()
+                this.header?.update()
                 this.highlight.update()
-                this.footer.update()
+                this.footer?.update()
             }
         }))
 
-        this.showVersionsView()
-
-        //if (this.toggleMode) { this.hideMenu() }
+        if (this.toggleMode) { this.hideMenu() }
+        else                 { this.showVersionsView() }
     }
 
     private setupHeader(): void {
@@ -203,13 +206,21 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }
     }
 
-    private showVersionsView(): void {
+    public showVersionsView(): void {
         this.metaView.showView(this.metaViewIdentifier)
         this.updateVersionsView()
     }
 
-    private hideVersionsView(): void {
+    public hideVersionsView(): void {
         this.editor.showDefaultSideView()
+    }
+
+    public toggleVersionsView(): void {
+        if (this.versionsViewVisible) {
+            this.hideVersionsView()
+        } else {
+            this.showVersionsView()
+        }
     }
 
     private updateVersionsView(): void {
@@ -263,7 +274,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     public showMenu(): void {
         this.header?.show()
         this.footer?.show()
-        this.showVersionsView()
+        //this.showVersionsView()
     }
 
     public hideMenu(): void {
@@ -272,7 +283,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
             this.footer?.batchHide(accessor)
         })
 
-        this.hideVersionsView()
+        //this.hideVersionsView()
     }
 
     public toggleMenu(): void {

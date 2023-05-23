@@ -281,8 +281,8 @@ class Line extends LinkedListNode<Line>  {
         return this.history.deleteLine()
     }
 
-    public addBlock(block: Block, head?: LineVersion): void { this.blockLine.addBlock(block, head) }
-    public removeBlock(block: Block, deleting?: boolean): Block[] { return this.removeBlock(block, deleting) }
+    public addBlock(block: Block, head?: LineVersion):    void    { this.blockLine.addBlock(block, head) }
+    public removeBlock(block: Block, deleting?: boolean): Block[] { return this.blockLine.removeBlock(block, deleting) }
 }
 
 
