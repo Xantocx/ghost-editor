@@ -1,7 +1,7 @@
 import { VCSVersion } from "../../../../app/components/data/snapshot";
 import { View } from "../view";
 
-export class VersionView extends View {
+export class VersionCodeView extends View {
 
     public readonly version: VCSVersion
 
@@ -13,7 +13,7 @@ export class VersionView extends View {
     }
 }
 
-export class VersionViewList extends View {
+export class VersionCodeViewList extends View {
 
     private readonly list: HTMLUListElement
 

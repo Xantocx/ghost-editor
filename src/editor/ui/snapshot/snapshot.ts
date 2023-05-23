@@ -24,7 +24,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     private highlight: GhostSnapshotHighlight
     private footer: GhostSnapshotFooter
 
-    private readonly metaViewIdentifier = "versions"
+    private readonly metaViewIdentifier = "versionManager"
     public  versions: VCSVersion[] = []
 
     public get uuid(): SnapshotUUID {
@@ -115,7 +115,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return this.header?.mouseOn || this.footer?.mouseOn
     }
 
-    public get versionsViewVisible(): boolean {
+    public get versionManagerVisible(): boolean {
         return this.metaView.currentViewIdentifier === this.metaViewIdentifier
     }
 
@@ -212,30 +212,30 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }
     }
 
-    public showVersionsView(): void {
+    public showVersionManager(): void {
         this.metaView.showView(this.metaViewIdentifier)
-        this.updateVersionsView()
+        this.updateVersionManager()
     }
 
-    public hideVersionsView(): void {
+    public hideVersionManager(): void {
         this.editor.showDefaultSideView()
     }
 
-    public toggleVersionsView(): void {
-        if (this.versionsViewVisible) {
-            this.hideVersionsView()
+    public toggleVersionManager(): void {
+        if (this.versionManagerVisible) {
+            this.hideVersionManager()
         } else {
-            this.showVersionsView()
+            this.showVersionManager()
         }
     }
 
-    public updateVersionsView(): void {
+    public updateVersionManager(): void {
         this.metaView.update(this.metaViewIdentifier, this.versions)
     }
 
     public updateVersions(versions: VCSVersion[]): void {
         this.versions = versions
-        this.updateVersionsView()
+        this.updateVersionManager()
     }
 
     /*

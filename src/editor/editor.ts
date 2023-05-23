@@ -5,13 +5,12 @@ import { Editor, Disposable, Model, URI, Selection, IRange } from "./utils/types
 import { LoadFileEvent } from "./utils/events"
 import { GhostSnapshot } from "./ui/snapshot/snapshot"
 import { ReferenceProvider } from "./utils/line-locator"
-import { ChangeBehaviour, ChangeSet, LineChange } from "../app/components/data/change"
+import { ChangeSet } from "../app/components/data/change"
 import { SnapshotUUID, VCSClient } from "../app/components/vcs/vcs-provider"
 import { P5JSPreview } from "./ui/views/previews/p5js-preview"
-import { Preview } from "./ui/views/previews/preview"
 import { VCSPreview } from "./ui/views/previews/vcs-preview"
 import { MetaView, ViewIdentifier } from "./ui/views/meta-view"
-import { VersionsView } from "./ui/views/version-views/versions-view"
+import { VersionManagerView } from "./ui/views/version-views/version-manager"
 import { VCSVersion } from "../app/components/data/snapshot"
 
 export class GhostEditor implements ReferenceProvider {
@@ -33,11 +32,11 @@ export class GhostEditor implements ReferenceProvider {
     public  get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
     public  set activeSnapshot(snapshot: GhostSnapshot | undefined) {
         if (snapshot === this.activeSnapshot) { 
-            this.activeSnapshot?.updateVersionsView()
+            this.activeSnapshot?.updateVersionManager()
         } else {
-            this._activeSnapshot?.hideVersionsView()
+            this._activeSnapshot?.hideVersionManager()
             this._activeSnapshot = snapshot
-            this._activeSnapshot?.showVersionsView()
+            this._activeSnapshot?.showVersionManager()
         }
 
         this.updateShortcutPreconditions(true)
@@ -295,9 +294,9 @@ export class GhostEditor implements ReferenceProvider {
             view.update(code)
         })
 
-        const versionsView = this.metaView.addView("versions", root => {
-            return new VersionsView(root)
-        }, (view: VersionsView, versions: VCSVersion[]) => {
+        const versionManager = this.metaView.addView("versionManager", root => {
+            return new VersionManagerView(root)
+        }, (view: VersionManagerView, versions: VCSVersion[]) => {
             //view.showCurrentCode(this.value)
             view.showVersions(versions)
         })

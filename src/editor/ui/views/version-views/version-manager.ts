@@ -2,7 +2,7 @@ import { View } from "../view"
 import { VCSVersion } from "../../../../app/components/data/snapshot"
 import { Button } from "../../components/button"
 
-export class VersionsView extends View {
+export class VersionManagerView extends View {
 
     private readonly versionsContainer: HTMLDivElement
     private readonly versions = new Map<VCSVersion, Button>()
