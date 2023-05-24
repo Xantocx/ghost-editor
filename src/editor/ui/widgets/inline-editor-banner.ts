@@ -1,6 +1,6 @@
 import * as monaco from "monaco-editor"
 import { IRange, MonacoEditor } from "../../utils/types"
-import { GhostEditor } from "../../editor"
+import { GhostEditor } from "../views/editor/editor"
 import { GhostSnapshot } from "../snapshot/snapshot"
 import { MouseTracker } from "./mouse-tracker"
 import { GhostViewZone } from "./view-zone"

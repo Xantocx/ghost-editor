@@ -1,5 +1,5 @@
 import { IRange, MonacoEditor, MonacoModel, LayoutInfo, Disposable } from "../../utils/types"
-import { GhostEditor } from "../../editor"
+import { GhostEditor } from "../views/editor/editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
