@@ -144,6 +144,8 @@ interface BlockLineRelations {
     knownBlocks?: Block[]
 }
 
+// TODO: FIND WAY TO ALLOW FOR INDIVIDUAL TIMETRAVEL + EDITS WITH WORKING FUNCTIONALITY
+// This most likely requires merging the headTracking property somehow across all Lines of a BlockLine, or reapplying old changes if they do not match the head anymore
 class BlockLine extends LinkedListNode<BlockLine> {
 
     public readonly originBlock: Block
