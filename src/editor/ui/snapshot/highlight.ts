@@ -1,4 +1,4 @@
-import { Editor } from "../../utils/types"
+import { MonacoEditor } from "../../utils/types"
 import { GhostSnapshot } from "./snapshot"
 import { GhostHighlightDecoration } from "../widgets/highlight-decoration"
 import { LineLocator } from "../../utils/line-locator"
@@ -7,7 +7,7 @@ export class GhostSnapshotHighlight extends GhostHighlightDecoration {
 
     private readonly snapshot: GhostSnapshot
 
-    private get core(): Editor {
+    private get core(): MonacoEditor {
         return this.snapshot.core
     }
 

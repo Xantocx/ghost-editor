@@ -2,7 +2,7 @@ import { IRange } from "../utils/types"
 import { Range } from "monaco-editor"
 
 export interface ReferenceProvider {
-    topLine: number
+    firstVisibleLine: number
 }
 
 export interface RangeProvider {
@@ -14,9 +14,7 @@ export class LineLocator {
     public referenceProvider: ReferenceProvider
     public rangeProvider: RangeProvider
 
-    public get editorTopLine(): number {
-        return this.referenceProvider.topLine
-    }
+    public get firstVisibleLine(): number { return this.referenceProvider.firstVisibleLine }
 
     public get range(): Range {
         const range = this.rangeProvider.range
@@ -36,7 +34,7 @@ export class LineLocator {
     }
 
     public get startRendered(): boolean {
-        return this.editorTopLine <= this.startLine
+        return this.firstVisibleLine <= this.startLine
     }
 
     constructor(reference: ReferenceProvider, position: RangeProvider) {

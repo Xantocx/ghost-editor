@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor"
-import { Editor, Decoration, Decorations, DecorationsChangedEvent, Disposable, Range } from "../../utils/types"
+import { MonacoEditor, Decoration, Decorations, DecorationsChangedEvent, Disposable, Range } from "../../utils/types"
 import { uuid } from "../../utils/uuid"
 import { LineLocator } from "../../utils/line-locator"
 import { MouseTracker } from "./mouse-tracker"
@@ -28,7 +28,7 @@ export class GhostHighlightDecoration extends MouseTracker {
     }
 
     private readonly uuid: string = uuid(16)
-    private readonly editor: Editor
+    private readonly editor: MonacoEditor
     private readonly locator: LineLocator
     private readonly color: string
     private readonly cssRuleIndex: number
@@ -91,7 +91,7 @@ export class GhostHighlightDecoration extends MouseTracker {
         return this.cssRule?.style
     }
 
-    constructor(editor: Editor, locator: LineLocator, color: string) {
+    constructor(editor: MonacoEditor, locator: LineLocator, color: string) {
         super()
 
         this.editor  = editor

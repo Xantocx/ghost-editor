@@ -1,6 +1,7 @@
+import { Synchronizable } from "../../utils/synchronizer"
 import { Disposable } from "../../utils/types"
 
-export abstract class SubscriptionManager {
+export abstract class SubscriptionManager extends Synchronizable {
 
     protected subscriptions: Disposable[] = []
 

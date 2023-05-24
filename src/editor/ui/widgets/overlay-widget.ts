@@ -1,4 +1,4 @@
-import { Editor, OverlayWidget } from "../../utils/types"
+import { MonacoEditor, OverlayWidget } from "../../utils/types"
 import { uuid } from "../../utils/uuid"
 import { LineLocator } from "../../utils/line-locator"
 import { DomMouseTracker } from "./mouse-tracker"
@@ -6,7 +6,7 @@ import { DomMouseTracker } from "./mouse-tracker"
 export class GhostOverlayWidget extends DomMouseTracker {
 
     private readonly uuid: string = uuid(16)
-    private readonly editor: Editor
+    private readonly editor: MonacoEditor
 
     private _visible: boolean = false
     public get visible(): boolean {
@@ -33,7 +33,7 @@ export class GhostOverlayWidget extends DomMouseTracker {
         return this._widget
     }
 
-    constructor(editor: Editor, domNode: HTMLElement,) {
+    constructor(editor: MonacoEditor, domNode: HTMLElement,) {
         super(domNode)
         this.editor  = editor
     }

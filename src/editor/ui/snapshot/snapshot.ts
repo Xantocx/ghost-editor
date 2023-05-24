@@ -1,4 +1,4 @@
-import { IRange, Editor, Model, LayoutInfo, Disposable } from "../../utils/types"
+import { IRange, MonacoEditor, MonacoModel, LayoutInfo, Disposable } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
@@ -24,27 +24,27 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     private highlight: GhostSnapshotHighlight
     private footer: GhostSnapshotFooter
 
-    private readonly metaViewIdentifier = "versionManager"
+    private readonly sideViewIdentifier = "versionManager"
     public  versions: VCSVersion[] = []
 
     public get uuid(): SnapshotUUID {
         return this.snapshot.uuid
     }
 
-    public get core(): Editor {
+    public get core(): MonacoEditor {
         return this.editor.core
     }
 
-    public get model(): Model {
-        return this.editor.model
+    public get model(): MonacoModel {
+        return this.editor.getModel()
     }
 
     public get vcs(): VCSClient {
         return this.editor.vcs
     }
 
-    public get metaView(): MetaView {
-        return this.editor.metaView
+    public get sideView(): MetaView | undefined {
+        return this.editor.sideView
     }
 
     public get range(): IRange {
@@ -79,7 +79,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         let longestLine = 0
 
-        const model = this.editor.model
+        const model = this.model
         const tabSize = this.editor.tabSize
         const spaceWidth = this.editor.spaceWidth
         const characterWidth = this.editor.characterWidth
@@ -113,10 +113,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public get menuActive(): boolean {
         return this.header?.mouseOn || this.footer?.mouseOn
-    }
-
-    public get versionManagerVisible(): boolean {
-        return this.metaView.currentViewIdentifier === this.metaViewIdentifier
     }
 
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
@@ -214,7 +210,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public showVersionManager(): void {
         this.updateVersionManager()
-        this.metaView.showView(this.metaViewIdentifier)
+        this.sideView?.showView(this.sideViewIdentifier)
         this.updateVersionManager()
     }
 
@@ -222,16 +218,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.editor.showDefaultSideView()
     }
 
-    public toggleVersionManager(): void {
-        if (this.versionManagerVisible) {
-            this.hideVersionManager()
-        } else {
-            this.showVersionManager()
-        }
-    }
-
     public updateVersionManager(): void {
-        this.metaView.update(this.metaViewIdentifier, this.versions)
+        this.sideView?.update(this.sideViewIdentifier, this.versions)
     }
 
     public updateVersions(versions: VCSVersion[]): void {

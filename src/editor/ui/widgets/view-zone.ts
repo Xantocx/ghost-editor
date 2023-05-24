@@ -1,11 +1,11 @@
 import * as monaco from "monaco-editor"
-import { Editor, ViewZone, Disposable } from "../../utils/types"
+import { MonacoEditor, ViewZone, Disposable } from "../../utils/types"
 import { DomMouseTracker } from "./mouse-tracker"
 
 export class GhostViewZone extends DomMouseTracker {
 
     private id: string | null = null
-    private readonly editor: Editor
+    private readonly editor: MonacoEditor
 
     private readonly lineNumber: () => number
     private readonly lineCount:  () => number
@@ -37,7 +37,7 @@ export class GhostViewZone extends DomMouseTracker {
         };
     }
 
-    constructor(editor: Editor, domNode: HTMLElement, lineNumber: () => number, lineCount: () => number) {
+    constructor(editor: MonacoEditor, domNode: HTMLElement, lineNumber: () => number, lineCount: () => number) {
         super(domNode)
 
         this.editor  = editor

@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor"
-import { Editor, Disposable, ContentWidget } from "../../utils/types"
+import { MonacoEditor, Disposable, ContentWidget } from "../../utils/types"
 import { uuid } from "../../utils/uuid"
 import { LineLocator } from "../../utils/line-locator"
 import { DomMouseTracker } from "./mouse-tracker"
@@ -7,7 +7,7 @@ import { DomMouseTracker } from "./mouse-tracker"
 export class GhostContentWidget extends DomMouseTracker {
 
     private readonly uuid: string = uuid(16)
-    private readonly editor: Editor
+    private readonly editor: MonacoEditor
     private readonly locator: LineLocator
 
     private scrollSubscription: Disposable | null = null
@@ -48,7 +48,7 @@ export class GhostContentWidget extends DomMouseTracker {
         return this._widget
     }
 
-    constructor(editor: Editor, domNode: HTMLElement, locator: LineLocator) {
+    constructor(editor: MonacoEditor, domNode: HTMLElement, locator: LineLocator) {
         super(domNode)
         this.editor  = editor
         this.locator = locator

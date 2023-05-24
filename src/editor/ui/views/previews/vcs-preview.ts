@@ -1,16 +1,16 @@
 import * as monaco from "monaco-editor"
 import { Preview } from "./preview";
-import { Model } from "../../../utils/types";
+import { MonacoModel } from "../../../utils/types";
 
 export class VCSPreview extends Preview {
 
-    private editorModel: Model
-    private vcsModel: Model
+    private editorModel: MonacoModel
+    private vcsModel: MonacoModel
 
     private readonly diffEditor: monaco.editor.IStandaloneDiffEditor
     private readonly decorations: monaco.editor.IEditorDecorationsCollection
 
-    constructor(root: HTMLElement, editorModel: Model) {
+    constructor(root: HTMLElement, editorModel: MonacoModel) {
         super(root)
 
         this.diffEditor = monaco.editor.createDiffEditor(this.root, {
@@ -28,7 +28,7 @@ export class VCSPreview extends Preview {
         })
     }
 
-    public updateEditor(model: Model): void {
+    public updateEditor(model: MonacoModel): void {
 
         this.editorModel = model
         this.vcsModel = monaco.editor.createModel("", model.getLanguageId())

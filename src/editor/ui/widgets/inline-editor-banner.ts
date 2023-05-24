@@ -1,5 +1,5 @@
 import * as monaco from "monaco-editor"
-import { IRange, Editor } from "../../utils/types"
+import { IRange, MonacoEditor } from "../../utils/types"
 import { GhostEditor } from "../../editor"
 import { GhostSnapshot } from "../snapshot/snapshot"
 import { MouseTracker } from "./mouse-tracker"
@@ -45,7 +45,7 @@ export class InlineEditorBanner extends MouseTracker {
         return this.snapshot.editor
     }
 
-    private get core(): Editor {
+    private get core(): MonacoEditor {
         return this.snapshot.core
     }
 
