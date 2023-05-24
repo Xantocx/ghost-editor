@@ -1,15 +1,18 @@
 import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { GhostEditor } from "../editor/editor";
 import { View } from "../view";
 
 export class VersionCodeView extends View {
 
     public readonly version: VCSVersion
 
-    //private readonly codeView
+    private readonly editor: GhostEditor
 
     public constructor(root: HTMLElement, version: VCSVersion) {
         super(root)
         this.version = version
+
+        this.editor = 
     }
 }
 

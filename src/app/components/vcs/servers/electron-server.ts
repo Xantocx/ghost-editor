@@ -1,13 +1,13 @@
 import { ipcMain } from "electron"
-import { VCSAdapter, AdaptableVCSServer, VersionUUID, SnapshotUUID, Text } from "../vcs-provider"
+import { VCSAdapter, AdaptableVCSServer, VersionUUID, SnapshotUUID, Text, SessionId } from "../vcs-provider"
 import { IRange } from "../../../../editor/utils/types"
 import { VCSSnapshotData } from "../../data/snapshot"
 import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
 
 export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSServer<Adapter> {
 
-    public static loadFileChannel = "vcs-load-file"
-    public static unloadFileChannel = "vcs-unload-file"
+    public static startSessionChannel = "vcs-start-session"
+    public static closeSessionChannel = "vcs-close-session"
     public static updatePathChannel = "vcs-update-path"
     public static cloneToPathChannel = "vcs-clone-to-path"
     public static createSnapshotChannel = "vcs-create-snapshot"
@@ -29,64 +29,64 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     private mapChannels() {
 
-        const loadFileSubscription = ipcMain.handle(ElectronVCSServer.loadFileChannel, (event, filePath: string, eol: string, content: Text) => {
-            this.loadFile(filePath, eol, content)
+        const startSessionSubscription = ipcMain.handle(ElectronVCSServer.startSessionChannel, async (event, eol: string, options?: { filePath?: string, content?: string }) => {
+            return this.startSession(eol, options)
         })
 
-        const unloadFileSubscription = ipcMain.handle(ElectronVCSServer.unloadFileChannel, (event) => {
-            this.unloadFile()
+        const closeSessionSubscription = ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, sessionId: SessionId) => {
+            return this.closeSession(sessionId)
         })
 
-        const updatePathSubscription = ipcMain.handle(ElectronVCSServer.updatePathChannel, (event, filePath: string) => {
-            this.updatePath(filePath)
+        const updatePathSubscription = ipcMain.handle(ElectronVCSServer.updatePathChannel, async (event, sessionId: SessionId, filePath: string) => {
+            return this.updatePath(sessionId, filePath)
         })
 
-        const cloneToPathSubscription = ipcMain.handle(ElectronVCSServer.cloneToPathChannel, (event, filePath: string) => {
-            this.cloneToPath(filePath)
+        const cloneToPathSubscription = ipcMain.handle(ElectronVCSServer.cloneToPathChannel, async (event, sessionId: SessionId, filePath: string) => {
+            return this.cloneToPath(sessionId, filePath)
         })
 
-        const createSnapshotSubscription = ipcMain.handle(ElectronVCSServer.createSnapshotChannel, (event, range: IRange) => {
-            return this.createSnapshot(range)
+        const createSnapshotSubscription = ipcMain.handle(ElectronVCSServer.createSnapshotChannel, async (event, sessionId: SessionId, range: IRange) => {
+            return this.createSnapshot(sessionId, range)
         })
 
-        const deleteSnapshotSubscription = ipcMain.handle(ElectronVCSServer.deleteSnapshotChannel, (event, uuid: SnapshotUUID) => {
-            return this.deleteSnapshot(uuid)
+        const deleteSnapshotSubscription = ipcMain.handle(ElectronVCSServer.deleteSnapshotChannel, async (event, sessionId: SessionId, uuid: SnapshotUUID) => {
+            return this.deleteSnapshot(sessionId, uuid)
         })
 
-        const getSnapshotSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotChannel, (event, uuid: SnapshotUUID) => {
-            return this.getSnapshot(uuid)
+        const getSnapshotSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotChannel, async (event, sessionId: SessionId, uuid: SnapshotUUID) => {
+            return this.getSnapshot(sessionId, uuid)
         })
 
-        const getSnapshotsSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotsChannel, (event) => {
-            return this.getSnapshots()
+        const getSnapshotsSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotsChannel, async (event, sessionId: SessionId) => {
+            return this.getSnapshots(sessionId)
         })
 
-        const updateSnapshotSubscription = ipcMain.handle(ElectronVCSServer.updateSnapshotChannel, (event, snapshot: VCSSnapshotData) => {
-            this.updateSnapshot(snapshot)
+        const updateSnapshotSubscription = ipcMain.handle(ElectronVCSServer.updateSnapshotChannel, async (event, sessionId: SessionId, snapshot: VCSSnapshotData) => {
+            this.updateSnapshot(sessionId, snapshot)
         })
 
-        const applySnapshotVersionIndexSubscription = ipcMain.handle(ElectronVCSServer.applySnapshotVersionIndexChannel, (event, uuid: SnapshotUUID, versionIndex: number) => {
-            return this.applySnapshotVersionIndex(uuid, versionIndex)
+        const applySnapshotVersionIndexSubscription = ipcMain.handle(ElectronVCSServer.applySnapshotVersionIndexChannel, async (event, sessionId: SessionId, uuid: SnapshotUUID, versionIndex: number) => {
+            return this.applySnapshotVersionIndex(sessionId, uuid, versionIndex)
         })
 
-        const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, (event, change: LineChange) => {
-            return this.lineChanged(change)
+        const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, async (event, sessionId: SessionId, change: LineChange) => {
+            return this.lineChanged(sessionId, change)
         })
 
-        const linesChangedSubscription = ipcMain.handle(ElectronVCSServer.linesChangedChannel, (event, change: MultiLineChange) => {
-            return this.linesChanged(change)
+        const linesChangedSubscription = ipcMain.handle(ElectronVCSServer.linesChangedChannel, async (event, sessionId: SessionId, change: MultiLineChange) => {
+            return this.linesChanged(sessionId, change)
         })
 
-        const applyChangeSubscription = ipcMain.handle(ElectronVCSServer.applyChangeChannel, (event, change: AnyChange) => {
-            return this.applyChange(change)
+        const applyChangeSubscription = ipcMain.handle(ElectronVCSServer.applyChangeChannel, async (event, sessionId: SessionId, change: AnyChange) => {
+            return this.applyChange(sessionId, change)
         })
 
-        const applyChangesSubscription = ipcMain.handle(ElectronVCSServer.applyChangesChannel, (event, changes: ChangeSet) => {
-            return this.applyChanges(changes)
+        const applyChangesSubscription = ipcMain.handle(ElectronVCSServer.applyChangesChannel, async (event, sessionId: SessionId, changes: ChangeSet) => {
+            return this.applyChanges(sessionId, changes)
         })
 
-        const saveCurrentVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentVersionChannel, (event, uuid: VersionUUID) => {
-            return this.saveCurrentVersion(uuid)
+        const saveCurrentVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentVersionChannel, async (event, sessionId: SessionId, uuid: VersionUUID) => {
+            return this.saveCurrentVersion(sessionId, uuid)
         })
     }
 }

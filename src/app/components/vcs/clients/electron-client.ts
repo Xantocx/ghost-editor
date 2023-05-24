@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import { SnapshotUUID, Text, VCSClient, VersionUUID } from "../vcs-provider"
+import { BasicVCSClient, VCSSession, SessionId, SnapshotUUID, Text, VCSClient, VersionUUID } from "../vcs-provider"
 import { ElectronVCSServer } from "../servers/electron-server"
 
 import { IRange } from "monaco-editor"
@@ -11,64 +11,69 @@ function invoke<Type>(channel: string, ...args: any): Promise<Type> {
 }
 
 export const ElectronVCSClient: VCSClient = {
-    
-    loadFile(filePath: string | null, eol: string, content: string | null): void {
-        invoke(ElectronVCSServer.loadFileChannel, filePath, eol, content)
+
+    async createSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ session: VCSSession, content: string }> {
+        const result = await this.startSession(eol, options)
+        return { session: new VCSSession(result.sessionId, result.blockId, this), content: result.content }
     },
 
-    unloadFile(): void {
-        invoke(ElectronVCSServer.unloadFileChannel)
+    async startSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ sessionId: SessionId; blockId: string, content: string } > {
+        return invoke(ElectronVCSServer.startSessionChannel, eol, options)
     },
 
-    updatePath(filePath: string): void {
-        invoke(ElectronVCSServer.updatePathChannel, filePath)
+    async closeSession(sessionId: SessionId): Promise<void> {
+        return invoke(ElectronVCSServer.closeSessionChannel, sessionId)
     },
 
-    cloneToPath(filePath: string): void {
-        invoke(ElectronVCSServer.cloneToPathChannel, filePath)
+    async updatePath(sessionId: SessionId, filePath: string): Promise<void> {
+        return invoke(ElectronVCSServer.updatePathChannel, sessionId, filePath)
     },
 
-    async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
-        return invoke(ElectronVCSServer.createSnapshotChannel, range)
+    async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
+        return invoke(ElectronVCSServer.cloneToPathChannel, sessionId, filePath)
     },
 
-    deleteSnapshot(uuid: SnapshotUUID): void {
-        invoke(ElectronVCSServer.deleteSnapshotChannel, uuid)
+    async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {
+        return invoke(ElectronVCSServer.createSnapshotChannel, sessionId, range)
     },
 
-    async getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData> {
-        return invoke(ElectronVCSServer.getSnapshotChannel, uuid)
+    async deleteSnapshot(sessionId: SessionId, uuid: SnapshotUUID): Promise<void> {
+        return invoke(ElectronVCSServer.deleteSnapshotChannel, sessionId, uuid)
     },
 
-    async getSnapshots(): Promise<VCSSnapshotData[]> {
-        return invoke(ElectronVCSServer.getSnapshotsChannel)
-    },
-    
-    updateSnapshot(snapshot: VCSSnapshotData): void {
-        invoke(ElectronVCSServer.updateSnapshotChannel, snapshot)
+    async getSnapshot(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSSnapshotData> {
+        return invoke(ElectronVCSServer.getSnapshotChannel, sessionId, uuid)
     },
 
-    async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
-        return invoke(ElectronVCSServer.applySnapshotVersionIndexChannel, uuid, versionIndex)
+    async getSnapshots(sessionId: SessionId): Promise<VCSSnapshotData[]> {
+        return invoke(ElectronVCSServer.getSnapshotsChannel, sessionId)
     },
 
-    async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
-        return invoke(ElectronVCSServer.lineChangedChannel, change)
+    async updateSnapshot(sessionId: SessionId, snapshot: VCSSnapshotData): Promise<void> {
+        return invoke(ElectronVCSServer.updateSnapshotChannel, sessionId, snapshot)
     },
 
-    async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
-        return invoke(ElectronVCSServer.linesChangedChannel, change)
+    async applySnapshotVersionIndex(sessionId: SessionId, uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
+        return invoke(ElectronVCSServer.applySnapshotVersionIndexChannel, sessionId, uuid, versionIndex)
     },
 
-    async applyChange(change: Change): Promise<SnapshotUUID[]> {
-        return invoke(ElectronVCSServer.applyChangeChannel, change)
+    async lineChanged(sessionId: SessionId, change: LineChange): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.lineChangedChannel, sessionId, change)
     },
 
-    async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
-        return invoke(ElectronVCSServer.applyChangesChannel, changes)
+    async linesChanged(sessionId: SessionId, change: MultiLineChange): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.linesChangedChannel, sessionId, change)
     },
 
-    async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
-        return invoke(ElectronVCSServer.saveCurrentVersionChannel, uuid)
+    async applyChange(sessionId: SessionId, change: Change): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.applyChangeChannel, sessionId, change)
     },
+
+    async applyChanges(sessionId: SessionId, changes: ChangeSet): Promise<SnapshotUUID[]> {
+        return invoke(ElectronVCSServer.applyChangesChannel, sessionId, changes)
+    },
+
+    async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion> {
+        return invoke(ElectronVCSServer.saveCurrentVersionChannel, sessionId, uuid)
+    }
 }

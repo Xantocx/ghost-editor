@@ -538,7 +538,7 @@ class Block extends LinkedList<Line> {
 
     public static create(eol: string, content: string, fileName?: string): Block {
         const id          = BlockProvider.createBlockIdFrom(fileName)
-        const block       = new Block(eol, {id})
+        const block       = new Block(eol, { id })
         const lineStrings = content.split(eol)
 
         const lines = lineStrings.map(content => Line.create(block, LineType.Original, content))
@@ -1021,7 +1021,7 @@ class Tag {
 
 type GhostFile = Block
 
-export class GhostVCSServerV2 extends BasicVCSServer {
+export class GhostVCSServer extends BasicVCSServer {
 
     private file: GhostFile | null = null
     private browserWindow: BrowserWindow | undefined
@@ -1036,21 +1036,22 @@ export class GhostVCSServerV2 extends BasicVCSServer {
         this.browserWindow?.webContents.send("update-vcs-preview", this.file.getCurrentText(), versionCounts)
     }
 
-    public loadFile(filePath: string | null, eol: string, content: string | null): void {
+    public async loadFile(filePath: string | null, eol: string, content: string | null): Promise<string> {
         this.file = Block.create(eol, content, filePath)
         this.updatePreview()
+        return this.file.id
     }
 
-    public unloadFile(): void {
+    public async unloadFile(): Promise<void> {
         this.file = null
     }
 
-    public updatePath(filePath: string): void {
+    public async updatePath(filePath: string): Promise<void> {
         console.log("UPDATING FILE PATH IS NOT IMPLEMNETED")
         //this.file.filePath = filePath
     }
 
-    public cloneToPath(filePath: string): void {
+    public async cloneToPath(filePath: string): Promise<void> {
         console.log("CLONE TO PATH NOT IMPLEMENTED")
     }
 
@@ -1058,7 +1059,7 @@ export class GhostVCSServerV2 extends BasicVCSServer {
         return this.file.createChild(range)?.compress()
     }
 
-    public deleteSnapshot(uuid: string): void {
+    public async deleteSnapshot(uuid: string): Promise<void> {
         this.file.deleteChild(uuid)
     }
 
@@ -1070,7 +1071,7 @@ export class GhostVCSServerV2 extends BasicVCSServer {
         return this.file.getCompressedChildren()
     }
 
-    public updateSnapshot(snapshot: VCSSnapshotData): void {
+    public async updateSnapshot(snapshot: VCSSnapshotData): Promise<void> {
         this.file.updateChild(snapshot)
     }
 

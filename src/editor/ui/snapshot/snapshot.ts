@@ -36,7 +36,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public get model(): MonacoModel {
-        return this.editor.getModel()
+        return this.editor.getTextModel()
     }
 
     public get vcs(): VCSClient {

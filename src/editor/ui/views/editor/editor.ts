@@ -5,7 +5,7 @@ import * as monaco from "monaco-editor"
 import { View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { SnapshotUUID, VCSClient } from "../../../../app/components/vcs/vcs-provider";
+import { SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { MetaView, ViewIdentifier } from "../meta-view";
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
@@ -16,6 +16,7 @@ import { VersionManagerView } from "../version/version-manager";
 import { VCSVersion } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
+import { uuid } from "../../../utils/uuid";
 
 class GhostEditorSnapshotManager {
 
@@ -306,7 +307,28 @@ class GhostEditorInteractionManager extends SubscriptionManager {
     }
 }
 
+
+class GhostEditorModel {
+
+    public readonly model:   MonacoModel
+    public readonly session: VCSSession
+
+    public get uri(): URI { return this.model.uri }
+
+    public constructor(model: MonacoModel, session: VCSSession) {
+        this.model   = model
+        this.session = session
+    }
+
+    public close(): void {
+        this.session.close()
+    }
+}
+
 export class GhostEditor extends View implements ReferenceProvider {
+
+    public readonly enableFileManagement: boolean
+    public readonly sideViewEnabled:      boolean
 
     // view containers to seperate main editor and side view
     public readonly editorContainer:    HTMLDivElement
@@ -318,13 +340,16 @@ export class GhostEditor extends View implements ReferenceProvider {
     public readonly interactionManager: GhostEditorInteractionManager
 
     // side view containing previews, versioning views, etc.
-    public readonly sideViewEnabled:      boolean
     public          sideView?:            MetaView
     public          sideViewIdentifiers?: Record<string, ViewIdentifier>
     private         defaultSideView?:     ViewIdentifier
 
+    // data model
+    public     model?:     GhostEditorModel
+    public get hasModel(): boolean { return this.model !== undefined }
+
     // accessors for editor meta info and content
-    public get uri():  URI           { return this.getModel().uri }
+    public get uri():  URI           { return this.getTextModel().uri }
     public get path(): string | null { return this.uri.scheme === 'file' ? this.uri.fsPath : null }
     public get text(): string        { return this.core.getValue() }
 
@@ -355,10 +380,13 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    constructor(root: HTMLElement, options?: { enableSideView?: boolean, synchronizer?: Synchronizer }) {
+    public static load()
+
+    public constructor(root: HTMLElement, options?: { blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, synchronizer?: Synchronizer }) {
         super(root)
 
-        this.sideViewEnabled = options?.enableSideView ? options.enableSideView : false
+        this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
+        this.sideViewEnabled      = options?.enableSideView       ? options.enableSideView       : false
 
         // setup root for flex layout
         this.root.style.display       = "flex"
@@ -375,31 +403,34 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.interactionManager = new GhostEditorInteractionManager(this)
 
         this.setup()
+        this.load({ blockId: options?.blockId })
 
         options?.synchronizer?.register(this)
     }
 
     // (create and) get the model of the editor
-    public getModel(): MonacoModel {
-        let model = this.core.getModel()
-        if (!model) {
-            model = monaco.editor.createModel("")
-            this.setModel(model)
-        }
-        return model
+    public getTextModel(): MonacoModel {
+        if (this.hasModel) { return this.model!.model }
+        else               { throw new Error("The editor currently has no model. Please load a session in order to re-establish functionality before using this function.") }
     }
 
-    private setModel(model: MonacoModel): void {
+    public getSession(): VCSSession {
+        if (this.hasModel) { return this.model!.session }
+        else               { throw new Error("The editor currently has no session. Please load a session in order to re-establish functionality before using this function.") } 
+    }
+
+    private setModel(model: MonacoModel, session: VCSSession): void {
+        this.model = new GhostEditorModel(model, session)
         this.core.setModel(model)
         if (this.sideViewEnabled) { this.sideView!.update(this.sideViewIdentifiers!.vcs, model) }
     }
 
     // edior and model options to extract config
     public getFontInfo():     monaco.editor.FontInfo                 { return this.core.getOption(MonacoEditorOption.fontInfo) }
-    public getModelOptions(): monaco.editor.TextModelResolvedOptions { return this.getModel().getOptions() }
+    public getModelOptions(): monaco.editor.TextModelResolvedOptions { return this.getTextModel().getOptions() }
 
     public getEolSymbol(): string {
-        const EOL = this.getModel().getEndOfLineSequence()
+        const EOL = this.getTextModel().getEndOfLineSequence()
         switch(EOL) {
             case 0:  return "\n"
             case 1:  return "\r\n"
@@ -423,8 +454,10 @@ export class GhostEditor extends View implements ReferenceProvider {
     }
 
     private setupElectronCommunication(): void {
-        window.ipcRenderer.on('load-file' , (response: LoadFileEvent) => this.loadFile(response.path, response.content))
-        window.ipcRenderer.on('save' ,      ()                        => this.save())
+        if (this.enableFileManagement) {
+            window.ipcRenderer.on('load-file' , (response: LoadFileEvent) => this.loadFile(response.path, response.content))
+            window.ipcRenderer.on('save' ,      ()                        => this.save())
+        }
     }
 
     private setupSideView(): void {
@@ -432,7 +465,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             this.sideView = new MetaView(this.sideViewContainer!)
 
             const vcsPreview = this.sideView.addView("vcs", root => {
-                return new VCSPreview(root, this.getModel())
+                return new VCSPreview(root, this.getTextModel())
             }, (view: VCSPreview, model: MonacoModel) => {
                 view.updateEditor(model)
             })
@@ -460,7 +493,7 @@ export class GhostEditor extends View implements ReferenceProvider {
     }
 
     public createChangeSet(event: MonacoChangeEvent): ChangeSet {
-        return new ChangeSet(Date.now(), this.getModel(), this.getEolSymbol(), event)
+        return new ChangeSet(Date.now(), this.getTextModel(), this.getEolSymbol(), event)
     }
 
     public async applyChangeSet(changeSet: ChangeSet): Promise<void> {
@@ -473,38 +506,60 @@ export class GhostEditor extends View implements ReferenceProvider {
         throw new Error("Method not implemented.")
     }
 
-    public async loadFile(filePath: string, content: string): Promise<void> {
+    // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
+    private unload(): void {
+        this.snapshotManager.removeSnapshots()
+        this.interactionManager.unloadFile()
+        this.core.setModel(null)
+        this.model?.close()
+        this.model = undefined
+    }
 
-        this.unloadFile()
+    public async load(options?: { blockId?: string, uri?: URI, content?: string }): Promise<void> {
+        this.unload()
 
-        const uri = monaco.Uri.file(filePath)
+        const uri     = options?.uri ? options.uri : undefined
+        const blockId = options?.blockId  ? options.blockId  : uri?.fsPath
+        const content = options?.content ? options.content : ""
 
-        let model = monaco.editor.getModel(uri)
-        if (model) {
-            model.setValue(content)
-        } else {
-            model = monaco.editor.createModel(content, undefined, uri)
-            this.setModel(model)
-        }
+        let model = uri ? monaco.editor.getModel(uri) : null
 
-        this.vcs.loadFile(filePath, this.getEolSymbol(), content)
+        if (model) { model.setValue(content) } 
+        else       { model = monaco.editor.createModel(content, undefined, uri) }
+
+        const result = await this.vcs.createSession(this.getEolSymbol(), { filePath: blockId, content: options?.content })
+
+        model.setValue(result.content)
+        this.setModel(model, result.session)
+
         this.snapshotManager.loadSnapshots()
+    }
+
+    public async loadFile(filePath: string, content: string): Promise<void> {
+        if (this.enableFileManagement) {
+            const uri = monaco.Uri.file(filePath)
+            this.load({ uri, content })
+        } else {
+            throw new Error("This GhostEditor is not configured to support file management! You cannot load a file.")
+        }
+    }
+
+    public save(): void {
+        // TODO: make sure files without a path can be saved at new path!
+        if (this.enableFileManagement) {
+            if (this.path) {
+                window.ipcRenderer.invoke('save-file', { path: this.path, content: this.text })
+            } else {
+                throw new Error("Currently, we do not support choosing a filename for new files. Sorry.")
+                //if (this.path) this.vcs.updatePath(this.path)
+            }
+        } else {
+            throw new Error("This GhostEditor is not configured to support file management! You cannot save a file.")
+        }
     }
 
     public update(text: string): void {
         this.interactionManager.withDisabledVcsSync(() => this.core.setValue(text) )
         this.snapshotManager.forEach(snapshot => snapshot.manualUpdate())
-    }
-
-    public save(): void {
-        // TODO: make sure files without a path can be saved at new path!
-        window.ipcRenderer.invoke('save-file', { path: this.path, content: this.text })
-        if (this.path) this.vcs.updatePath(this.path)
-    }
-
-    public unloadFile(): void {
-        this.snapshotManager.removeSnapshots()
-        this.interactionManager.unloadFile()
-        this.vcs.unloadFile()
     }
 }
