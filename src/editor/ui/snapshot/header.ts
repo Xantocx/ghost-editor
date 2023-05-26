@@ -47,7 +47,7 @@ export class GhostSnapshotHeader extends InlineEditorBanner {
         container.appendChild(addButtonDiv)
 
         const addButton = Button.addButton(addButtonDiv, async () => { 
-            const version = await this.editor.vcs.saveCurrentVersion(this.snapshot.uuid)
+            const version = await this.editor.getSession().saveCurrentVersion(this.snapshot.uuid)
             this.versionList.addVersion(version)
             this.snapshot.updateVersions(this.versionList.versions)
         })

@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron"
 import { VCSSnapshotData, VCSVersion } from "./src/app/components/data/snapshot"
 import { IRange } from "./src/app/components/utils/range"
-import { BasicVCSServer, SnapshotUUID } from "./src/app/components/vcs/vcs-provider"
+import { BasicVCSServer, SessionId, SessionOptions, SnapshotUUID } from "./src/app/components/vcs/vcs-provider"
 import { LineChange, MultiLineChange } from "./src/app/components/data/change"
 import * as crypto from "crypto"
 
@@ -186,7 +186,7 @@ class BlockLine extends LinkedListNode<BlockLine> {
     public getLine(block: Block): Line | undefined { return this.lines.get(block) }
 
     public getBlocks():   Block[]   { return Array.from(this.lines.keys()) }
-    public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
+    public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.blockId) }
 
     public getVersions(): LineVersion[] { return this.versions.getVersions() }
 
@@ -515,13 +515,25 @@ interface LineRange {
     endLine: number
 }
 
+interface BlockOptions { 
+    eol:                   EOLSymbol
+    filePath?:             string
+    parent?:               Block
+    firstLine?:            Line
+    lastLine?:             Line
+    content?:              string 
+    enableVersionMerging?: boolean
+}
+
+type EOLSymbol = string
 
 class Block extends LinkedList<Line> {
 
-    public readonly id: BlockId
-    public isDeleted = false
+    public readonly blockId:   BlockId
+    public readonly isClone:   boolean = false
+    public          isDeleted: boolean = false
 
-    public readonly eol:     string
+    public readonly eol:     EOLSymbol
     public readonly parent?: Block
 
     public readonly children = new Map<BlockId, Block>()
@@ -536,26 +548,47 @@ class Block extends LinkedList<Line> {
     public set firstLine(line: Line | undefined) { this.first = line }
     public set lastLine (line: Line | undefined) { this.last  = line }
 
-    public static create(eol: string, content: string, fileName?: string): Block {
-        const id          = BlockProvider.createBlockIdFrom(fileName)
-        const block       = new Block(eol, { id })
-        const lineStrings = content.split(eol)
-
-        const lines = lineStrings.map(content => Line.create(block, LineType.Original, content))
-
-        block.setLines(lines)
+    public static create(eol: EOLSymbol, content: string, fileName?: string): Block {
+        const blockId    = BlockProvider.createBlockIdFromFilePath(fileName)
+        const block = new Block({ eol, blockId })
+        block.setContent(content)
         return block
     }
 
-    public constructor(eol: string, options?: { id?: BlockId, parent?: Block, firstLine?: Line, lastLine?: Line }) {
+    public constructor(options: BlockOptions | Block | EOLSymbol) {
         super()
 
-        this.id  = options?.id ? options.id : BlockProvider.newBlockId()
-        this.eol = eol
+        const blockOptions = options as BlockOptions
+        const clonedBlock  = options as Block
 
-        this.parent    = options?.parent
-        this.firstLine = options?.firstLine
-        this.lastLine  = options?.lastLine
+        if (blockOptions) {
+            this.blockId              = BlockProvider.createBlockIdFromFilePath(blockOptions.filePath)
+            this.eol                  = blockOptions.eol
+            this.parent               = blockOptions.parent
+            this.firstLine            = blockOptions.firstLine
+            this.lastLine             = blockOptions.lastLine
+            this.enableVersionMerging = blockOptions.enableVersionMerging ? blockOptions.enableVersionMerging : false
+
+            const content = blockOptions.content
+            if      (!this.firstLine && !this.lastLine) { this.setContent(content ? content : "") }
+            else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
+        } else if (clonedBlock) {
+            this.blockId              = clonedBlock.blockId
+            this.isDeleted            = clonedBlock.isDeleted
+            this.eol                  = clonedBlock.eol
+            this.parent               = clonedBlock.parent
+            this.children             = clonedBlock.children
+            this.tags                 = clonedBlock.tags
+            this.firstLine            = clonedBlock.firstLine
+            this.lastLine             = clonedBlock.lastLine
+            this.enableVersionMerging = clonedBlock.enableVersionMerging
+            this.isClone              = true
+        } else {
+            this.eol = options as EOLSymbol
+        }
+
+        if      ( this.firstLine && !this.lastLine) { this.lastLine  = this.firstLine }
+        else if (!this.firstLine &&  this.lastLine) { this.firstLine = this.lastLine }
 
         this.addToLines()
     }
@@ -626,10 +659,17 @@ class Block extends LinkedList<Line> {
         return lines
     }
 
-    public setLines(lines: Line[]): void {
-        const lineCount = lines.length
+    public setContent(content: string): void {
+        const lineStrings = content.split(this.eol)
+        const lines = lineStrings.map(content => Line.create(this, LineType.Original, content))
+        this.setLines(lines)
+    }
 
-        let previous: Line | undefined = undefined
+    public setLines(lines: Line[]): void {
+        this.removeFromLines(true)
+
+        const lineCount = lines.length
+        let  previous: Line | undefined = undefined
         lines.forEach((current: Line, index: number) => {
             current.previous = previous
             if (index + 1 < lineCount) { current.next = lines[index + 1] }
@@ -746,7 +786,7 @@ class Block extends LinkedList<Line> {
 
         const firstLine = this.getLine(range.startLineNumber)
         const lastLine  = this.getLine(range.endLineNumber)
-        const child     = new Block(this.eol, { parent: this, firstLine, lastLine })
+        const child     = new Block({ eol: this.eol, parent: this, firstLine, lastLine })
 
         this.addChild(child)
 
@@ -754,12 +794,12 @@ class Block extends LinkedList<Line> {
     }
 
     public addChild(block: Block): void {
-        this.children.set(block.id, block)
+        this.children.set(block.blockId, block)
     }
 
-    public getChild(id: string): Block {
-        if (!this.children.has(id)) { throw new Error(`Child Block with ID ${id} does not exist!`) }
-        return this.children.get(id)
+    public getChild(blockId: BlockId): Block {
+        if (!this.children.has(blockId)) { throw new Error(`Child Block with ID ${blockId} does not exist!`) }
+        return this.children.get(blockId)
     }
 
     public getChildren(): Block[] { 
@@ -784,7 +824,7 @@ class Block extends LinkedList<Line> {
     public delete(): Block[] {
 
         this.removeFromLines(true)
-        this.parent?.children.delete(this.id)
+        this.parent?.children.delete(this.blockId)
 
         this.firstLine = undefined
         this.lastLine  = undefined
@@ -905,7 +945,7 @@ class Block extends LinkedList<Line> {
     public compress(): VCSSnapshotData {
         const parent = this
         return {
-            uuid:         parent.id,
+            uuid:         parent.blockId,
             _startLine:   parent.getFirstLineNumber(),
             _endLine:     parent.getLastLineNumber(),
             versionCount: parent.getUserVersionCount(),
@@ -931,6 +971,7 @@ class Block extends LinkedList<Line> {
         this.tags.set(tag.id, tag)
 
         return {
+            blockId:             this.blockId,
             uuid:                tag.id,
             name:                `Version ${this.tags.size}`,
             text:                this.getFullText(),
@@ -953,6 +994,10 @@ class Block extends LinkedList<Line> {
         return text
     }
 
+
+    public clone(): Block {
+        return new Block(this)
+    }
 }
 
 type BlockId = string
@@ -963,18 +1008,20 @@ class BlockProvider {
     private readonly blocks = new Map<BlockId, Block>()
 
     public constructor(blocks?: Block[]) {
-        blocks.forEach(block => { this.loadBlock(block) })
+        blocks?.forEach(block => { this.register(block) })
     }
 
-    public static newBlockId(): BlockId { return crypto.randomUUID() }
+    public static newBlockId():                             BlockId { return crypto.randomUUID() }
+    public static createBlockIdFromFilePath(path?: string): BlockId { return path ? this.convertFilePathToBlockId(path) : this.newBlockId() }
+    public static convertFilePathToBlockId(path: string):   BlockId { return path }
 
-    public static createBlockIdFrom(text?: string): BlockId {
-        return text ? text : this.newBlockId()
+    public register(block: Block): void {
+        this.blocks.set(block.blockId, block)
+        block.children.forEach(child => this.register(child))
     }
 
-    public loadBlock(block: Block): void {
-        this.blocks.set(block.id, block)
-        block.children.forEach(child => this.loadBlock(child))
+    public getBlock(blockId: BlockId): Block | undefined {
+        return this.blocks.get(blockId)
     }
 }
 
@@ -1019,86 +1066,148 @@ class Tag {
     }
 }
 
-type GhostFile = Block
+class Session {
+
+    public readonly sessionId: SessionId = crypto.randomUUID()
+
+    public readonly block: Block
+
+    public get blockId(): BlockId { return this.block.blockId }
+
+    public static createWithNewBlock(eol: string, filePath?: string, content?: string): Session {
+        const blockId = BlockProvider.createBlockIdFromFilePath(filePath)
+        const block   = new Block({ eol, blockId, content })
+        return new Session(block)
+    }
+
+    public static createFromBlock(block: Block): Session {
+        return new Session(block.clone())
+    }
+
+    public constructor(block: Block) {
+        this.block = block
+    }
+}
+
+interface SessionInfo { 
+    sessionId: SessionId,
+    blockId: BlockId,
+    content: string
+}
 
 export class GhostVCSServer extends BasicVCSServer {
 
-    private file: GhostFile | null = null
+    // helper for preview update
     private browserWindow: BrowserWindow | undefined
 
-    constructor(browserWindow?: BrowserWindow) {
+    private blocks   = new BlockProvider()
+    private sessions = new Map<SessionId, Session>()
+
+    public constructor(browserWindow?: BrowserWindow) {
         super()
         this.browserWindow = browserWindow
     }
 
-    private updatePreview() {
-        const versionCounts = this.file.getActiveLines().map(line => { return line.getVersionCount() })
-        this.browserWindow?.webContents.send("update-vcs-preview", this.file.getCurrentText(), versionCounts)
+    private getSession(sessionId: SessionId): Session {
+        if (this.sessions.has(sessionId)) { return this.sessions.get(sessionId)! }
+        else                              { throw new Error("This session ID is unknown!") }
     }
 
-    public async loadFile(filePath: string | null, eol: string, content: string | null): Promise<string> {
-        this.file = Block.create(eol, content, filePath)
-        this.updatePreview()
-        return this.file.id
+    private getBlock(sessionId: SessionId): Block { return this.getSession(sessionId).block }
+
+    private updatePreview(block: Block) {
+        const versionCounts = block.getActiveLines().map(line => { return line.getVersionCount() })
+        this.browserWindow?.webContents.send("update-vcs-preview", block.blockId, block.getCurrentText(), versionCounts)
     }
 
-    public async unloadFile(): Promise<void> {
-        this.file = null
+    public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
+        const filePath        = options?.filePath
+        const providedBlockId = options?.blockId
+        const blockId         = filePath ? BlockProvider.convertFilePathToBlockId(filePath) : providedBlockId
+
+        if (filePath && providedBlockId && providedBlockId !== blockId) { throw new Error("The provided file path and block IDs are not compatiple! Please use only one of them, or find the correct block ID for your file path!") }
+
+        const content  = options?.content
+        const block    = blockId ? this.blocks.getBlock(blockId) : undefined
+
+        let session: Session
+        if (block) {
+            if (content) { console.warn("Right now, we do not support updating the content of an existing block based on provided content. This will be ignored.") }
+            session = Session.createFromBlock(block)
+        } else {
+            session = Session.createWithNewBlock(eol, filePath, content)
+        }
+
+        this.sessions.set(session.sessionId, session)
+
+        return { sessionId: session.sessionId, blockId: session.blockId, content: session.block.getCurrentText() }
     }
 
-    public async updatePath(filePath: string): Promise<void> {
+    public async closeSession(sessionId: SessionId): Promise<void> {
+        this.sessions.delete(sessionId)
+    }
+
+    public async updatePath(sessionId: SessionId, filePath: string): Promise<void> {
         console.log("UPDATING FILE PATH IS NOT IMPLEMNETED")
         //this.file.filePath = filePath
     }
 
-    public async cloneToPath(filePath: string): Promise<void> {
+    public async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
         console.log("CLONE TO PATH NOT IMPLEMENTED")
     }
 
-    public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
-        return this.file.createChild(range)?.compress()
+    public async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {
+        const block = this.getBlock(sessionId)
+        return block.createChild(range)?.compress()
     }
 
-    public async deleteSnapshot(uuid: string): Promise<void> {
-        this.file.deleteChild(uuid)
+    public async deleteSnapshot(sessionId: SessionId, uuid: string): Promise<void> {
+        const block = this.getBlock(sessionId)
+        block.deleteChild(uuid)
     }
 
-    public async getSnapshot(uuid: string): Promise<VCSSnapshotData> {
-        return this.file.getChild(uuid).compress()
+    public async getSnapshot(sessionId: SessionId, uuid: string): Promise<VCSSnapshotData> {
+        const block = this.getBlock(sessionId)
+        return block.getChild(uuid).compress()
     }
 
-    public async getSnapshots(): Promise<VCSSnapshotData[]> {
-        return this.file.getCompressedChildren()
+    public async getSnapshots(sessionId: SessionId): Promise<VCSSnapshotData[]> {
+        const block = this.getBlock(sessionId)
+        return block.getCompressedChildren()
     }
 
-    public async updateSnapshot(snapshot: VCSSnapshotData): Promise<void> {
-        this.file.updateChild(snapshot)
+    public async updateSnapshot(sessionId: SessionId, snapshot: VCSSnapshotData): Promise<void> {
+        const block = this.getBlock(sessionId)
+        block.updateChild(snapshot)
     }
 
-    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<string> {
-        this.file.getChild(uuid).applyIndex(versionIndex)
-        this.updatePreview()
-        return this.file.getCurrentText()
+    public async applySnapshotVersionIndex(sessionId: SessionId, uuid: SnapshotUUID, versionIndex: number): Promise<string> {
+        const block = this.getBlock(sessionId)
+        block.getChild(uuid).applyIndex(versionIndex)
+        this.updatePreview(block)
+        return block.getCurrentText()
     }
 
-    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
-        const line = this.file.updateLine(change.lineNumber, change.lineText)
-        this.updatePreview()
+    public async lineChanged(sessionId: SessionId, change: LineChange): Promise<SnapshotUUID[]> {
+        const block = this.getBlock(sessionId)
+        const line = block.updateLine(change.lineNumber, change.lineText)
+        this.updatePreview(block)
         return line.getAffectedBlockIds()
     }
 
-    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+    public async linesChanged(sessionId: SessionId, change: MultiLineChange): Promise<SnapshotUUID[]> {
+        const block = this.getBlock(sessionId)
 
-        this.file.resetVersionMerging()
+        block.resetVersionMerging()
 
 
-        const startsWithEol = change.insertedText[0] === this.file.eol
-        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.file.eol
+        const startsWithEol = change.insertedText[0] === block.eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === block.eol
 
         const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > this.file.getLine(change.modifiedRange.startLineNumber).currentContent.length
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > block.getLine(change.modifiedRange.startLineNumber).currentContent.length
 
-        const insertedAtEnd   = change.modifiedRange.endColumn > this.file.getLine(change.modifiedRange.endLineNumber).currentContent.length
+        const insertedAtEnd   = change.modifiedRange.endColumn > block.getLine(change.modifiedRange.endLineNumber).currentContent.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
         const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
@@ -1115,10 +1224,10 @@ export class GhostVCSServer extends BasicVCSServer {
         }
 
         let vcsLines: Line[] = []
-        const modifiedLines = change.lineText.split(this.file.eol)
+        const modifiedLines = change.lineText.split(block.eol)
 
         if (modifyStartLine) {
-            vcsLines = this.file.getLineRange(modifiedRange)
+            vcsLines = block.getLineRange(modifiedRange)
         } else {
             // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
@@ -1128,7 +1237,7 @@ export class GhostVCSServer extends BasicVCSServer {
         }
         
 
-        const parent = this
+
         let affectedLines: Line[] = []
         function deleteLine(line: Line): void {
             line.delete()
@@ -1141,7 +1250,7 @@ export class GhostVCSServer extends BasicVCSServer {
         }
 
         function insertLine(lineNumber: number, content: string): void {
-            const line = parent.file.insertLine(lineNumber, content)
+            const line = block.insertLine(lineNumber, content)
             affectedLines.push(line)
         }
 
@@ -1171,13 +1280,14 @@ export class GhostVCSServer extends BasicVCSServer {
             }
         }
 
-        this.updatePreview()
+        this.updatePreview(block)
 
         return affectedLines.map(line => line.getAffectedBlockIds()).flat()
     }
 
-    public async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
-        const snapshot = this.file.getChild(uuid)
+    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion> {
+        const block = this.getBlock(sessionId)
+        const snapshot = block.getChild(uuid)
         return snapshot.createTag()
     }
 }

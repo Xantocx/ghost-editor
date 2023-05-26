@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import { BasicVCSClient, VCSSession, SessionId, SnapshotUUID, Text, VCSClient, VersionUUID } from "../vcs-provider"
+import { BasicVCSClient, VCSSession, SessionId, SnapshotUUID, Text, VCSClient, VersionUUID, SessionOptions, SessionInfo } from "../vcs-provider"
 import { ElectronVCSServer } from "../servers/electron-server"
 
 import { IRange } from "monaco-editor"
@@ -12,12 +12,7 @@ function invoke<Type>(channel: string, ...args: any): Promise<Type> {
 
 export const ElectronVCSClient: VCSClient = {
 
-    async createSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ session: VCSSession, content: string }> {
-        const result = await this.startSession(eol, options)
-        return { session: new VCSSession(result.sessionId, result.blockId, this), content: result.content }
-    },
-
-    async startSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ sessionId: SessionId; blockId: string, content: string } > {
+    async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
         return invoke(ElectronVCSServer.startSessionChannel, eol, options)
     },
 

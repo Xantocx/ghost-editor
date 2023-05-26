@@ -5,7 +5,7 @@ import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
 import { VCSSnapshotData, VCSSnapshot, VCSVersion } from "../../../app/components/data/snapshot"
-import { SnapshotUUID, VCSClient } from "../../../app/components/vcs/vcs-provider"
+import { SnapshotUUID, VCSClient, VCSSession } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { MetaView } from "../views/meta-view"
 
@@ -37,10 +37,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public get model(): MonacoModel {
         return this.editor.getTextModel()
-    }
-
-    public get vcs(): VCSClient {
-        return this.editor.vcs
     }
 
     public get sideView(): MetaView | undefined {
@@ -116,7 +112,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
-        const snapshot = await editor.vcs.createSnapshot(range)
+        const snapshot = await editor.getSession().createSnapshot(range)
 
         if (!snapshot) { 
             console.warn("Failed to create snapshot!")
@@ -126,6 +122,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return new GhostSnapshot(editor, snapshot)
     }
 
+    public get session(): VCSSession { return this.editor.getSession() }
+
     constructor(editor: GhostEditor, snapshot: VCSSnapshotData, viewZonesOnly?: boolean, toggleMode?: boolean) {
         super()
 
@@ -133,7 +131,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true //TODO: fix positioning of banners when using overlays instead of viewzones
         this.toggleMode    = toggleMode    ? toggleMode    : true
 
-        this.snapshot = VCSSnapshot.create(this.vcs, snapshot)
+        this.snapshot = VCSSnapshot.create(this.session, snapshot)
         this.locator = new LineLocator(this.editor, this.snapshot)
 
         this.display()
@@ -181,7 +179,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         // value updating
         this.addSubscription(this.footer.onChange(async value => {
-            const newText = await this.vcs.applySnapshotVersionIndex(this.uuid, value)
+            const newText = await this.session.applySnapshotVersionIndex(this.uuid, value)
             this.editor.update(newText)
         }))
 
@@ -254,9 +252,9 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public async update(manualUpdate?: boolean): Promise<void> {
-        const snapshot = await this.vcs.getSnapshot(this.uuid)
+        const snapshot = await this.session.getSnapshot(this.uuid)
         
-        this.snapshot = VCSSnapshot.create(this.vcs, snapshot)
+        this.snapshot = VCSSnapshot.create(this.session, snapshot)
         this.locator.rangeProvider = this.snapshot
 
         this.header?.update()
@@ -298,6 +296,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public delete(): void {
         this.remove()
-        this.vcs.deleteSnapshot(this.uuid)
+        this.session.deleteSnapshot(this.uuid)
     }
 }

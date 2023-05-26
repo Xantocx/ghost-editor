@@ -1,5 +1,5 @@
 import { IRange, Range } from "../utils/range"
-import { SnapshotUUID, Text, VCSProvider, VersionUUID } from "../vcs/vcs-provider"
+import { SnapshotUUID, Text, VCSProvider, VCSSession, VersionUUID } from "../vcs/vcs-provider"
 import { RangeProvider } from "../../../editor/utils/line-locator"
 
 export interface VCSSnapshotData {
@@ -11,6 +11,7 @@ export interface VCSSnapshotData {
 }
 
 export interface VCSVersion {
+    blockId: string
     uuid: VersionUUID
     name: string
     text: Text
@@ -20,7 +21,7 @@ export interface VCSVersion {
 export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
     public readonly uuid: string
-    public readonly provider: VCSProvider
+    public readonly session: VCSSession
 
     public _startLine: number
     public _endLine: number
@@ -63,14 +64,14 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
         this.update(range)
     }
 
-    public static create(provider: VCSProvider, snapshot: VCSSnapshotData): VCSSnapshot {
+    public static create(session: VCSSession, snapshot: VCSSnapshotData): VCSSnapshot {
         const range = new Range(snapshot._startLine, 1, snapshot._endLine, Number.MAX_SAFE_INTEGER)
-        return new VCSSnapshot(snapshot.uuid, provider, range, snapshot.versionCount, snapshot.versionIndex)
+        return new VCSSnapshot(snapshot.uuid, session, range, snapshot.versionCount, snapshot.versionIndex)
     }
 
-    constructor(uuid: string, provider: VCSProvider, range: IRange, versionCount: number, versionIndex: number) {
+    constructor(uuid: string, session: VCSSession, range: IRange, versionCount: number, versionIndex: number) {
         this.uuid = uuid
-        this.provider = provider
+        this.session = session
         
         this._startLine = Math.min(range.startLineNumber, range.endLineNumber)
         this._endLine   = Math.max(range.startLineNumber, range.endLineNumber)
@@ -94,7 +95,7 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
     }
 
     private updateServer(): void {
-        this.provider.updateSnapshot(this.compress())
+        this.session.updateSnapshot(this.compress())
     }
 
     public compress(): VCSSnapshotData {

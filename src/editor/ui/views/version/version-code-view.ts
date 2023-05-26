@@ -1,18 +1,17 @@
 import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { Synchronizer } from "../../../utils/synchronizer";
 import { GhostEditor } from "../editor/editor";
 import { View } from "../view";
 
 export class VersionCodeView extends View {
 
-    public readonly version: VCSVersion
+    public  readonly version: VCSVersion
+    private readonly editor:  GhostEditor
 
-    private readonly editor: GhostEditor
-
-    public constructor(root: HTMLElement, version: VCSVersion) {
+    public constructor(root: HTMLElement, version: VCSVersion, synchronizer?: Synchronizer) {
         super(root)
         this.version = version
-
-        this.editor = 
+        this.editor  = GhostEditor.createVersionEditor(this.root, version, synchronizer)
     }
 }
 

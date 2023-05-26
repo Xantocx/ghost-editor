@@ -1,9 +1,13 @@
 export abstract class Synchronizable {
 
-    synchronizer?: Synchronizer = undefined
+    public synchronizer?: Synchronizer = undefined
 
     public triggerSync(): void { this.synchronizer?.sync(this) }
     public sync(trigger: Synchronizable): void { throw new Error("Method not implemented.") }
+
+    public constructor(synchronizer?: Synchronizer) {
+        synchronizer?.register(this)
+    }
 }
 
 export class Synchronizer {

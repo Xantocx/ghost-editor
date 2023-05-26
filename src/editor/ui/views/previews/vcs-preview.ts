@@ -1,16 +1,21 @@
 import * as monaco from "monaco-editor"
 import { Preview } from "./preview";
 import { MonacoModel } from "../../../utils/types";
+import { GhostEditorModel } from "../editor/editor";
 
 export class VCSPreview extends Preview {
 
-    private editorModel: MonacoModel
-    private vcsModel: MonacoModel
+    private editorModel?:  GhostEditorModel
 
-    private readonly diffEditor: monaco.editor.IStandaloneDiffEditor
+    private readonly diffEditor:  monaco.editor.IStandaloneDiffEditor
     private readonly decorations: monaco.editor.IEditorDecorationsCollection
 
-    constructor(root: HTMLElement, editorModel: MonacoModel) {
+    private readonly vcsTextModel:     MonacoModel = monaco.editor.createModel("")
+    private readonly defaultTextModel: MonacoModel = monaco.editor.createModel("")
+
+    public get blockId(): string | undefined { return this.editorModel?.session?.blockId }
+
+    constructor(root: HTMLElement, editorModel?: GhostEditorModel) {
         super(root)
 
         this.diffEditor = monaco.editor.createDiffEditor(this.root, {
@@ -21,36 +26,43 @@ export class VCSPreview extends Preview {
 
         this.decorations = this.diffEditor.createDecorationsCollection()
 
-        this.updateEditor(editorModel)
-
-        window.ipcRenderer.on("update-vcs-preview", (code: string, versionCounts: number[]) => {
-            this.updateVCS(code, versionCounts)
+        window.ipcRenderer.on("update-vcs-preview", (blockId: string, content: string, versionCounts: number[]) => {
+            if (this.blockId === blockId) { this.updateVCS(content, versionCounts) }
         })
+
+        this.updateEditor(editorModel)
     }
 
-    public updateEditor(model: MonacoModel): void {
+    private getEditorTextModel(): MonacoModel | undefined { return this.editorModel?.textModel }
 
-        this.editorModel = model
-        this.vcsModel = monaco.editor.createModel("", model.getLanguageId())
+    public updateEditor(editorModel?: GhostEditorModel, vcsContent?: string): void {
 
-        this.diffEditor.setModel({ 
-            original: this.editorModel,
-            modified: this.vcsModel
-         })
+        this.editorModel = editorModel
+
+        if (editorModel) {
+            const editorTextModel = this.getEditorTextModel()!
+            monaco.editor.setModelLanguage(this.vcsTextModel, editorTextModel.getLanguageId())
+
+            this.diffEditor.setModel({ 
+                original: editorTextModel,
+                modified: this.vcsTextModel
+            })
+
+            this.updateVCS(vcsContent ? vcsContent : "")
+        } else {
+            this.diffEditor.setModel({ 
+                original: this.defaultTextModel,
+                modified: this.defaultTextModel
+            })
+        }
     }
 
-    public updateVCS(code: string, versionCounts: number[]): void {
-        this.vcsModel.setValue(code)
+    public updateVCS(content: string, versionCounts?: number[]): void {
+        this.vcsTextModel.setValue(content)
         
-        const newDecorations: monaco.editor.IModelDeltaDecoration[] = versionCounts.map((versionCount: number, index: number) => {
-
-            const lineNumber = index + 1
-            let   versionCountText = `${versionCount} versions:\t`
-
-            while (versionCountText.length < 14) {
-                versionCountText = " " + versionCountText
-            }
-
+        function createDecoration(lineNumber: number, versionCount?: number): monaco.editor.IModelDeltaDecoration {
+            let versionCountText = `${versionCount ? versionCount : "?"} versions:\t`
+            while (versionCountText.length < 14) { versionCountText = " " + versionCountText}
             return {
                 range: new monaco.Range(lineNumber, 0, lineNumber, 3),
                 options: {
@@ -60,7 +72,18 @@ export class VCSPreview extends Preview {
                     },
                 },
             };
-        })
+        }
+
+        let newDecorations: monaco.editor.IModelDeltaDecoration[] = []
+        if (versionCounts) {
+            newDecorations = versionCounts.map((versionCount: number, index: number) => {
+                return createDecoration(index + 1, versionCount)
+            })
+        } else {
+            for (let lineNumber = 1; lineNumber <= this.vcsTextModel.getLineCount(); lineNumber++) {
+                newDecorations.push(createDecoration(lineNumber))
+            }
+        }
 
         this.decorations.set(newDecorations)
     }

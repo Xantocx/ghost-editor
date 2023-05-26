@@ -1,11 +1,12 @@
+import { Synchronizer } from "../../utils/synchronizer"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 
 export abstract class View extends SubscriptionManager {
 
     public readonly root: HTMLElement
 
-    constructor(root: HTMLElement) {
-        super()
+    constructor(root: HTMLElement, sychronizer?: Synchronizer) {
+        super(sychronizer)
         this.root = root
     }
 }

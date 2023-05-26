@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { VCSAdapter, AdaptableVCSServer, VersionUUID, SnapshotUUID, Text, SessionId } from "../vcs-provider"
+import { VCSAdapter, AdaptableVCSServer, VersionUUID, SnapshotUUID, Text, SessionOptions, SessionId } from "../vcs-provider"
 import { IRange } from "../../../../editor/utils/types"
 import { VCSSnapshotData } from "../../data/snapshot"
 import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
@@ -29,7 +29,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     private mapChannels() {
 
-        const startSessionSubscription = ipcMain.handle(ElectronVCSServer.startSessionChannel, async (event, eol: string, options?: { filePath?: string, content?: string }) => {
+        const startSessionSubscription = ipcMain.handle(ElectronVCSServer.startSessionChannel, async (event, eol: string, options?: SessionOptions) => {
             return this.startSession(eol, options)
         })
 

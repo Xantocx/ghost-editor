@@ -7,11 +7,23 @@ export type SnapshotUUID = string
 export type VersionUUID  = string
 export type SessionId    = string
 
+export interface SessionOptions { 
+    filePath?: string
+    blockId?: string
+    content?: string 
+}
+
+export interface SessionInfo { 
+    sessionId: SessionId
+    blockId: string
+    content: string
+}
+
 // functionality that the VCS needs to provide
 export interface VCSProvider {
 
     // file handling
-    startSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ sessionId: SessionId, blockId: string, content: string }>
+    startSession(eol: string, options?: SessionOptions): Promise<SessionInfo>
     closeSession(sessionId: SessionId): Promise<void>
 
     updatePath(sessionId: SessionId, filePath: string): Promise<void>
@@ -35,78 +47,9 @@ export interface VCSProvider {
     saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion>
 }
 
-export class VCSSession {
-
-    public readonly sessionId: SessionId
-    public readonly blockId:   string
-    public readonly client:    VCSClient
-
-    public constructor(sessionId: SessionId, blockId: string, client: VCSClient) {
-        this.sessionId = sessionId
-        this.blockId   = blockId
-        this.client    = client
-    }
-
-    public async updatePath(filePath: string): Promise<void> {
-        return this.client.updatePath(this.sessionId, filePath)
-    }
-
-    public async cloneToPath(filePath: string): Promise<void> {
-        return this.client.cloneToPath(this.sessionId, filePath)
-    }
-
-    public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
-        return this.client.createSnapshot(this.sessionId, range)
-    }
-
-    public async deleteSnapshot(uuid: SnapshotUUID): Promise<void> {
-        return this.client.deleteSnapshot(this.sessionId, uuid)
-    }
-
-    public async getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData> {
-        return this.client.getSnapshot(this.sessionId, uuid)
-    }  
-
-    public async getSnapshots(): Promise<VCSSnapshotData[]> {
-        return this.client.getSnapshots(this.sessionId)
-    }
-
-    public async updateSnapshot(snapshot: VCSSnapshotData): Promise<void> {
-        return this.client.updateSnapshot(this.sessionId, snapshot)
-    }
-
-    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
-        return this.client.applySnapshotVersionIndex(this.sessionId, uuid, versionIndex)
-    }
-
-    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
-        return this.client.lineChanged(this.sessionId, change)
-    }
-
-    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
-        return this.client.linesChanged(this.sessionId, change)
-    }
-
-    async applyChange(change: AnyChange): Promise<SnapshotUUID[]> {
-        return this.client.applyChange(this.sessionId, change)
-    }
-
-    async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
-        return this.client.applyChanges(this.sessionId, changes)
-    }
-
-    async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
-        return this.client.saveCurrentVersion(this.sessionId, uuid)
-    }
-
-    public async close(): Promise<void> {
-        return this.client.closeSession(this.sessionId)
-    }
-}
-
 export abstract class BasicVCSProvider implements VCSProvider {
 
-    public async startSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ sessionId: SessionId, blockId: string, content: string }> {
+    public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
         throw new Error("Method not implemented.")
     }
 
@@ -183,15 +126,80 @@ export interface VCSServer extends VCSProvider {}
 export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServer {}
 
 // client-side interface which may call server end-points
-export interface VCSClient extends VCSProvider {
-    createSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ session: VCSSession, content: string }>
-}
-
+export interface VCSClient extends VCSProvider {}
 export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {
-
-    public async createSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ session: VCSSession, content: string }> {
+    public async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, content: string }> {
         const result = await  this.startSession(eol, options)
         return { session: new VCSSession(result.sessionId, result.blockId, this), content: result.content }
+    }
+}
+
+export class VCSSession {
+
+    public readonly sessionId: SessionId
+    public readonly blockId:   string
+    public readonly client:    VCSClient
+
+    public constructor(sessionId: SessionId, blockId: string, client: VCSClient) {
+        this.sessionId = sessionId
+        this.blockId   = blockId
+        this.client    = client
+    }
+
+    public async updatePath(filePath: string): Promise<void> {
+        return this.client.updatePath(this.sessionId, filePath)
+    }
+
+    public async cloneToPath(filePath: string): Promise<void> {
+        return this.client.cloneToPath(this.sessionId, filePath)
+    }
+
+    public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
+        return this.client.createSnapshot(this.sessionId, range)
+    }
+
+    public async deleteSnapshot(uuid: SnapshotUUID): Promise<void> {
+        return this.client.deleteSnapshot(this.sessionId, uuid)
+    }
+
+    public async getSnapshot(uuid: SnapshotUUID): Promise<VCSSnapshotData> {
+        return this.client.getSnapshot(this.sessionId, uuid)
+    }  
+
+    public async getSnapshots(): Promise<VCSSnapshotData[]> {
+        return this.client.getSnapshots(this.sessionId)
+    }
+
+    public async updateSnapshot(snapshot: VCSSnapshotData): Promise<void> {
+        return this.client.updateSnapshot(this.sessionId, snapshot)
+    }
+
+    public async applySnapshotVersionIndex(uuid: SnapshotUUID, versionIndex: number): Promise<Text> {
+        return this.client.applySnapshotVersionIndex(this.sessionId, uuid, versionIndex)
+    }
+
+    public async lineChanged(change: LineChange): Promise<SnapshotUUID[]> {
+        return this.client.lineChanged(this.sessionId, change)
+    }
+
+    public async linesChanged(change: MultiLineChange): Promise<SnapshotUUID[]> {
+        return this.client.linesChanged(this.sessionId, change)
+    }
+
+    async applyChange(change: AnyChange): Promise<SnapshotUUID[]> {
+        return this.client.applyChange(this.sessionId, change)
+    }
+
+    async applyChanges(changes: ChangeSet): Promise<SnapshotUUID[]> {
+        return this.client.applyChanges(this.sessionId, changes)
+    }
+
+    async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
+        return this.client.saveCurrentVersion(this.sessionId, uuid)
+    }
+
+    public async close(): Promise<void> {
+        return this.client.closeSession(this.sessionId)
     }
 }
 
@@ -219,7 +227,7 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         this.adapter = adapter
     }
 
-    public async startSession(eol: string, options?: { filePath?: string, content?: string }): Promise<{ sessionId: SessionId, blockId: string, content: string }> {
+    public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
         return this.adapter.startSession(eol, options)
     }
 

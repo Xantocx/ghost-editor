@@ -5,7 +5,7 @@ import * as monaco from "monaco-editor"
 import { View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
+import { SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { MetaView, ViewIdentifier } from "../meta-view";
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
@@ -17,6 +17,7 @@ import { VCSVersion } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
 import { uuid } from "../../../utils/uuid";
+import { extractEOLSymbol } from "../../../utils/helpers";
 
 class GhostEditorSnapshotManager {
 
@@ -24,7 +25,7 @@ class GhostEditorSnapshotManager {
 
     private snapshots: GhostSnapshot[] = []
 
-    public get vcs():               VCSClient                      { return this.editor.vcs }
+    public get session():            VCSSession                    { return this.editor.getSession() }
     public get interactionManager(): GhostEditorInteractionManager { return this.editor.interactionManager }
 
     public constructor(editor: GhostEditor) {
@@ -32,7 +33,7 @@ class GhostEditorSnapshotManager {
     }
 
     public async loadSnapshots(): Promise<void> {
-        const snapshots = await this.vcs.getSnapshots()
+        const snapshots = await this.session.getSnapshots()
         this.snapshots = snapshots.map(snapshot => new GhostSnapshot(this.editor, snapshot))
     }
 
@@ -307,17 +308,16 @@ class GhostEditorInteractionManager extends SubscriptionManager {
     }
 }
 
+export class GhostEditorModel {
 
-class GhostEditorModel {
-
-    public readonly model:   MonacoModel
+    public readonly textModel:   MonacoModel
     public readonly session: VCSSession
 
-    public get uri(): URI { return this.model.uri }
+    public get uri(): URI { return this.textModel.uri }
 
-    public constructor(model: MonacoModel, session: VCSSession) {
-        this.model   = model
-        this.session = session
+    public constructor(textModel: MonacoModel, session: VCSSession) {
+        this.textModel = textModel
+        this.session   = session
     }
 
     public close(): void {
@@ -340,13 +340,13 @@ export class GhostEditor extends View implements ReferenceProvider {
     public readonly interactionManager: GhostEditorInteractionManager
 
     // side view containing previews, versioning views, etc.
-    public          sideView?:            MetaView
-    public          sideViewIdentifiers?: Record<string, ViewIdentifier>
-    private         defaultSideView?:     ViewIdentifier
+    public  sideView?:            MetaView
+    public  sideViewIdentifiers?: Record<string, ViewIdentifier>
+    private defaultSideView?:     ViewIdentifier
 
     // data model
-    public     model?:     GhostEditorModel
-    public get hasModel(): boolean { return this.model !== undefined }
+    public     editorModel?: GhostEditorModel
+    public get hasModel():   boolean { return this.editorModel !== undefined }
 
     // accessors for editor meta info and content
     public get uri():  URI           { return this.getTextModel().uri }
@@ -354,11 +354,11 @@ export class GhostEditor extends View implements ReferenceProvider {
     public get text(): string        { return this.core.getValue() }
 
     // accessors for useful config info of the editor
-    public get firstVisibleLine() : number { return this.core.getVisibleRanges()[0].startLineNumber }
-    public get lineHeight():         number { return this.core.getOption(MonacoEditorOption.lineHeight) } // https://github.com/microsoft/monaco-editor/issues/794
-    public get characterWidth():     number { return this.getFontInfo().typicalHalfwidthCharacterWidth }
-    public get spaceWidth():         number { return this.getFontInfo().spaceWidth }
-    public get tabSize():            number { return this.getModelOptions().tabSize }
+    public get firstVisibleLine(): number { return this.core.getVisibleRanges()[0].startLineNumber }
+    public get lineHeight():       number { return this.core.getOption(MonacoEditorOption.lineHeight) } // https://github.com/microsoft/monaco-editor/issues/794
+    public get characterWidth():   number { return this.getFontInfo().typicalHalfwidthCharacterWidth }
+    public get spaceWidth():       number { return this.getFontInfo().spaceWidth }
+    public get tabSize():          number { return this.getModelOptions().tabSize }
 
     // vcs system allowing for version management
     public get vcs(): VCSClient { return window.vcs }
@@ -380,10 +380,16 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    public static load()
+    public static createAsSubview(root: HTMLElement, blockId: string, synchronizer?: Synchronizer): GhostEditor {
+        return new GhostEditor(root, { blockId, synchronizer })
+    }
 
-    public constructor(root: HTMLElement, options?: { blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, synchronizer?: Synchronizer }) {
-        super(root)
+    public static createVersionEditor(root: HTMLElement, version: VCSVersion, synchronizer?: Synchronizer): GhostEditor {
+        return this.createAsSubview(root, version.blockId, synchronizer)
+    }
+
+    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, synchronizer?: Synchronizer }) {
+        super(root, options?.synchronizer)
 
         this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
         this.sideViewEnabled      = options?.enableSideView       ? options.enableSideView       : false
@@ -403,40 +409,30 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.interactionManager = new GhostEditorInteractionManager(this)
 
         this.setup()
-        this.load({ blockId: options?.blockId })
-
-        options?.synchronizer?.register(this)
+        this.load({ filePath: options?.filePath, blockId: options?.blockId })
     }
 
-    // (create and) get the model of the editor
+    private createEditorModel(textModel: MonacoModel, session: VCSSession, vcsContent: string): void {
+        textModel.setValue(vcsContent)
+        this.editorModel = new GhostEditorModel(textModel, session)
+        this.core.setModel(textModel)
+        if (this.sideViewEnabled) { this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent }) }
+    }
+
     public getTextModel(): MonacoModel {
-        if (this.hasModel) { return this.model!.model }
+        if (this.hasModel) { return this.editorModel!.textModel }
         else               { throw new Error("The editor currently has no model. Please load a session in order to re-establish functionality before using this function.") }
     }
 
     public getSession(): VCSSession {
-        if (this.hasModel) { return this.model!.session }
+        if (this.hasModel) { return this.editorModel!.session }
         else               { throw new Error("The editor currently has no session. Please load a session in order to re-establish functionality before using this function.") } 
-    }
-
-    private setModel(model: MonacoModel, session: VCSSession): void {
-        this.model = new GhostEditorModel(model, session)
-        this.core.setModel(model)
-        if (this.sideViewEnabled) { this.sideView!.update(this.sideViewIdentifiers!.vcs, model) }
     }
 
     // edior and model options to extract config
     public getFontInfo():     monaco.editor.FontInfo                 { return this.core.getOption(MonacoEditorOption.fontInfo) }
     public getModelOptions(): monaco.editor.TextModelResolvedOptions { return this.getTextModel().getOptions() }
-
-    public getEolSymbol(): string {
-        const EOL = this.getTextModel().getEndOfLineSequence()
-        switch(EOL) {
-            case 0:  return "\n"
-            case 1:  return "\r\n"
-            default: throw new Error(`Unknown end of line sequence! Got ${EOL}`)
-        }
-    }
+    public getEOLSymbol():    string                                 { return extractEOLSymbol(this.getTextModel()) }
 
     private addContainer(): HTMLDivElement {
         const container = document.createElement("div")
@@ -465,9 +461,9 @@ export class GhostEditor extends View implements ReferenceProvider {
             this.sideView = new MetaView(this.sideViewContainer!)
 
             const vcsPreview = this.sideView.addView("vcs", root => {
-                return new VCSPreview(root, this.getTextModel())
-            }, (view: VCSPreview, model: MonacoModel) => {
-                view.updateEditor(model)
+                return new VCSPreview(root, this.editorModel)
+            }, (view: VCSPreview, args: { editorModel: GhostEditorModel, vcsContent?: string }) => {
+                view.updateEditor(args.editorModel, args.vcsContent)
             })
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
@@ -493,12 +489,12 @@ export class GhostEditor extends View implements ReferenceProvider {
     }
 
     public createChangeSet(event: MonacoChangeEvent): ChangeSet {
-        return new ChangeSet(Date.now(), this.getTextModel(), this.getEolSymbol(), event)
+        return new ChangeSet(Date.now(), this.getTextModel(), this.getEOLSymbol(), event)
     }
 
     public async applyChangeSet(changeSet: ChangeSet): Promise<void> {
         // forEach is a bitch for anything but synchronous arrays...
-        const changedSnapshots = new Set(await this.vcs.applyChanges(changeSet))
+        const changedSnapshots = new Set(await this.getSession().applyChanges(changeSet))
         changedSnapshots.forEach(uuid => this.snapshotManager.getSnapshot(uuid)?.update())
     }
 
@@ -511,26 +507,32 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.snapshotManager.removeSnapshots()
         this.interactionManager.unloadFile()
         this.core.setModel(null)
-        this.model?.close()
-        this.model = undefined
+        this.editorModel?.close()
+        this.editorModel = undefined
     }
 
-    public async load(options?: { blockId?: string, uri?: URI, content?: string }): Promise<void> {
+    private async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, content: string }> {
+        const result = await this.vcs.startSession(eol, options)
+        return { session: new VCSSession(result.sessionId, result.blockId, this.vcs), content: result.content }
+    }
+
+    public async load(options?: { uri?: URI, filePath?: string, blockId?: string, content?: string }): Promise<void> {
         this.unload()
 
-        const uri     = options?.uri ? options.uri : undefined
-        const blockId = options?.blockId  ? options.blockId  : uri?.fsPath
-        const content = options?.content ? options.content : ""
+        const uri      = options?.uri      ? options.uri      : undefined
+        const filePath = options?.filePath ? options.filePath : uri?.fsPath
+        const blockId  = options?.blockId  ? options.blockId  : undefined
+        const content  = options?.content  ? options.content  : ""
 
-        let model = uri ? monaco.editor.getModel(uri) : null
+        let textModel = uri ? monaco.editor.getModel(uri) : null
 
-        if (model) { model.setValue(content) } 
-        else       { model = monaco.editor.createModel(content, undefined, uri) }
+        if (textModel) { textModel.setValue(content) }
+        else           { textModel = monaco.editor.createModel(content, undefined, uri) }
 
-        const result = await this.vcs.createSession(this.getEolSymbol(), { filePath: blockId, content: options?.content })
+        const EOL    = extractEOLSymbol(textModel)
+        const result = await this.createSession(EOL, { filePath, blockId, content: options?.content })
 
-        model.setValue(result.content)
-        this.setModel(model, result.session)
+        this.createEditorModel(textModel, result.session, result.content)
 
         this.snapshotManager.loadSnapshots()
     }
