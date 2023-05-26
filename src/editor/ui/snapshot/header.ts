@@ -17,7 +17,7 @@ export class GhostSnapshotHeader extends InlineEditorBanner {
         return 5
     }
 
-    protected override contentRange(): IRange {
+    protected override getContentRange(): IRange {
         const startLine = this.locator.range.startLineNumber
         return new Range(startLine - this.lineCount, 1, startLine - 1, Number.MAX_SAFE_INTEGER)
     }

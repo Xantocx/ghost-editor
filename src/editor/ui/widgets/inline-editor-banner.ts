@@ -37,10 +37,6 @@ export class InlineEditorBanner extends MouseTracker {
         return this.snapshot.endLine - this.snapshot.startLine + 1
     }
 
-    protected contentRange(): IRange {
-        return this.locator.range
-    }
-
     protected get editor(): GhostEditor {
         return this.snapshot.editor
     }
@@ -74,7 +70,7 @@ export class InlineEditorBanner extends MouseTracker {
             const parent = this
             this._contentLocator = new LineLocator(this.locator.referenceProvider, {
                 get range(): IRange {
-                    return parent.contentRange()
+                    return parent.getContentRange()
                 }
             })
         }
@@ -109,6 +105,10 @@ export class InlineEditorBanner extends MouseTracker {
         }))
 
         this.show()
+    }
+
+    protected getContentRange(): IRange {
+        return this.locator.range
     }
 
     protected getOverlayWidth(): number {

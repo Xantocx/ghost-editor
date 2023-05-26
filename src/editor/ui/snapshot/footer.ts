@@ -23,7 +23,7 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
     }
 
     private cachedContentRange?: IRange
-    protected override contentRange(): IRange {
+    protected override getContentRange(): IRange {
         if (!this.mouseOn || !this.cachedContentRange) {
             const endLine = this.locator.range.endLineNumber
             this.cachedContentRange = new Range(endLine + 1, 1, endLine + this.lineCount, Number.MAX_SAFE_INTEGER)
