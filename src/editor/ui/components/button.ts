@@ -1,6 +1,7 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
 import { Disposable } from "../../utils/types"
 import { P5JSPreview, SizeConstraints } from "../views/previews/p5js-preview"
+import { VersionViewContainer, VersionViewElement } from "../views/version/version-view"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 
 export class Button extends SubscriptionManager {
@@ -46,20 +47,12 @@ export class Button extends SubscriptionManager {
         return new VersionButton(root, version, sizeConstraints, onClick)
     }
 
-    public static p5jsPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
+    public static p5jsPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): P5JSPreviewButton<Container> {
         return new P5JSPreviewButton(root, version, sizeConstraints, onClick)
     }
 
-    public static p5jsPreviewToggleButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onSelect?: (version: VCSVersion, selected: boolean) => void): Button {
-        return new P5JSPreviewToggleButton (root, version, undefined, sizeConstraints, onSelect)
-    }
-
-    public static versionPreviewButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
-        if (version.text.includes("setup") && version.text.includes("draw")) {
-            return this.p5jsPreviewButton(root, version, sizeConstraints, onClick)
-        } else {
-            return this.versionButton(root, version, sizeConstraints, onClick)
-        }
+    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, sizeConstraints?: SizeConstraints, onSelect?: (version: VCSVersion, selected: boolean) => void): P5JSPreviewToggleButton<Container> {
+        return new P5JSPreviewToggleButton(root, version, undefined, sizeConstraints, onSelect)
     }
 
     public readonly root: HTMLElement
@@ -169,10 +162,11 @@ export class VersionButton extends TextButton {
 }
 
 
-export class P5JSPreviewButton extends Button {
+export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>> extends Button implements VersionViewElement<P5JSPreviewButton<Container>, VersionViewContainer<P5JSPreviewButton<Container>>> {
 
-    public readonly version: VCSVersion
-    private readonly preview: P5JSPreview
+    public  readonly container: Container
+    public  readonly version:  VCSVersion
+    private readonly preview:  P5JSPreview
 
     private readonly sizeConstraints?: SizeConstraints
     private readonly previewSize: number = 0.7
@@ -186,8 +180,8 @@ export class P5JSPreviewButton extends Button {
         return this.sizeConstraints?.maxHeight ? this.sizeConstraints?.maxHeight : 150
     }
 
-    constructor(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void) {
-        super(root, onClick)
+    constructor(container: Container, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void) {
+        super(container.container, onClick)
         this.version = version
         this.sizeConstraints = sizeConstraints
 
@@ -247,7 +241,7 @@ export class P5JSPreviewButton extends Button {
 }
 
 
-export class P5JSPreviewToggleButton extends P5JSPreviewButton {
+export class P5JSPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>> extends P5JSPreviewButton<Container> {
 
     private readonly colors?: {selected?: string, default?: string}
 
@@ -266,13 +260,13 @@ export class P5JSPreviewToggleButton extends P5JSPreviewButton {
         this.style.backgroundColor = selected ? this.selectedColor : this.defaultColor
     }
 
-    constructor(root: HTMLElement, 
+    constructor(container: Container, 
                 version: VCSVersion, 
                 colors?: {selected?: string, default?: string}, 
                 sizeConstraints?: SizeConstraints, 
                 onSelect?: (version: VCSVersion, selected: boolean) => void) {
 
-        super(root, version, sizeConstraints)
+        super(container, version, sizeConstraints)
         this.colors = colors
 
         this.button.onclick = () => {

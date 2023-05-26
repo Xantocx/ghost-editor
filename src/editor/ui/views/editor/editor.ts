@@ -436,10 +436,12 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     private addContainer(): HTMLDivElement {
         const container = document.createElement("div")
-        container.style.flex    = "1"
-        container.style.height  = "100%"
-        container.style.padding = "0 0"
-        container.style.margin  = "0 0"
+        container.style.boxSizing = "border-box"
+        container.style.flex      = "1"
+        container.style.maxWidth  = "50%"
+        container.style.height    = "100%"
+        container.style.padding   = "0 0"
+        container.style.margin    = "0 0"
         this.root.appendChild(container)
         return container
     }

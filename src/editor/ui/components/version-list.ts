@@ -1,21 +1,16 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
 import { SizeConstraints } from "../views/previews/p5js-preview"
-import { Button } from "./button"
+import { VersionViewContainer } from "../views/version/version-view"
+import { Button, P5JSPreviewButton } from "./button"
 
-class SideScrollVersionListElement {
+class SideScrollVersionListElement extends VersionViewContainer<P5JSPreviewButton<SideScrollVersionListElement>> {
 
-    public readonly list: SideScrollVersionList
+    public readonly list:    SideScrollVersionList
     public readonly content: VCSVersion
-
-    public readonly element: HTMLLIElement
-    public readonly button: Button
+    public readonly button:  Button
 
     public get htmlList(): HTMLUListElement {
         return this.list.list
-    }
-
-    public get elementStyle(): CSSStyleDeclaration {
-        return this.element.style
     }
     
     public get buttonStyle(): CSSStyleDeclaration {
@@ -23,20 +18,22 @@ class SideScrollVersionListElement {
     }
 
     constructor(list: SideScrollVersionList, content: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: () => void) {
+        const element = document.createElement("li")
+        list.list.appendChild(element)
+
+        super(element)
+
         this.list = list
         this.content = content
 
-        this.element = document.createElement("li")
-        this.htmlList.appendChild(this.element)
-
         //this.button = Button.basicButton(this.element, content.name, onClick)
         //this.button  = Button.versionPreviewButton(this.element, this.content, sizeConstraints, onClick)
-        this.button  = Button.p5jsPreviewButton(this.element, this.content, sizeConstraints, onClick)
+        this.button  = Button.p5jsPreviewButton(this as SideScrollVersionListElement, this.content, sizeConstraints, onClick)
     }
 
     public remove(): void {
         this.button.remove()
-        this.element.remove()
+        super.remove()
     }
 }
 
@@ -146,8 +143,8 @@ export class SideScrollVersionList {
         }
 
         const listElement = new SideScrollVersionListElement(this, version, this.sizeConstraints, () => { console.log("Clicked " + version.name) })
-        if(isFirst) { listElement.elementStyle.marginLeft = `${this.elementSpacing}px` }
-        listElement.elementStyle.marginRight = `${this.elementSpacing}px`
+        if(isFirst) { listElement.style.marginLeft = `${this.elementSpacing}px` }
+        listElement.style.marginRight = `${this.elementSpacing}px`
         this.elements.push(listElement)
     }
 

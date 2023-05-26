@@ -1,94 +1,90 @@
-import { View } from "../view"
 import { VCSVersion } from "../../../../app/components/data/snapshot"
-import { Button } from "../../components/button"
+import { View } from "../view"
+import { VersionGridView } from "./version-grid-view"
+import { VersionCodeViewList } from "./version-code-view"
+import { IVersionViewContainer } from "./version-view"
 
-export class VersionManagerView extends View {
+export class VersionManagerView extends View implements IVersionViewContainer {
 
     private readonly previewContainer: HTMLDivElement
-    private readonly versions = new Map<VCSVersion, Button>()
+    private readonly codeContainer:    HTMLDivElement
 
-    private readonly codeContainer: HTMLDivElement
-
-    private readonly minWidth  = 200
-    private readonly minHeight = 100
+    private readonly preview: VersionGridView
+    private readonly code:    VersionCodeViewList
     
     public get previewStyle(): CSSStyleDeclaration { return this.previewContainer.style }
     public get codeStyle():    CSSStyleDeclaration { return this.codeContainer.style }
-
-    private get versionData(): VCSVersion[] { return Array.from(this.versions.keys()) }
-    private get previews(): Button[]     { return Array.from(this.versions.values()) }
 
     public constructor(root: HTMLElement, versions?: VCSVersion[]) {
         super(root)
 
         // create and style container for versions
         this.previewContainer = document.createElement("div")
-
-        this.previewStyle.boxSizing = "border-box"
-        this.previewStyle.width     = "100%"
-        this.previewStyle.maxHeight = "25%"
-        this.previewStyle.padding   = "5px 5px"
-        this.previewStyle.margin    = "0 0"
-
-        this.previewStyle.display             = "grid"
-        this.previewStyle.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
-        this.previewStyle.gridAutoRows        = `minmax(${this.minHeight}px, auto)`
-        this.previewStyle.gap                 = "10px"
-        this.previewStyle.overflow            = "auto"
-
+        this.previewStyle.boxSizing    = "border-box"
+        this.previewStyle.width        = "100%"
+        this.previewStyle.maxHeight    = "25%"
+        this.previewStyle.padding      = "5px 5px"
+        this.previewStyle.margin       = "5px 5px"
         this.root.appendChild(this.previewContainer)
 
         // create and style container for editors
         this.codeContainer = document.createElement("div")
+        this.codeStyle.boxSizing = "border-box"
         this.codeStyle.width     = "100%"
         this.codeStyle.maxHeight = "75%"
-        this.codeStyle.padding   = "0 0"
-        this.codeStyle.margin    = "0 0"
+        this.codeStyle.padding   = "5px 5px"
+        this.codeStyle.margin    = "5px 5px"
         this.root.appendChild(this.codeContainer)
+
+        // add version code view
+        this.code    = new VersionCodeViewList(this.codeContainer)
+        this.preview = new VersionGridView(this.previewContainer, (version, selected) => {
+            if (selected) { this.code.addVersion(version) }
+            else          { this.code.removeVersion(version) }
+        })
+
+        this.preview.onVersionsChange(versions => {
+            this.previewStyle.border = versions.length > 0 ? "1px solid black" : ""
+        })
+
+        this.code.onVersionsChange(versions => [
+            this.codeStyle.border = versions.length > 0 ? "1px solid black" : ""
+        ])
 
         if (versions) { this.showVersions(versions) }
     }
 
-    private createPreview(version: VCSVersion): Button {
-        return Button.p5jsPreviewToggleButton(this.previewContainer, version, { padding: 5 }, () => console.log("Clicked."))
-    }
+    public getVersions(): VCSVersion[] { return this.preview.getVersions() }
 
     public showVersions(versions: VCSVersion[]): void {
-        this.removeVersions()
-        versions.forEach(version => {
-            const preview = this.createPreview(version)
-            this.versions.set(version, preview)
-        })
+        this.preview.showVersions(versions)
+        //this.code.showVersions(versions)
     }
 
     public addVersion(version: VCSVersion): void {
-        if (this.versions.has(version)) { return }
-
-        const preview = this.createPreview(version)
-        this.versions.set(version, preview)
+        this.preview.addVersion(version)
+        //this.code.addVersion(version)
     }
 
     public applyDiff(versions: VCSVersion[]): void {
-        const currentVersions = this.versionData
-        currentVersions.forEach(   version => { if (!versions.includes(version)) { this.removeVersion(version) } })
-        versions.reverse().forEach(version => { if (!this.versions.has(version)) { this.addVersion(version) } })
+        this.preview.applyDiff(versions)
+        //this.code.applyDiff(versions)
     }
 
     public removeVersion(version: VCSVersion): void {
-        this.versions.get(version)?.remove()
-        this.versions.delete(version)
+        this.preview.removeVersion(version)
+        //this.code.removeVersion(version)
     }
 
     public removeVersions(): void {
-        this.previews.forEach(preview => preview.remove())
-        this.versions.clear()
+        this.preview.removeVersions()
+        //this.code.removeVersions()
     }
 
     public override remove(): void {
-        super.remove()
         this.removeVersions()
-
         this.previewContainer.remove()
         this.codeContainer.remove()
+        super.remove()
     }
 }
