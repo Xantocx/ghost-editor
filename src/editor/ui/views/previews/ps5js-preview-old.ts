@@ -89,7 +89,7 @@ export class P5JSPreviewOld extends CodePreview {
                     }
                 </style>
 
-                <script src="${P5JSPreview.p5jsScript}"></script>
+                <script src="${P5JSPreviewOld.p5jsScript}"></script>
             </head>
             <body>
 
@@ -136,7 +136,7 @@ export class P5JSPreviewOld extends CodePreview {
                         }
                     }
                 </script>
-                <script src="${P5JSPreview.iframeResizerScript}"></script>
+                <script src="${P5JSPreviewOld.iframeResizerScript}"></script>
 
                 <script>
                     let pauseTimeoutId = undefined

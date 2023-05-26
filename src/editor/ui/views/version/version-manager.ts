@@ -18,11 +18,14 @@ export class VersionManagerView extends View implements IVersionViewContainer {
     public constructor(root: HTMLElement, versions?: VCSVersion[]) {
         super(root)
 
+        this.root.style.display = "flex"
+        this.root.style.flexDirection = "column"
+
         // create and style container for versions
         this.previewContainer = document.createElement("div")
         this.previewStyle.boxSizing    = "border-box"
-        this.previewStyle.width        = "100%"
-        this.previewStyle.maxHeight    = "25%"
+        this.previewStyle.flex         = "1"
+        this.previewStyle.width        = "calc(100% - 10px)"
         this.previewStyle.padding      = "5px 5px"
         this.previewStyle.margin       = "5px 5px"
         this.root.appendChild(this.previewContainer)
@@ -30,10 +33,11 @@ export class VersionManagerView extends View implements IVersionViewContainer {
         // create and style container for editors
         this.codeContainer = document.createElement("div")
         this.codeStyle.boxSizing = "border-box"
+        this.codeStyle.flex      = "0"
         this.codeStyle.width     = "100%"
-        this.codeStyle.maxHeight = "75%"
-        this.codeStyle.padding   = "5px 5px"
-        this.codeStyle.margin    = "5px 5px"
+        this.codeStyle.padding   = "0 0"
+        this.codeStyle.margin    = "0 0"
+        this.codeStyle.overflow  = "auto"
         this.root.appendChild(this.codeContainer)
 
         // add version code view
@@ -44,12 +48,15 @@ export class VersionManagerView extends View implements IVersionViewContainer {
         })
 
         this.preview.onVersionsChange(versions => {
-            this.previewStyle.border = versions.length > 0 ? "1px solid black" : ""
+            const previewVisible = versions.length > 0
+            this.previewStyle.border = previewVisible ? "1px solid black" : ""
         })
 
-        this.code.onVersionsChange(versions => [
-            this.codeStyle.border = versions.length > 0 ? "1px solid black" : ""
-        ])
+        this.code.onVersionsChange(versions => {
+            const codeVisible = versions.length > 0
+            this.previewStyle.maxHeight = codeVisible ? "calc(25% - 10px)" : ""
+            this.codeStyle.flex         = codeVisible ?                "3" : "0"
+        })
 
         if (versions) { this.showVersions(versions) }
     }

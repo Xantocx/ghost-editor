@@ -331,8 +331,9 @@ export class GhostEditor extends View implements ReferenceProvider {
     public readonly sideViewEnabled:      boolean
 
     // view containers to seperate main editor and side view
-    public readonly editorContainer:    HTMLDivElement
-    public readonly sideViewContainer?: HTMLDivElement
+    public  readonly editorContainer:    HTMLDivElement
+    public  readonly sideViewContainer?: HTMLDivElement
+    private readonly containers:         HTMLDivElement[] = []
 
     // main editor
     public readonly core:               MonacoEditor
@@ -438,11 +439,14 @@ export class GhostEditor extends View implements ReferenceProvider {
         const container = document.createElement("div")
         container.style.boxSizing = "border-box"
         container.style.flex      = "1"
-        container.style.maxWidth  = "50%"
         container.style.height    = "100%"
         container.style.padding   = "0 0"
         container.style.margin    = "0 0"
         this.root.appendChild(container)
+
+        this.containers.push(container)
+        this.containers.forEach(container => { container.style.maxWidth = `${100 / this.containers.length}%`})
+
         return container
     }
 

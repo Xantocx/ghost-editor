@@ -15,10 +15,14 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
         super(root)
         
         this.container = document.createElement("div")
-        this.container.style.width   = "100%"
-        this.container.style.height  = "100%"
-        this.container.style.padding = "0 0"
-        this.container.style.margin  = "0 0"
+        this.container.style.boxSizing = "border-box"
+        this.container.style.width     = "100%"
+        this.container.style.height    = "100%"
+        this.container.style.maxWidth  = "100%"
+        this.container.style.maxHeight = "100%"
+        this.container.style.padding   = "0 0"
+        this.container.style.margin    = "0 0"
+        this.container.style.overflow  = "hidden"
 
         if (builder) { this.wrap(builder, updateCallback) }
         if (show) { this.show() }

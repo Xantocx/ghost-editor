@@ -14,6 +14,8 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
         this.onClick = onClick
 
         this.style.display             = "grid"
+        this.style.alignItems          = "start"
+        //this.style.justifyContent      = "start"
         this.style.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
         this.style.gridAutoRows        = `minmax(${this.minHeight}px, auto)`
         this.style.gap                 = "10px"
