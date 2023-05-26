@@ -22,13 +22,19 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
         return 2
     }
 
-    private cachedContentRange: IRange
+    private cachedContentRange?: IRange
     protected override contentRange(): IRange {
         if (!this.mouseOn || !this.cachedContentRange) {
             const endLine = this.locator.range.endLineNumber
             this.cachedContentRange = new Range(endLine + 1, 1, endLine + this.lineCount, Number.MAX_SAFE_INTEGER)
         }
-        return this.cachedContentRange
+        return this.cachedContentRange!
+    }
+
+    private cachedOverlayWidth?: number
+    protected override getOverlayWidth(): number {
+        if (!this.mouseOn || !this.cachedOverlayWidth) { this.cachedOverlayWidth = super.getOverlayWidth() }
+        return this.cachedOverlayWidth!
     }
 
     protected override setupContent(container: HTMLElement): void {

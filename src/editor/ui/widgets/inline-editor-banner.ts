@@ -63,10 +63,6 @@ export class InlineEditorBanner extends MouseTracker {
         return this.domOverlay.style
     }
 
-    public get overlayWidth(): number {
-        return parseFloat(this.overlayStyle.width)
-    }
-
     private get overlayHeight(): number {
         return this.lineCount * this.editor.lineHeight
     }
@@ -115,9 +111,14 @@ export class InlineEditorBanner extends MouseTracker {
         this.show()
     }
 
+    protected getOverlayWidth(): number {
+        // dirty hack for now to make sure the slider does not disappear behind the minimap
+        return this.viewZoneMode ? Math.min(this.snapshot.editorWidth, this.snapshot.highlightWidth) : this.snapshot.highlightWidth
+    }
+
     protected setupContent(container: HTMLElement): void {
         container.style.background = 'rgba(50, 50, 255, 0.2)'
-        container.innerText = "TEST BANNER WIDGET"
+        container.innerText        = "Default Banner Widget"
     }
 
     private setupMouseTracking() {
@@ -135,12 +136,8 @@ export class InlineEditorBanner extends MouseTracker {
     }
 
     private updateOverlaySize(height: number): void {
-
-        // dirty hack for now to make sure the slider does not disappear behind the minimap
-        const width = this.viewZoneMode ? Math.min(this.snapshot.editorWidth, this.snapshot.highlightWidth) : this.snapshot.highlightWidth
-
         this.overlayStyle.height = `${height}px`
-        this.overlayStyle.width  = `${width}px`
+        this.overlayStyle.width  = `${this.getOverlayWidth()}px`
     }
 
     private updateOverlayDimension(top: number, height: number): void {
