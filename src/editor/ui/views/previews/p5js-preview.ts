@@ -1,40 +1,30 @@
+import { sleep } from "../../../utils/helpers";
 import { Disposable } from "../../../utils/types";
 import { uuid } from "../../../utils/uuid";
 import { CodePreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
 
-
-export interface SizeConstraints {
-    minWidth?: number
-    minHeight?: number
-    maxWidth?: number
-    maxHeight?: number
-    padding?: number
-}
-
 export class P5JSPreview extends CodePreview {
 
-    private static p5jsScript = new URL("./libs/p5js/p5.min.js", document.baseURI).href
+    private static p5jsScript          = new URL("./libs/p5js/p5.min.js", document.baseURI).href
     private static iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
 
     private readonly uuid: string = uuid(16)
 
     private readonly iframeContainer: HTMLDivElement
     private iframe: HTMLIFrameElement
+    private hasErrorMessage = false
 
-    private readonly sizeConstraints?: SizeConstraints
     private readonly errorMessageColor: string
 
     private onResizeCallbacks: {(width: number, height: number, scaleFactor: number): void}[] = []
 
-    private get id(): string {
-        return `p5js-preview-${this.uuid}`
-    }
+    private get id(): string { return `p5js-preview-${this.uuid}` }
 
     private get html(): string {
 
-        const desiredWidth  = this.getDesiredWidth()
-        const desiredHeight = this.getDesiredHeight()
+        const contentWidth  = this.getContentWidth()
+        const contentHeight = this.getContentHeight()
 
         return `
             <!DOCTYPE html>
@@ -45,9 +35,31 @@ export class P5JSPreview extends CodePreview {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>p5.js Live Preview</title>
                 <script src="${P5JSPreview.p5jsScript}"></script>
-                <script src="${P5JSPreview.iframeResizerScript}"></script>
+
+                <style>
+                    html, body { padding: 0; margin: 0; }
+                </style>
             </head>
             <body>
+
+                <script>
+                    // setup config object of iFrameResizer
+                    window.iFrameResizer = {
+                        onReady:   ()   => {
+                            window.parentIFrame?.sendMessage(document.getElementById("error-message") !== null)
+                        },
+                        onMessage: data => {
+                            console.log("TEST")
+                            console.log(data)
+                            const errorMessage = document.getElementById("error-message")
+                            if (errorMessage) {
+                                errorMessage.style.width  = data.width  + "px"
+                                errorMessage.style.height = data.height + "px"
+                            }
+                        }
+                    }
+                </script>
+                <script src="${P5JSPreview.iframeResizerScript}"></script>
 
                 <script>
                     let pauseTimeoutId = undefined
@@ -81,12 +93,13 @@ export class P5JSPreview extends CodePreview {
                         errorMessage.innerText = text
 
                         // the way maxHeight is used should probably be made more explicit
-                        ${this.maxHeight ? 'errorMessage.style.display = "inline-block"' : ""}
-                        errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${desiredWidth  - 8}px" // -8 for message padding and border
-                        errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${desiredHeight - 8}px" // -8 for message padding and border
-                        errorMessage.style.padding = "3px 3px"
-                        errorMessage.style.color = "${this.errorMessageColor}"
-                        errorMessage.style.border = "1px solid ${this.errorMessageColor}"
+                        errorMessage.style.display   = "inline-block"
+                        errorMessage.style.boxSizing = "border-box"
+                        errorMessage.style.width     = "${contentWidth}px"
+                        errorMessage.style.height    = "${contentHeight}px"
+                        errorMessage.style.padding   = "3px"
+                        errorMessage.style.color     = "${this.errorMessageColor}"
+                        errorMessage.style.border    = "1px solid ${this.errorMessageColor}"
 
                         document.body.appendChild(errorMessage);
                     }
@@ -108,7 +121,7 @@ export class P5JSPreview extends CodePreview {
                                         userSetup.call(this);
                                     } catch (error) {
                                         stopP5()
-                                        createErrorMessage("Message: " + error.message${desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
+                                        createErrorMessage("Message: " + error.message${contentHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
                                     }
                                 }
 
@@ -117,7 +130,7 @@ export class P5JSPreview extends CodePreview {
                                         userDraw.call(this);
                                     } catch (error) {
                                         stopP5()
-                                        createErrorMessage("Message: " + error.message${desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
+                                        createErrorMessage("Message: " + error.message${contentHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
                                     }
                                 }
 
@@ -155,51 +168,27 @@ export class P5JSPreview extends CodePreview {
         return URL.createObjectURL(htmlBlob);
     }
 
-    public get style(): CSSStyleDeclaration {
-        return this.iframe.style
-    }
+    public get style():         CSSStyleDeclaration { return this.iframeContainer.style }
+    public get iFrameResizer(): any | undefined     { return (this.iframe as any).iFrameResizer }
 
-    public get iFrameResizer(): any | undefined {
-        return (this.iframe as any).iFrameResizer
-    }
+    private readonly padding:   number
+    private readonly minWidth:  number
+    private readonly minHeight: number
 
-    private get padding(): number {
-        return this.sizeConstraints?.padding ? this.sizeConstraints.padding : 0
-    }
-
-    private get minWidth(): number {
-        return this.sizeConstraints?.minWidth ? this.sizeConstraints.minWidth : 50
-    }
-
-    private get minHeight(): number {
-        return this.sizeConstraints?.minHeight ? this.sizeConstraints.minHeight : 50
-    }
-
-    private get maxWidth(): number | undefined {
-        return this.sizeConstraints?.maxWidth
-    }
-
-    private get maxHeight(): number | undefined {
-        return this.sizeConstraints?.maxHeight
-    }
-
-    constructor(root: HTMLElement, code?: string, sizeConstraints?: SizeConstraints, errorMessageColor?: string) {
-        super(root, code)
-        this.sizeConstraints = sizeConstraints
-        this.errorMessageColor = errorMessageColor ? errorMessageColor : "black"
+    constructor(root: HTMLElement, options?: { code?: string, padding?: number, minWidth?: number, minHeight?: number, errorMessageColor?: string }) {
+        super(root, options?.code)
+        this.padding           = options?.padding           ? options.padding           : 0
+        this.minWidth          = options?.minWidth          ? options.minWidth          : 50
+        this.minHeight         = options?.minHeight         ? options.minHeight         : 50
+        this.errorMessageColor = options?.errorMessageColor ? options.errorMessageColor : "black"
 
         this.iframeContainer = document.createElement("div")
-        this.iframeContainer.style.position  = "relative"
-        this.iframeContainer.style.boxSizing = "border-box"
-        this.iframeContainer.style.width     = "100%"
-        this.iframeContainer.style.height    = "100%"
-        this.iframeContainer.style.minWidth  = `${this.minWidth}px`
-        this.iframeContainer.style.maxWidth  = `${this.maxWidth}px`
-        this.iframeContainer.style.minHeight = `${this.minHeight}px`
-        this.iframeContainer.style.maxHeight = `${this.maxHeight}px`
-        this.iframeContainer.style.padding   = `${this.padding}px ${this.padding}px`
-        this.iframeContainer.style.margin    = "0 0"
-        this.iframeContainer.style.overflow  = "hidden"
+        this.style.position  = "relative"
+        this.style.boxSizing = "border-box"
+        this.style.width     = "100%"
+        this.style.height    = "100%"
+        this.style.margin    = "0 0"
+        this.style.overflow  = "hidden"
         this.root.appendChild(this.iframeContainer)
 
         this.iframe = document.createElement("iframe") as HTMLIFrameElement
@@ -207,16 +196,16 @@ export class P5JSPreview extends CodePreview {
         this.iframe.frameBorder = "0"
 
         // make sure preview is displayed with minimal unused space
-        this.style.position = "absolute"
-        this.style.top       = "50%"
-        this.style.left      = "50%"
-        this.style.width     = "100%"
-        this.style.height    = "100%"
-        this.style.transform = "translate(-50%, -50%)"
+        this.iframe.style.position = "absolute"
+        this.iframe.style.top       = "50%"
+        this.iframe.style.left      = "50%"
+        this.iframe.style.width     = "100%"
+        this.iframe.style.height    = "100%"
+        this.iframe.style.transform = "translate(-50%, -50%)"
 
-        this.style.padding = "0 0"
-        this.style.margin  = "0 0"
-        this.style.border  = "none"
+        this.iframe.style.padding = "0 0"
+        this.iframe.style.margin  = "0 0"
+        this.iframe.style.border  = "none"
 
         let loadHandler: () => void
         loadHandler = () => {
@@ -237,25 +226,34 @@ export class P5JSPreview extends CodePreview {
         return value + 2 * this.padding
     }
 
-    private getDesiredWidth(): number {
-        const rootWidth = Math.max(parseFloat(window.getComputedStyle(this.root).width), this.minWidth)
-        return this.padValue(this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth)
+    private getContentWidth(): number {
+        return this.padValue(Math.max(parseFloat(window.getComputedStyle(this.iframeContainer).width), this.minWidth))
     }
 
-    private getDesiredHeight(): number {
-        console.log(parseFloat(window.getComputedStyle(this.root).height))
-        const rootHeight = Math.max(parseFloat(window.getComputedStyle(this.root).height), this.minHeight)
-        return this.padValue(this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight)
+    private getContentHeight(): number {
+        return this.padValue(Math.max(parseFloat(window.getComputedStyle(this.iframeContainer).height), this.minHeight))
     }
 
     private setupResizing(): void {
         const onResize  = (data: any) => { this.resize(data.width, data.height) }
+        const onMessage = (data: any) => { 
+            this.hasErrorMessage = data.message
+
+            if (this.hasErrorMessage) {
+                //this.iframe.style.top       = "auto"
+                //this.iframe.style.left      = "auto"
+                this.iframe.style.transform = "translate(-50%, -50%)"
+            }
+
+            this.resizeErrorMessage()
+        }
         this.iframe = iframeResize({ /*log: true,*/ 
                                         checkOrigin: ["file://"], 
                                         sizeWidth: true, 
                                         widthCalculationMethod: "taggedElement",
                                         tolerance: 20, // used to avoid recursive resizing loop over small inaccuracies in size
-                                        onResized: onResize
+                                        onResized: onResize,
+                                        onMessage: onMessage
                                    }, `#${this.id}`)[0]
 
         window.addEventListener("resize", (event) => {
@@ -265,33 +263,48 @@ export class P5JSPreview extends CodePreview {
         })
     }
 
+    private resizeErrorMessage(): void {
+        const contentWidth  = this.getContentWidth()
+        const contentHeight = this.getContentHeight()
+
+        console.log(contentWidth)
+
+        const displayWidth  = this.unpadValue(contentWidth)
+        const displayHeight = this.unpadValue(contentHeight)
+
+        this.iFrameResizer?.sendMessage( { width: contentWidth, height: contentHeight })
+        this.onResizeCallbacks.forEach(callback => callback(displayWidth, displayHeight, 1))
+    }
+
     private resize(iframeWidth: number, iframeHeight: number): void {
-        //console.log(`RESIZE ID ${this.id}`)
+        if (this.hasErrorMessage) { 
+            this.resizeErrorMessage()
+        } else {
+            // includes padding
+            const scaleFactor = Math.min(this.getContentWidth() / iframeWidth, this.getContentHeight() / iframeHeight)
 
-        // includes padding
-        const scaleFactor = Math.min(this.getDesiredWidth() / iframeWidth, this.getDesiredHeight() / iframeHeight)
+            this.iframe.style.transformOrigin = "top left"
+            this.iframe.style.transform       = `scale(${scaleFactor}) translate(-50%, -50%)` // translate is used to center element vertically
 
-        this.style.transformOrigin = "top left"
-        this.style.transform       = `scale(${scaleFactor}) translate(-50%, -50%)` // translate is used to center element vertically
+            const contentWidth  = iframeWidth  * scaleFactor
+            const contentHeight = iframeHeight * scaleFactor
 
-        // these values are padded, meaning they assume a padding will be added around them
-        const displayWidth  = this.unpadValue(iframeWidth  * scaleFactor)
-        const displayHeight = this.unpadValue(iframeHeight * scaleFactor)
+            /*
+            console.log("CURRENT")
+            console.log(iframeWidth)
+            console.log(iframeHeight)
+            console.log("DESIRED")
+            console.log(displayWidth)
+            console.log(displayHeight)
+            console.log("---------------------")
+            */
 
-        /*
-        console.log("CURRENT")
-        console.log(iframeWidth)
-        console.log(iframeHeight)
-        console.log("DESIRED")
-        console.log(displayWidth)
-        console.log(displayHeight)
-        console.log("---------------------")
-        */
+            // these values are padded, meaning they assume a padding will be added around them
+            const displayWidth  = this.unpadValue(contentWidth)
+            const displayHeight = this.unpadValue(contentHeight)
 
-        // TODO: SCALE DOWN UNUSED DISPLAY WIDTH!
-        // This has to be done in the callbacks
-
-        this.onResizeCallbacks.forEach(callback => callback(displayWidth, displayHeight, scaleFactor))
+            this.onResizeCallbacks.forEach(callback => callback(displayWidth, displayHeight, scaleFactor))
+        }
     }
 
     public onResize(callback: (width: number, height: number, scaleFactor: number) => void): Disposable {

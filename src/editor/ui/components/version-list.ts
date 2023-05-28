@@ -1,5 +1,4 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
-import { SizeConstraints } from "../views/previews/p5js-preview"
 import { VersionViewContainer } from "../views/version/version-view"
 import { Button, P5JSPreviewButton } from "./button"
 
@@ -17,7 +16,7 @@ class SideScrollVersionListElement extends VersionViewContainer<P5JSPreviewButto
         return this.button.style
     }
 
-    constructor(list: SideScrollVersionList, content: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: () => void) {
+    constructor(list: SideScrollVersionList, content: VCSVersion, onClick?: () => void) {
         const element = document.createElement("li")
         list.list.appendChild(element)
 
@@ -28,7 +27,7 @@ class SideScrollVersionListElement extends VersionViewContainer<P5JSPreviewButto
 
         //this.button = Button.basicButton(this.element, content.name, onClick)
         //this.button  = Button.versionPreviewButton(this.element, this.content, sizeConstraints, onClick)
-        this.button  = Button.p5jsPreviewButton(this as SideScrollVersionListElement, this.content, sizeConstraints, onClick)
+        this.button  = Button.p5jsPreviewButton(this as SideScrollVersionListElement, this.content, onClick)
     }
 
     public remove(): void {
@@ -49,7 +48,6 @@ export class SideScrollVersionList {
     private readonly emptyPlaceholder: HTMLLIElement
     private elements: SideScrollVersionListElement[] = []
 
-    private readonly sizeConstraints?: SizeConstraints
     private readonly scrollSpeed: number = 100
     private readonly elementSpacing = 10
 
@@ -69,10 +67,7 @@ export class SideScrollVersionList {
         return this.elements.map(elem => elem.content)
     }
 
-    constructor(root: HTMLElement, versions?: VCSVersion[], sizeConstraints?: SizeConstraints, placeholderText?: string) {
-        // set size constraints
-        this.sizeConstraints = sizeConstraints
-
+    constructor(root: HTMLElement, versions?: VCSVersion[], placeholderText?: string) {
         // set root style
         this.root = root
         this.rootStyle.display = "flex"
@@ -142,7 +137,7 @@ export class SideScrollVersionList {
             isFirst = true
         }
 
-        const listElement = new SideScrollVersionListElement(this, version, this.sizeConstraints, () => { console.log("Clicked " + version.name) })
+        const listElement = new SideScrollVersionListElement(this, version, () => { console.log("Clicked " + version.name) })
         if(isFirst) { listElement.style.marginLeft = `${this.elementSpacing}px` }
         listElement.style.marginRight = `${this.elementSpacing}px`
         this.elements.push(listElement)

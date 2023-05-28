@@ -60,13 +60,11 @@ export class GhostSnapshotHeader extends InlineEditorBanner {
         versionDiv.style.height = "100%"
         container.appendChild(versionDiv)
 
+
+        const list   = new SideScrollVersionList(versionDiv, elements)
         const height = this.computedHeaderHeight - 20
 
-        return new SideScrollVersionList(versionDiv, elements, {
-            maxWidth: 200,
-            minHeight: height,
-            maxHeight: height,
-            padding: 5
-        })
+        list.listStyle.height = height + "px"
+        return list
     }
 }

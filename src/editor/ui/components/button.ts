@@ -1,8 +1,8 @@
 import { VCSVersion } from "../../../app/components/data/snapshot"
 import { Disposable } from "../../utils/types"
-import { P5JSPreview, SizeConstraints } from "../views/previews/p5js-preview"
 import { VersionViewContainer, VersionViewElement } from "../views/version/version-view"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
+import { P5JSPreview } from "../views/previews/p5js-preview"
 
 export class Button extends SubscriptionManager {
 
@@ -43,16 +43,16 @@ export class Button extends SubscriptionManager {
         return button
     }
 
-    public static versionButton(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): Button {
-        return new VersionButton(root, version, sizeConstraints, onClick)
+    public static versionButton(root: HTMLElement, version: VCSVersion, onClick?: (button: Button) => void): Button {
+        return new VersionButton(root, version, onClick)
     }
 
-    public static p5jsPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void): P5JSPreviewButton<Container> {
-        return new P5JSPreviewButton(root, version, sizeConstraints, onClick)
+    public static p5jsPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, onClick?: (button: Button) => void): P5JSPreviewButton<Container> {
+        return new P5JSPreviewButton(root, version, onClick)
     }
 
-    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, sizeConstraints?: SizeConstraints, onSelect?: (version: VCSVersion, selected: boolean) => void): P5JSPreviewToggleButton<Container> {
-        return new P5JSPreviewToggleButton(root, version, undefined, sizeConstraints, onSelect)
+    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, onSelect?: (version: VCSVersion, selected: boolean) => void): P5JSPreviewToggleButton<Container> {
+        return new P5JSPreviewToggleButton(root, version, undefined, onSelect)
     }
 
     public readonly root: HTMLElement
@@ -123,28 +123,10 @@ export class TextButton extends Button {
 
 export class VersionButton extends TextButton {
 
-    private readonly sizeConstraints?: SizeConstraints
-
-    private get maxWidth(): number {
-        return this.sizeConstraints?.maxWidth ? this.sizeConstraints?.maxWidth : 350
-    }
-
-    private get maxHeight(): number {
-        return this.sizeConstraints?.maxHeight ? this.sizeConstraints?.maxHeight : 150
-    }
-
-    private get padding(): number {
-        return this.sizeConstraints?.padding ? this.sizeConstraints?.padding : 0
-    }
-
-    constructor(root: HTMLElement, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void) {
+    constructor(root: HTMLElement, version: VCSVersion, onClick?: (button: Button) => void) {
         super(root, version.name, onClick)
-        this.sizeConstraints = sizeConstraints
 
         this.style.display = "inline-block"
-        this.style.maxWidth = `${this.maxWidth}px`
-        this.style.height = `${this.maxHeight}px`
-        this.style.padding = `${this.padding}px ${this.padding}px`
         this.style.margin = "0 0"
 
         this.style.backgroundColor = version.automaticSuggestion ? "gray" : "blue"
@@ -168,27 +150,14 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPrevie
     public  readonly version:  VCSVersion
     private readonly preview:  P5JSPreview
 
-    private readonly sizeConstraints?: SizeConstraints
-    private readonly previewSize: number = 0.7
     private readonly namePadding = 5
 
-    private get maxWidth(): number {
-        return this.sizeConstraints?.maxWidth ? this.sizeConstraints?.maxWidth : 350
-    }
-
-    private get maxHeight(): number {
-        return this.sizeConstraints?.maxHeight ? this.sizeConstraints?.maxHeight : 150
-    }
-
-    constructor(container: Container, version: VCSVersion, sizeConstraints?: SizeConstraints, onClick?: (button: Button) => void) {
+    constructor(container: Container, version: VCSVersion, onClick?: (button: Button) => void) {
         super(container.container, onClick)
         this.version = version
-        this.sizeConstraints = sizeConstraints
 
         this.style.display = "inline-flex"
         this.style.overflow = "hidden"
-        this.style.maxWidth = `${this.maxWidth}px`
-        this.style.maxHeight = `${this.maxHeight}px`
         this.style.padding = "0 0"
         this.style.margin = "0 0"
         this.style.backgroundColor = version.automaticSuggestion ? "gray" : "blue"
@@ -200,7 +169,8 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPrevie
         name.textContent = version.name
         name.style.display = "block"
         name.style.alignSelf = "center"
-        name.style.maxWidth = `${(1 - this.previewSize) * this.maxWidth}px`
+        name.style.flex = "1"
+        name.style.boxSizing = "border-box"
         name.style.padding = `${this.namePadding}px ${this.namePadding}px`
         name.style.margin = "0 0"
         name.style.color = "white"
@@ -212,26 +182,13 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPrevie
         this.button.appendChild(name)
 
         const previewContainer = document.createElement("div")
-        previewContainer.style.width = `${this.previewSize * this.maxWidth}px`
+        previewContainer.style.flex = "3"
         previewContainer.style.height = "100%"
         previewContainer.style.padding = "0 0"
         previewContainer.style.margin = "0 0"
         this.button.appendChild(previewContainer)
 
-        this.preview = new P5JSPreview(previewContainer, 
-                                       version.text, 
-                                       { 
-                                         minWidth: this.sizeConstraints?.minWidth,
-                                         minHeight: this.sizeConstraints?.minHeight, 
-                                         maxHeight: this.maxHeight, 
-                                         padding: this.sizeConstraints?.padding 
-                                       }, 
-                                       "white")
-
-        this.preview.onResize((width, height, scaleFactor) => {
-            // give up rest of maximum width for name (always >= 25%)
-            name.style.maxWidth = `${this.maxWidth - width - 2 * this.namePadding}px`
-        })
+        this.preview = new P5JSPreview(previewContainer, { code: version.text, padding: 5, errorMessageColor: "white" })
     }
 
     public override remove(): void {
@@ -263,10 +220,9 @@ export class P5JSPreviewToggleButton<Container extends VersionViewContainer<P5JS
     constructor(container: Container, 
                 version: VCSVersion, 
                 colors?: {selected?: string, default?: string}, 
-                sizeConstraints?: SizeConstraints, 
                 onSelect?: (version: VCSVersion, selected: boolean) => void) {
 
-        super(container, version, sizeConstraints)
+        super(container, version)
         this.colors = colors
 
         this.button.onclick = () => {

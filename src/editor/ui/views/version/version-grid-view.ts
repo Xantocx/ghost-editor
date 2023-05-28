@@ -24,7 +24,7 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
     }
 
     protected override createCustomView(version: VCSVersion): P5JSPreviewToggleButton<VersionGridView> {
-        const preview = Button.p5jsPreviewToggleButton(this as VersionGridView, version, { padding: 5 }, (version, selected) => this.onClick(version, selected))
+        const preview = Button.p5jsPreviewToggleButton(this as VersionGridView, version, (version, selected) => this.onClick(version, selected))
         preview.style.width  = "100%"
         preview.style.height = "100%"
         return preview
