@@ -32,6 +32,10 @@ export class P5JSPreview extends CodePreview {
     }
 
     private get html(): string {
+
+        const desiredWidth  = this.getDesiredWidth()
+        const desiredHeight = this.getDesiredHeight()
+
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -78,8 +82,8 @@ export class P5JSPreview extends CodePreview {
 
                         // the way maxHeight is used should probably be made more explicit
                         ${this.maxHeight ? 'errorMessage.style.display = "inline-block"' : ""}
-                        errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${this.desiredWidth  - 8}px" // -8 for message padding and border
-                        errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${this.desiredHeight - 8}px" // -8 for message padding and border
+                        errorMessage.style.${this.maxWidth  ? "width"  : "maxWidth"}  = "${desiredWidth  - 8}px" // -8 for message padding and border
+                        errorMessage.style.${this.maxHeight ? "height" : "maxHeight"} = "${desiredHeight - 8}px" // -8 for message padding and border
                         errorMessage.style.padding = "3px 3px"
                         errorMessage.style.color = "${this.errorMessageColor}"
                         errorMessage.style.border = "1px solid ${this.errorMessageColor}"
@@ -104,7 +108,7 @@ export class P5JSPreview extends CodePreview {
                                         userSetup.call(this);
                                     } catch (error) {
                                         stopP5()
-                                        createErrorMessage("Message: " + error.message${this.desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
+                                        createErrorMessage("Message: " + error.message${desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
                                     }
                                 }
 
@@ -113,7 +117,7 @@ export class P5JSPreview extends CodePreview {
                                         userDraw.call(this);
                                     } catch (error) {
                                         stopP5()
-                                        createErrorMessage("Message: " + error.message${this.desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
+                                        createErrorMessage("Message: " + error.message${desiredHeight > 300 ? ' + "\\n\\nStack:\\n\\n" + error.stack' : "" })
                                     }
                                 }
 
@@ -179,30 +183,23 @@ export class P5JSPreview extends CodePreview {
         return this.sizeConstraints?.maxHeight
     }
 
-    private get desiredWidth(): number {
-        const rootWidth = Math.max(parseFloat(window.getComputedStyle(this.root).width), this.minWidth)
-        return this.padValue(this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth)
-    }
-
-    private get desiredHeight(): number {
-        const rootHeight = Math.max(parseFloat(window.getComputedStyle(this.root).height), this.minHeight)
-        return this.padValue(this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight)
-    }
-
     constructor(root: HTMLElement, code?: string, sizeConstraints?: SizeConstraints, errorMessageColor?: string) {
         super(root, code)
         this.sizeConstraints = sizeConstraints
         this.errorMessageColor = errorMessageColor ? errorMessageColor : "black"
 
         this.iframeContainer = document.createElement("div")
-        this.iframeContainer.style.position = "relative"
-        this.iframeContainer.style.width  = "100%"
-        this.iframeContainer.style.height = "100%"
-        this.iframeContainer.style.minWidth = `${this.minWidth}px`
-        this.iframeContainer.style.maxWidth = `${this.maxWidth}px`
+        this.iframeContainer.style.position  = "relative"
+        this.iframeContainer.style.boxSizing = "border-box"
+        this.iframeContainer.style.width     = "100%"
+        this.iframeContainer.style.height    = "100%"
+        this.iframeContainer.style.minWidth  = `${this.minWidth}px`
+        this.iframeContainer.style.maxWidth  = `${this.maxWidth}px`
         this.iframeContainer.style.minHeight = `${this.minHeight}px`
         this.iframeContainer.style.maxHeight = `${this.maxHeight}px`
-        this.iframeContainer.style.overflow = "hidden"
+        this.iframeContainer.style.padding   = `${this.padding}px ${this.padding}px`
+        this.iframeContainer.style.margin    = "0 0"
+        this.iframeContainer.style.overflow  = "hidden"
         this.root.appendChild(this.iframeContainer)
 
         this.iframe = document.createElement("iframe") as HTMLIFrameElement
@@ -211,15 +208,15 @@ export class P5JSPreview extends CodePreview {
 
         // make sure preview is displayed with minimal unused space
         this.style.position = "absolute"
-        this.style.top = "50%"
-        this.style.left = "50%"
-        this.style.width = "100%"
-        this.style.height = "100%"
+        this.style.top       = "50%"
+        this.style.left      = "50%"
+        this.style.width     = "100%"
+        this.style.height    = "100%"
         this.style.transform = "translate(-50%, -50%)"
 
         this.style.padding = "0 0"
-        this.style.margin = "0 0"
-        this.style.border = "none"
+        this.style.margin  = "0 0"
+        this.style.border  = "none"
 
         let loadHandler: () => void
         loadHandler = () => {
@@ -238,6 +235,17 @@ export class P5JSPreview extends CodePreview {
 
     private unpadValue(value: number): number {
         return value + 2 * this.padding
+    }
+
+    private getDesiredWidth(): number {
+        const rootWidth = Math.max(parseFloat(window.getComputedStyle(this.root).width), this.minWidth)
+        return this.padValue(this.maxWidth ? Math.min(this.maxWidth, rootWidth) : rootWidth)
+    }
+
+    private getDesiredHeight(): number {
+        console.log(parseFloat(window.getComputedStyle(this.root).height))
+        const rootHeight = Math.max(parseFloat(window.getComputedStyle(this.root).height), this.minHeight)
+        return this.padValue(this.maxHeight ? Math.min(this.maxHeight, rootHeight) : rootHeight)
     }
 
     private setupResizing(): void {
@@ -261,10 +269,10 @@ export class P5JSPreview extends CodePreview {
         //console.log(`RESIZE ID ${this.id}`)
 
         // includes padding
-        const scaleFactor = Math.min(this.desiredWidth / iframeWidth, this.desiredHeight / iframeHeight)
+        const scaleFactor = Math.min(this.getDesiredWidth() / iframeWidth, this.getDesiredHeight() / iframeHeight)
 
         this.style.transformOrigin = "top left"
-        this.style.transform = `scale(${scaleFactor}) translate(-50%, -50%)` // translate is used to center element vertically
+        this.style.transform       = `scale(${scaleFactor}) translate(-50%, -50%)` // translate is used to center element vertically
 
         // these values are padded, meaning they assume a padding will be added around them
         const displayWidth  = this.unpadValue(iframeWidth  * scaleFactor)

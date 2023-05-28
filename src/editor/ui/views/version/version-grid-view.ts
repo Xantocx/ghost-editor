@@ -17,7 +17,6 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
 
         this.style.display             = "grid"
         this.style.alignItems          = "center"
-        //this.style.justifyContent      = "start"
         this.style.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
         this.style.gridAutoRows        = `minmax(${this.minHeight}px, ${this.maxHeight}px)`
         this.style.gap                 = "10px"
@@ -25,6 +24,9 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
     }
 
     protected override createCustomView(version: VCSVersion): P5JSPreviewToggleButton<VersionGridView> {
-        return Button.p5jsPreviewToggleButton(this as VersionGridView, version, { padding: 5 }, (version, selected) => this.onClick(version, selected))
+        const preview = Button.p5jsPreviewToggleButton(this as VersionGridView, version, { padding: 5 }, (version, selected) => this.onClick(version, selected))
+        preview.style.width  = "100%"
+        preview.style.height = "100%"
+        return preview
     }
 }
