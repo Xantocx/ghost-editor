@@ -9,7 +9,7 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
     private readonly minWidth  = 200
     private readonly minHeight = 100
     
-    private readonly maxHeight = 200
+    private readonly maxHeight = 150
 
     public constructor(root: HTMLElement, onClick: (version: VCSVersion, select: boolean) => void) {
         super(root)

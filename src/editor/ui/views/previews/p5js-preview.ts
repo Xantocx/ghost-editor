@@ -256,6 +256,7 @@ export class P5JSPreview extends CodePreview {
                                         onMessage: onMessage
                                    }, `#${this.id}`)[0]
 
+        // TODO: replace with size observer
         window.addEventListener("resize", (event) => {
             const width  = parseFloat(this.iframe.style.width)
             const height = parseFloat(this.iframe.style.height)
