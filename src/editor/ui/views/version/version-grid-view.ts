@@ -8,16 +8,18 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
 
     private readonly minWidth  = 200
     private readonly minHeight = 100
+    
+    private readonly maxHeight = 200
 
     public constructor(root: HTMLElement, onClick: (version: VCSVersion, select: boolean) => void) {
         super(root)
         this.onClick = onClick
 
         this.style.display             = "grid"
-        this.style.alignItems          = "start"
+        this.style.alignItems          = "center"
         //this.style.justifyContent      = "start"
         this.style.gridTemplateColumns = `repeat(auto-fill, minmax(${this.minWidth}px, 1fr))`
-        this.style.gridAutoRows        = `minmax(${this.minHeight}px, auto)`
+        this.style.gridAutoRows        = `minmax(${this.minHeight}px, ${this.maxHeight}px)`
         this.style.gap                 = "10px"
         this.style.overflow            = "auto"
     }

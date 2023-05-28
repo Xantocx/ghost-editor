@@ -34,10 +34,9 @@ export class VersionManagerView extends View implements IVersionViewContainer {
         this.codeContainer = document.createElement("div")
         this.codeStyle.boxSizing = "border-box"
         this.codeStyle.flex      = "0"
-        this.codeStyle.width     = "100%"
-        this.codeStyle.padding   = "0 0"
-        this.codeStyle.margin    = "0 0"
-        this.codeStyle.overflow  = "auto"
+        this.codeStyle.width     = "calc(100% - 10px)"
+        this.codeStyle.padding   = "5px 5px"
+        this.codeStyle.margin    = "5px 5px"
         this.root.appendChild(this.codeContainer)
 
         // add version code view
@@ -55,7 +54,9 @@ export class VersionManagerView extends View implements IVersionViewContainer {
         this.code.onVersionsChange(versions => {
             const codeVisible = versions.length > 0
             this.previewStyle.maxHeight = codeVisible ? "calc(25% - 10px)" : ""
+            this.codeStyle.maxHeight    = codeVisible ? "calc(75% - 10px)" : ""
             this.codeStyle.flex         = codeVisible ?                "3" : "0"
+            this.codeStyle.border       = codeVisible ? "1px solid black"  : ""
         })
 
         if (versions) { this.showVersions(versions) }
