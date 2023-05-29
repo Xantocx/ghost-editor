@@ -79,11 +79,13 @@ abstract class LinkedList<Node extends LinkedListNode<Node>> {
         let node = this.first
         let index = 0
 
-        while (node) {
+        while (node && node !== this.last) {
             callback(node, index)
             node = node.next
             index++
         }
+
+        if (node && node === this.last) { callback(this.last, index) }
     }
 
     public find(check: (node: Node, index: number) => boolean): Node {
@@ -516,6 +518,7 @@ interface LineRange {
 }
 
 interface BlockOptions { 
+    provider?:              BlockProvider
     eol:                   EOLSymbol
     filePath?:             string
     parent?:               Block
@@ -528,6 +531,8 @@ interface BlockOptions {
 type EOLSymbol = string
 
 class Block extends LinkedList<Line> {
+
+    public readonly provider?: BlockProvider
 
     public readonly blockId:   BlockId
     public readonly isClone:   boolean = false
@@ -548,9 +553,9 @@ class Block extends LinkedList<Line> {
     public set firstLine(line: Line | undefined) { this.first = line }
     public set lastLine (line: Line | undefined) { this.last  = line }
 
-    public static create(eol: EOLSymbol, content: string, fileName?: string): Block {
-        const blockId    = BlockProvider.createBlockIdFromFilePath(fileName)
-        const block = new Block({ eol, blockId })
+    public static create(eol: EOLSymbol, content: string, options?: { provider?: BlockProvider, fileName?: string }): Block {
+        const blockId = BlockProvider.createBlockIdFromFilePath(options?.fileName)
+        const block   = new Block({ provider: options?.provider, eol, blockId })
         block.setContent(content)
         return block
     }
@@ -563,6 +568,7 @@ class Block extends LinkedList<Line> {
 
         if (blockOptions) {
             this.blockId              = BlockProvider.createBlockIdFromFilePath(blockOptions.filePath)
+            this.provider             = blockOptions.provider
             this.eol                  = blockOptions.eol
             this.parent               = blockOptions.parent
             this.firstLine            = blockOptions.firstLine
@@ -572,9 +578,12 @@ class Block extends LinkedList<Line> {
             const content = blockOptions.content
             if      (!this.firstLine && !this.lastLine) { this.setContent(content ? content : "") }
             else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
+        
+            this.provider.register(this)
         } else if (clonedBlock) {
             this.blockId              = clonedBlock.blockId
             this.isDeleted            = clonedBlock.isDeleted
+            this.provider             = clonedBlock.provider
             this.eol                  = clonedBlock.eol
             this.parent               = clonedBlock.parent
             this.children             = clonedBlock.children
@@ -786,7 +795,8 @@ class Block extends LinkedList<Line> {
 
         const firstLine = this.getLine(range.startLineNumber)
         const lastLine  = this.getLine(range.endLineNumber)
-        const child     = new Block({ eol: this.eol, parent: this, firstLine, lastLine })
+        const child     = new Block({ provider: this.provider, eol: this.eol, parent: this, firstLine, lastLine })
+
 
         this.addChild(child)
 
@@ -1074,9 +1084,9 @@ class Session {
 
     public get blockId(): BlockId { return this.block.blockId }
 
-    public static createWithNewBlock(eol: string, filePath?: string, content?: string): Session {
-        const blockId = BlockProvider.createBlockIdFromFilePath(filePath)
-        const block   = new Block({ eol, blockId, content })
+    public static createWithNewBlock(eol: string, options?: { provider?: BlockProvider, filePath?: string, content?: string }): Session {
+        const blockId = BlockProvider.createBlockIdFromFilePath(options?.filePath)
+        const block   = new Block({ provider: options?.provider, eol, blockId, content: options?.content })
         return new Session(block)
     }
 
@@ -1135,7 +1145,7 @@ export class GhostVCSServer extends BasicVCSServer {
             if (content) { console.warn("Right now, we do not support updating the content of an existing block based on provided content. This will be ignored.") }
             session = Session.createFromBlock(block)
         } else {
-            session = Session.createWithNewBlock(eol, filePath, content)
+            session = Session.createWithNewBlock(eol, { provider: this.blocks, filePath, content })
         }
 
         this.sessions.set(session.sessionId, session)

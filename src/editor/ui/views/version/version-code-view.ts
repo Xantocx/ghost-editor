@@ -1,13 +1,16 @@
 import { VCSVersion } from "../../../../app/components/data/snapshot";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { GhostEditor } from "../editor/editor";
+import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
 
 export class VersionCodeView<Container extends VersionViewContainer<VersionCodeView<Container>>> extends VersionViewElement<VersionCodeView<Container>, Container> {
 
-    private readonly listElement:     HTMLLIElement
-    private readonly editorContainer: HTMLDivElement
-    private readonly editor:          GhostEditor
+    private readonly listElement:      HTMLLIElement
+    private readonly editorContainer:  HTMLDivElement
+    private readonly editor:           GhostEditor
+
+    private readonly editorHeight = 350
 
     public get style(): CSSStyleDeclaration { return this.listElement.style }
 
@@ -17,7 +20,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
         this.listElement = document.createElement("li")
         this.style.boxSizing = "border-box"
         this.style.width     = "100%"
-        this.style.height    = "500px"
+        this.style.height    = `${this.editorHeight}px`
         this.style.padding   = "5px 5px"
         this.style.margin    = "0 0"
         this.root.appendChild(this.listElement)
@@ -25,14 +28,12 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
         this.editorContainer = document.createElement("div")
         this.editorContainer.style.width   = "100%"
         this.editorContainer.style.height  = "100%"
-        this.editorContainer.style.padding = "0 0"
-        this.editorContainer.style.margin  = "0 0"
+        this.editorContainer.style.padding = "0"
+        this.editorContainer.style.margin  = "0"
         this.editorContainer.style.border  = "1px solid black"
         this.listElement.appendChild(this.editorContainer)
 
-        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, synchronizer)
-
-        //this.editorContainer.style.minHeight = `${this.editor.lineHeight + 10}px`
+        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { enableSideView: true, mainViewFlex: 3, synchronizer })
     }
 
     public override remove(): void {

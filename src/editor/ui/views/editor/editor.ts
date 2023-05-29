@@ -329,6 +329,7 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     public readonly enableFileManagement: boolean
     public readonly sideViewEnabled:      boolean
+    public readonly mainViewFlex:         number
 
     // view containers to seperate main editor and side view
     public  readonly editorContainer:    HTMLDivElement
@@ -381,19 +382,25 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    public static createAsSubview(root: HTMLElement, blockId: string, synchronizer?: Synchronizer): GhostEditor {
-        return new GhostEditor(root, { blockId, synchronizer })
+    public static createAsSubview(root: HTMLElement, options?: { blockId?: string, enableSideView?: boolean, mainViewFlex?: number, synchronizer?: Synchronizer }): GhostEditor {
+        return new GhostEditor(root, options)
     }
 
-    public static createVersionEditor(root: HTMLElement, version: VCSVersion, synchronizer?: Synchronizer): GhostEditor {
-        return this.createAsSubview(root, version.blockId, synchronizer)
+    public static createVersionEditor(root: HTMLElement, version: VCSVersion, options?: { enableSideView?: boolean, mainViewFlex?: number, synchronizer?: Synchronizer }): GhostEditor {
+        return this.createAsSubview(root, { 
+                                            blockId: version.blockId,
+                                            enableSideView: options?.enableSideView,
+                                            mainViewFlex: options?.mainViewFlex,
+                                            synchronizer: options?.synchronizer
+                                          })
     }
 
-    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, synchronizer?: Synchronizer }) {
+    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, synchronizer?: Synchronizer }) {
         super(root, options?.synchronizer)
 
         this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
         this.sideViewEnabled      = options?.enableSideView       ? options.enableSideView       : false
+        this.mainViewFlex         = options?.mainViewFlex         ? options.mainViewFlex         : 1
 
         // setup root for flex layout
         this.root.style.display       = "flex"
@@ -402,8 +409,11 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.root.style.padding       = "0 0"
         this.root.style.margin        = "0 0"
 
-        this.editorContainer = this.addContainer()
-        if (this.sideViewEnabled) { this.sideViewContainer = this.addContainer() }
+        this.editorContainer = this.addContainer(this.mainViewFlex)
+        if (this.sideViewEnabled) {
+            this.sideViewContainer = this.addContainer()
+            this.sideViewContainer.style.borderLeft = "1px solid gray"
+        }
         
         this.core               = monaco.editor.create(this.editorContainer, { value: '', automaticLayout: true  });
         this.snapshotManager    = new GhostEditorSnapshotManager(this)
@@ -435,17 +445,23 @@ export class GhostEditor extends View implements ReferenceProvider {
     public getModelOptions(): monaco.editor.TextModelResolvedOptions { return this.getTextModel().getOptions() }
     public getEOLSymbol():    string                                 { return extractEOLSymbol(this.getTextModel()) }
 
-    private addContainer(): HTMLDivElement {
+    private addContainer(flex?: number): HTMLDivElement {
+
+        flex = flex ? flex : 1
+
         const container = document.createElement("div")
         container.style.boxSizing = "border-box"
-        container.style.flex      = "1"
+        container.style.flex      = `${flex}`
         container.style.height    = "100%"
         container.style.padding   = "0 0"
         container.style.margin    = "0 0"
         this.root.appendChild(container)
 
         this.containers.push(container)
-        this.containers.forEach(container => { container.style.maxWidth = `${100 / this.containers.length}%`})
+
+        let flexSum = 0
+        this.containers.forEach(container => flexSum += parseFloat(container.style.flexGrow))
+        this.containers.forEach(container => { container.style.maxWidth = `${100 * parseFloat(container.style.flexGrow) / flexSum}%`})
 
         return container
     }
@@ -473,7 +489,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             })
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
-                return new P5JSPreview(root)
+                return new P5JSPreview(root, { padding: 5 })
             }, (view: P5JSPreview, code: string) => {
                 view.update(code)
             })
@@ -485,7 +501,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             })
 
             this.sideViewIdentifiers = this.sideView.identifiers
-            this.defaultSideView     = this.sideViewIdentifiers.vcs
+            this.defaultSideView     = this.sideViewIdentifiers.p5js
             this.showDefaultSideView()
         }
     }

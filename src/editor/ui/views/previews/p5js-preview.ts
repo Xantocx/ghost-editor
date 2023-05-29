@@ -238,7 +238,7 @@ export class P5JSPreview extends CodePreview {
             if (this.hasErrorMessage) {
                 this.hideIFrame()
 
-                this.errorMessage.innerText = `Message: ${error.message}` + (this.getContentHeight() > 300 ? `\nStack:\n\n${error.stack}` : "")
+                this.errorMessage.innerText = `Message:\n${error.message}` + (error.stack && this.getContentHeight() > 300 ? `\n\nStack:\n${error.stack}` : "")
                 this.container.appendChild(this.errorMessage)
             }
         }
