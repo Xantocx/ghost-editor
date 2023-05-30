@@ -6,6 +6,8 @@ import { VersionViewContainer, VersionViewElement } from "./version-view";
 
 export class VersionCodeView<Container extends VersionViewContainer<VersionCodeView<Container>>> extends VersionViewElement<VersionCodeView<Container>, Container> {
 
+    public readonly languageId?: string
+
     private readonly listElement:      HTMLLIElement
     private readonly editorContainer:  HTMLDivElement
     private readonly editor:           GhostEditor
@@ -14,8 +16,9 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
 
     public get style(): CSSStyleDeclaration { return this.listElement.style }
 
-    public constructor(root: Container, version: VCSVersion, synchronizer?: Synchronizer) {
+    public constructor(root: Container, version: VCSVersion, languageId?: string, synchronizer?: Synchronizer) {
         super(root, version)
+        this.languageId = languageId
 
         this.listElement = document.createElement("li")
         this.style.boxSizing = "border-box"
@@ -33,7 +36,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
         this.editorContainer.style.border  = "1px solid black"
         this.listElement.appendChild(this.editorContainer)
 
-        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { enableSideView: true, mainViewFlex: 3, synchronizer })
+        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
     }
 
     public override remove(): void {
@@ -44,9 +47,10 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
 
 export class VersionCodeViewList extends VersionViewContainer<VersionCodeView<VersionCodeViewList>> {
 
+    private          languageId?:         string
     private readonly editorSynchronizer?: Synchronizer
 
-    public constructor(root: HTMLElement, synchronizer?: Synchronizer) {
+    public constructor(root: HTMLElement, languageId?: string, synchronizer?: Synchronizer) {
 
         root.style.overflow = "auto"
 
@@ -59,10 +63,13 @@ export class VersionCodeViewList extends VersionViewContainer<VersionCodeView<Ve
 
         super(list)
 
+        this.languageId         = languageId
         this.editorSynchronizer = synchronizer
     }
 
+    public setLanguageId(languageId: string): void { this.languageId = languageId }
+
     protected override createCustomView(version: VCSVersion): VersionCodeView<VersionCodeViewList> {
-        return new VersionCodeView(this as VersionCodeViewList, version, this.editorSynchronizer)
+        return new VersionCodeView(this as VersionCodeViewList, version, this.languageId, this.editorSynchronizer)
     }
 }

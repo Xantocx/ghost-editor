@@ -15,7 +15,7 @@ export class VersionManagerView extends View implements IVersionViewContainer {
     public get previewStyle(): CSSStyleDeclaration { return this.previewContainer.style }
     public get codeStyle():    CSSStyleDeclaration { return this.codeContainer.style }
 
-    public constructor(root: HTMLElement, versions?: VCSVersion[]) {
+    public constructor(root: HTMLElement, languageId?: string, versions?: VCSVersion[]) {
         super(root)
 
         this.root.style.display = "flex"
@@ -38,7 +38,7 @@ export class VersionManagerView extends View implements IVersionViewContainer {
         this.root.appendChild(this.codeContainer)
 
         // add version code view
-        this.code    = new VersionCodeViewList(this.codeContainer)
+        this.code    = new VersionCodeViewList(this.codeContainer, languageId)
         this.preview = new VersionGridView(this.previewContainer, (version, selected) => {
             if (selected) { this.code.addVersion(version) }
             else          { this.code.removeVersion(version) }
@@ -63,6 +63,8 @@ export class VersionManagerView extends View implements IVersionViewContainer {
 
         if (versions) { this.showVersions(versions) }
     }
+
+    public setLanguageId(languageId: string): void { this.code.setLanguageId(languageId) }
 
     public getVersions(): VCSVersion[] { return this.preview.getVersions() }
 

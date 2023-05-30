@@ -34,24 +34,45 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
     public set previous(node: Node) { this._previous = node }
     public set next    (node: Node) { this._next     = node }
 
+    private get first(): Node | undefined { return this.list?.first }
+    private get last():  Node | undefined { return this.list?.last }
+
+    public get isFirst(): boolean { return this.isEqualTo(this.first) }
+    public get isLast():  boolean { return this.isEqualTo(this.last) }
+
     public constructor(list?: LinkedList<Node>) {
         this.list = list
     }
 
-    public getIndex():             number { return this.previous ? this.previous.getIndex() + 1 : 0 }
-    public getPreviousNodeCount(): number { return this.getIndex() }
-    public getNextNodeCount():     number { return this.next     ? this.next.getNextNodeCount() + 1 : 0 }
+    // hack to allow for comparison with this
+    private isEqualTo(node: LinkedListNode<Node> | undefined): boolean { return this === node }
 
-    public findPrevious(check: (previous: Node) => boolean): Node | null {
+    public getIndex():             number { return this.previous && !this.isFirst ? this.previous.getIndex() + 1     : 0 }
+    public getPreviousNodeCount(): number { return this.getIndex() }
+    public getNextNodeCount():     number { return this.next     && !this.isLast  ? this.next.getNextNodeCount() + 1 : 0 }
+
+    public getAbsoluteIndex(): number { return this.previous ? this.previous.getAbsoluteIndex() + 1 : 0 }
+
+    public findPrevious(check: (previous: Node) => boolean): Node | undefined {
         let previous = this.previous
-        while (previous && !check(previous)) { previous = previous.previous }
-        return previous
+
+        while (previous && previous !== this.first) {
+            if (check(previous)) { return previous }
+            previous = previous.previous
+        }
+
+        return previous && previous === this.first && check(previous) ? previous : undefined
     }
 
-    public findNext(check: (next: Node) => boolean): Node | null {
+    public findNext(check: (next: Node) => boolean): Node | undefined {
         let next = this.next
-        while (next && !check(next)) { next = next.next }
-        return next
+
+        while (next && next !== this.last) {
+            if (check(next)) { return next }
+            next = next.next
+        }
+        
+        return next && next === this.last && check(next) ? next : undefined
     }
 
     public remove(): void {
@@ -63,7 +84,7 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
 abstract class LinkedList<Node extends LinkedListNode<Node>> {
 
     public first?: Node
-    public last?: Node
+    public last?:  Node
 
     public get hasFirst():      boolean { return this.first ? true : false }
     public get hasLast():       boolean { return this.last  ? true : false }
@@ -88,28 +109,30 @@ abstract class LinkedList<Node extends LinkedListNode<Node>> {
         if (node && node === this.last) { callback(this.last, index) }
     }
 
-    public find(check: (node: Node, index: number) => boolean): Node {
+    public find(check: (node: Node, index: number) => boolean): Node | undefined {
         let node = this.first
         let index = 0
 
-        while (node && !check(node, index)) {
+        while (node && node !== this.last) {
+            if (check(node, index)) { return node }
             node = node.next
             index++
         }
 
-        return node
+        return node && node === this.last && check(this.last, index) ? this.last : undefined
     }
 
-    public findReversed(check: (node: Node, index: number) => boolean): Node {
+    public findReversed(check: (node: Node, index: number) => boolean): Node | undefined {
         let node  = this.last
         let index = node.getIndex()
 
-        while (node && !check(node, index)) {
+        while (node && node !== this.first) {
+            if (check(node, index)) { return node }
             node = node.previous
             index--
         }
 
-        return node
+        return node && node === this.first && check(node, index) ? node : undefined
     }
 
     public map<Mapped>(map: (node: Node, index: number, nodes: Node[]) => Mapped): Mapped[] {
@@ -182,7 +205,8 @@ class BlockLine extends LinkedListNode<BlockLine> {
         }
     }
 
-    public getLineNumber(block: Block): number | undefined { return this.getLine(block)?.getLineNumber() }
+    public getPosition():               LinePosition           { return this.getAbsoluteIndex() }
+    public getLineNumber(block: Block): LineNumber | undefined { return this.getLine(block)?.getLineNumber() }
 
     public has(block: Block):     boolean          { return this.lines.has(block) }
     public getLine(block: Block): Line | undefined { return this.lines.get(block) }
@@ -192,18 +216,22 @@ class BlockLine extends LinkedListNode<BlockLine> {
 
     public getVersions(): LineVersion[] { return this.versions.getVersions() }
 
-    public addBlock(block: Block, head?: LineVersion): void {
-        if (!this.lines.has(block)) {
+    public addBlock(block: Block, head?: LineVersion): Line {
+        const currentLine = this.getLine(block)
+        if (!currentLine) {
             head = head ? head : this.originLine.currentVersion
             const line = new Line(this, block, { head })
             this.lines.set(block, line)
-        } else if (head && this.getLine(block).currentVersion !== head) {
+            return line
+        } else if (!head || currentLine.currentVersion === head) {
+            return currentLine
+        } else {
             throw new Error("This Block already exists for this line. It seems like your attempted to set the head to another version, but this is not the intended use of this function.")
         }
     }
 
     public removeBlock(block: Block, deleting?: boolean): Block[] {
-        if (block == this.originBlock) {
+        if (block === this.originBlock) {
             return this.delete()
         } else if (deleting) {
             return this.lines.delete(block) ? [block] : []
@@ -254,14 +282,14 @@ class Line extends LinkedListNode<Line>  {
         this.history  = new LineHistory(this, this.versions, setup)
     }
 
-    public getAffectedBlockIds(): BlockId[] { return this.blockLine.getBlockIds() }
+    public getPosition():         LinePosition { return this.blockLine.getPosition() }
+    public getVersionCount():     number       { return this.history.getVersionCount() }
+    public getAffectedBlockIds(): BlockId[]    { return this.blockLine.getBlockIds() }
 
-    public getVersionCount(): number { return this.history.getVersionCount() }
+    public getPreviousActiveLine(): Line | undefined { return this.findPrevious(line => line.isActive) }
+    public getNextActiveLine():     Line | undefined { return this.findNext    (line => line.isActive) }
 
-    public getPreviousActiveLine(): Line | null { return this.findPrevious(line => line.isActive) }
-    public getNextActiveLine():     Line | null { return this.findNext    (line => line.isActive) }
-
-    public getLineNumber(): number | null { 
+    public getLineNumber(): LineNumber | null { 
         if (!this.isActive) { return null }
         const previous = this.getPreviousActiveLine()
         return previous ? previous.getLineNumber() + 1 : 1
@@ -285,8 +313,9 @@ class Line extends LinkedListNode<Line>  {
         return this.history.deleteLine()
     }
 
-    public addBlock(block: Block, head?: LineVersion):    void    { this.blockLine.addBlock(block, head) }
-    public removeBlock(block: Block, deleting?: boolean): Block[] { return this.blockLine.removeBlock(block, deleting) }
+    public getLineFor(block: Block):                      Line | undefined { return this.blockLine.getLine(block) }
+    public addBlock(block: Block, head?: LineVersion):    Line             { return this.blockLine.addBlock(block, head) }
+    public removeBlock(block: Block, deleting?: boolean): Block[]          { return this.blockLine.removeBlock(block, deleting) }
 }
 
 
@@ -451,16 +480,16 @@ class LineVersion extends LinkedListNode<LineVersion> {
 
     public readonly timestamp: Timestamp
     public readonly isActive:  boolean
-    public content:   LineContent
+    public          content:   LineContent
 
     public  readonly origin?: LineVersion   = undefined
     private readonly clones:  LineVersion[] = []
 
     public get line(): Line { return this.history.line }
 
-    public get isHead():  boolean { return this.history.head         === this }
-    public get isFirst(): boolean { return this.history.firstVersion === this }
-    public get isLast():  boolean { return this.history.lastVersion  === this }
+    public          get isHead():  boolean { return this.history.head         === this }
+    public override get isFirst(): boolean { return this.history.firstVersion === this }
+    public override get isLast():  boolean { return this.history.lastVersion  === this }
 
     public get isPreInsertion(): boolean { return this.line.isInserted && this.isFirst }
     public get isDeletion():     boolean { return !this.isActive && !this.isFirst }
@@ -522,13 +551,15 @@ interface BlockOptions {
     eol:                   EOLSymbol
     filePath?:             string
     parent?:               Block
-    firstLine?:            Line
-    lastLine?:             Line
+    firstLine?:            BlockLine
+    lastLine?:             BlockLine
     content?:              string 
     enableVersionMerging?: boolean
 }
 
 type EOLSymbol = string
+type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
+type LineNumber   = number  // line number within the editor, if this line is displayed
 
 class Block extends LinkedList<Line> {
 
@@ -566,17 +597,21 @@ class Block extends LinkedList<Line> {
         const blockOptions = options as BlockOptions
         const clonedBlock  = options as Block
 
+        let firstBlockLine: BlockLine | undefined = undefined
+        let lastBlockLine:  BlockLine | undefined = undefined
+
         if (blockOptions) {
             this.blockId              = BlockProvider.createBlockIdFromFilePath(blockOptions.filePath)
             this.provider             = blockOptions.provider
             this.eol                  = blockOptions.eol
             this.parent               = blockOptions.parent
-            this.firstLine            = blockOptions.firstLine
-            this.lastLine             = blockOptions.lastLine
             this.enableVersionMerging = blockOptions.enableVersionMerging ? blockOptions.enableVersionMerging : false
 
+            firstBlockLine = blockOptions.firstLine
+            lastBlockLine  = blockOptions.lastLine
+
             const content = blockOptions.content
-            if      (!this.firstLine && !this.lastLine) { this.setContent(content ? content : "") }
+            if      (!firstBlockLine && !lastBlockLine) { this.setContent(content ? content : "") }
             else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
         
             this.provider.register(this)
@@ -588,25 +623,29 @@ class Block extends LinkedList<Line> {
             this.parent               = clonedBlock.parent
             this.children             = clonedBlock.children
             this.tags                 = clonedBlock.tags
-            this.firstLine            = clonedBlock.firstLine
-            this.lastLine             = clonedBlock.lastLine
             this.enableVersionMerging = clonedBlock.enableVersionMerging
             this.isClone              = true
+
+            firstBlockLine            = clonedBlock.firstLine?.blockLine
+            lastBlockLine             = clonedBlock.lastLine?.blockLine
         } else {
             this.eol = options as EOLSymbol
         }
 
-        if      ( this.firstLine && !this.lastLine) { this.lastLine  = this.firstLine }
-        else if (!this.firstLine &&  this.lastLine) { this.firstLine = this.lastLine }
+        if      ( firstBlockLine && !lastBlockLine) { lastBlockLine  = firstBlockLine }
+        else if (!firstBlockLine &&  lastBlockLine) { firstBlockLine = lastBlockLine }
 
-        this.addToLines()
+        if (firstBlockLine && lastBlockLine) { this.setBlockLines(firstBlockLine, lastBlockLine) }
     }
+
+    public getFirstPosition(): LinePosition { return this.firstLine.getPosition() }
+    public getLastPosition():  LinePosition { return this.lastLine.getPosition() }
+
+    public getFirstLineNumber(): LineNumber { return this.getFirstActiveLine().getLineNumber() }
+    public getLastLineNumber():  LineNumber { return this.getLastActiveLine().getLineNumber() }
 
     public getFirstActiveLine(): Line | null { return this.firstLine.isActive ? this.firstLine : this.firstLine.getNextActiveLine() }
     public getLastActiveLine():  Line | null { return this.lastLine.isActive  ? this.lastLine  : this.lastLine.getPreviousActiveLine() }
-
-    public getFirstLineNumber(): number { return this.getFirstActiveLine().getLineNumber() }
-    public getLastLineNumber():  number { return this.getLastActiveLine().getLineNumber() }
 
     public getLineCount():       number        { return this.getLength() }
     public getActiveLineCount(): number | null { return this.getLastLineNumber() }
@@ -620,15 +659,19 @@ class Block extends LinkedList<Line> {
     
     public getVersions(): LineVersion[] { return this.flatMap(line => line.history.getVersions()) }
 
-    public addToLines():                        void { this.forEach(line => line.addBlock(this)) }
-    public removeFromLines(deleting?: boolean): void { this.forEach(line => line.removeBlock(this, deleting)) }
+    public addToLines():                        Line[]  { return this.map(line => line.addBlock(this)) }
+    public removeFromLines(deleting?: boolean): Block[] { return this.flatMap(line => line.removeBlock(this, deleting)) }
 
     // TODO: make sure this is actually working correctly
     public getLastModifiedLine(): Line | null { return this.lastModifiedLine }
     public setupVersionMerging(line: Line): void { if (this.enableVersionMerging) { this.lastModifiedLine = line } }
     public resetVersionMerging(): void { this.lastModifiedLine = null }
 
-    public containsLineNumber(lineNumber: number): boolean { 
+    public containsPosition(position: LinePosition): boolean {
+        return this.getFirstPosition() <= position && position <= this.getLastPosition()
+    }
+
+    public containsLineNumber(lineNumber: LineNumber): boolean {
         return this.getFirstLineNumber() <= lineNumber && lineNumber <= this.getLastLineNumber()
     }
 
@@ -642,7 +685,26 @@ class Block extends LinkedList<Line> {
         return this.getFirstLineNumber() <= range.endLine && this.getLastLineNumber() >= range.startLine
     }
 
-    public getLine(lineNumber: number): Line {
+    public lineNumberToPosition(lineNumber: LineNumber): LinePosition {
+        if (!this.containsLineNumber(lineNumber)) { throw new Error("Cannot convert invalid line number to position!") }
+        return this.getLineByLineNumber(lineNumber).getPosition()
+    }
+
+    public positionToLineNumber(position: LinePosition): LineNumber {
+        if (!this.containsPosition(position)) { throw new Error("Cannot convert invalid position to line number!") }
+        return this.getLineByPosition(position).getLineNumber()
+    }
+
+    public getLineByPosition(position: LinePosition): Line {
+        if (!this.containsPosition(position)) { throw new Error(`Cannot read line for invalid position ${position}!`) }
+
+        const line = this.find(line => line.getPosition() === position)
+        if (!line) { throw new Error(`Could not find line for valid position ${position}!`) }
+
+        return line
+    }
+
+    public getLineByLineNumber(lineNumber: LineNumber): Line {
         if (!this.containsLineNumber(lineNumber)) { throw new Error(`Cannot read line for invalid line number ${lineNumber}!`) }
 
         const line = this.find(line => line.getLineNumber() === lineNumber)
@@ -656,8 +718,8 @@ class Block extends LinkedList<Line> {
         
         const lines = []
 
-        let   current = this.getLine(range.startLine)
-        const end     = this.getLine(range.endLine)
+        let   current = this.getLineByLineNumber(range.startLine)
+        const end     = this.getLineByLineNumber(range.endLine)
 
         while (current !== end) {
             lines.push(current)
@@ -690,15 +752,15 @@ class Block extends LinkedList<Line> {
         this.lastLine  = lineCount > 0 ? lines[lineCount - 1] : undefined
     }
 
-    public insertLine(lineNumber: number, content: LineContent): Line {
+    public insertLine(lineNumber: LineNumber, content: LineContent): Line {
         this.resetVersionMerging()
 
-        const lastLineNumber = this.getLastLineNumber()
-        const newLastLine = lastLineNumber + 1
+        const lastLineNumber     = this.getLastLineNumber()
+        const newLastLine        = lastLineNumber + 1
         const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
 
-        const includedChildren = this.getChildrenContaining(Math.min(adjustedLineNumber,     lastLineNumber))
-        const expandedChildren = this.getChildrenContaining(Math.min(adjustedLineNumber - 1, lastLineNumber))
+        const includedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber,     lastLineNumber))
+        const expandedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber - 1, lastLineNumber))
         const affectedChildren = Array.from(new Set(includedChildren.concat(expandedChildren)))
 
         let createdLine: Line
@@ -726,7 +788,7 @@ class Block extends LinkedList<Line> {
                 this.lastLine = createdLine
             }
         } else {
-            const currentLine = this.getLine(adjustedLineNumber)
+            const currentLine = this.getLineByLineNumber(adjustedLineNumber)
             createdLine  = Line.create(this, LineType.Inserted, content, { 
                 previous:    currentLine.previous, 
                 next:        currentLine,
@@ -735,7 +797,7 @@ class Block extends LinkedList<Line> {
         }
 
         expandedChildren.forEach(child => {
-            const snapshotData = child.compress()
+            const snapshotData = child.compressForParent()
             const lineNumber   = createdLine.getLineNumber()
             if (snapshotData._endLine < lineNumber) {
                 snapshotData._endLine = lineNumber
@@ -746,14 +808,14 @@ class Block extends LinkedList<Line> {
         return createdLine
     }
 
-    public insertLines(lineNumber: number, content: LineContent[]): Line[] {
+    public insertLines(lineNumber: LineNumber, content: LineContent[]): Line[] {
         return content.map((content, index) => {
             return this.insertLine(lineNumber + index, content)
         })
     }
 
-    public updateLine(lineNumber: number, content: string): Line {
-        const line = this.getLine(lineNumber)
+    public updateLine(lineNumber: LineNumber, content: LineContent): Line {
+        const line = this.getLineByLineNumber(lineNumber)
         line.update(content)
 
         this.setupVersionMerging(line)
@@ -761,7 +823,7 @@ class Block extends LinkedList<Line> {
         return line
     }
 
-    public updateLines(lineNumber: number, content: string[]): Line[] {
+    public updateLines(lineNumber: LineNumber, content: LineContent[]): Line[] {
         this.resetVersionMerging()
 
         const lines = this.getLineRange({ startLine: lineNumber, endLine: lineNumber + content.length - 1 })
@@ -769,10 +831,10 @@ class Block extends LinkedList<Line> {
         return lines
     }
 
-    public deleteLine(lineNumber: number): Line {
+    public deleteLine(lineNumber: LineNumber): Line {
         this.resetVersionMerging()
 
-        const line = this.getLine(lineNumber)
+        const line = this.getLineByLineNumber(lineNumber)
         line.delete()
         return line
     }
@@ -782,6 +844,9 @@ class Block extends LinkedList<Line> {
         lines.forEach(line => line.delete())
         return lines
     }
+
+
+    // -------------------------- Children Mechanics ---------------------------
 
     public createChild(range: IRange): Block | null {
 
@@ -793,8 +858,8 @@ class Block extends LinkedList<Line> {
             return null
         }
 
-        const firstLine = this.getLine(range.startLineNumber)
-        const lastLine  = this.getLine(range.endLineNumber)
+        const firstLine = this.getLineByLineNumber(range.startLineNumber).blockLine
+        const lastLine  = this.getLineByLineNumber(range.endLineNumber).blockLine
         const child     = new Block({ provider: this.provider, eol: this.eol, parent: this, firstLine, lastLine })
 
 
@@ -816,8 +881,13 @@ class Block extends LinkedList<Line> {
         return Array.from(this.children.values())
     }
 
-    public getChildrenContaining(lineNumber: number): Block[] {
-        return this.getChildren().filter(child => child.containsLineNumber(lineNumber))
+    public getChildrenByPosition(position: LinePosition): Block[] {
+        return this.getChildren().filter(child => child.containsPosition(position))
+    }
+
+    public getChildrenByLineNumber(lineNumber: LineNumber): Block[] {
+        const position = this.lineNumberToPosition(lineNumber)
+        return this.getChildrenByPosition(position)
     }
 
     public updateChild(update: VCSSnapshotData): Block {
@@ -826,9 +896,9 @@ class Block extends LinkedList<Line> {
         return child
     }
 
-    public deleteChild(id: string): void {
-        this.getChild(id).delete()
-        this.children.delete(id)
+    public deleteChild(blockId: BlockId): void {
+        this.getChild(blockId).delete()
+        this.children.delete(blockId)
     }
 
     public delete(): Block[] {
@@ -918,25 +988,49 @@ class Block extends LinkedList<Line> {
         }
     }
 
+    private setBlockLines(firstBlockLine: BlockLine, lastBlockLine: BlockLine): void {
+        const lines: Line[] = []
+
+        let current = firstBlockLine
+        while (current && current !== lastBlockLine) {
+            lines.push(current.addBlock(this))
+            current = current.next
+        }
+
+        if (current && current === lastBlockLine) { lines.push(current.addBlock(this)) }
+
+        if (lines.length > 0) {
+            this.firstLine = lines[0]
+            this.lastLine  = lines[lines.length - 1]
+        }
+    }
+
     public updateInParent(range: VCSSnapshotData): Block[] {
-        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot update its range within this parent.") }
+        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot update its range within its parent.") }
         if (!this.parent.containsLineNumber(range._startLine)) { throw new Error("Start line is not in range of parent!") }
         if (!this.parent.containsLineNumber(range._endLine))   { throw new Error("End line is not in range of parent!") }
 
-        const currentStartLine = this.getFirstLineNumber()
-        const currentEndLine   = this.getLastLineNumber()
+        const oldFirstLineNumber = this.getFirstLineNumber()
+        const oldLastLineNumber  = this.getLastLineNumber()
 
         this.removeFromLines()
-        this.firstLine = this.parent.getLine(range._startLine)
-        this.lastLine  = this.parent.getLine(range._endLine)
-        this.addToLines()
+        const newFirstLine = this.parent.getLineByLineNumber(range._startLine).blockLine
+        const newLastLine  = this.parent.getLineByLineNumber(range._endLine).blockLine
+        this.setBlockLines(newFirstLine, newLastLine)
+
+        const newFirstLineNumber = this.getFirstLineNumber()
+        const newLastLineNumber  = this.getLastLineNumber()
 
         const updatedBlocks = this.getChildren().flatMap(child => {
-            const childRange = child.compress()
-            if (childRange._startLine === currentStartLine || childRange._endLine === currentEndLine) {
 
-                childRange._startLine = childRange._startLine === currentStartLine ? range._startLine : childRange._startLine
-                childRange._endLine   = childRange._endLine   === currentEndLine   ? range._endLine   : childRange._endLine
+            const firstLineNumber = child.getFirstLineNumberInParent()
+            const lastLineNumber  = child.getLastLineNumberInParent()
+
+            if (firstLineNumber === oldFirstLineNumber || lastLineNumber === oldLastLineNumber) {
+                const childRange = child.compressForParent()
+
+                childRange._startLine = firstLineNumber === oldFirstLineNumber ? newFirstLineNumber : childRange._startLine
+                childRange._endLine   = lastLineNumber  === oldLastLineNumber  ? newLastLineNumber  : childRange._endLine
 
                 if (childRange._startLine > childRange._endLine) {  
                     return child.delete()
@@ -952,19 +1046,41 @@ class Block extends LinkedList<Line> {
         return updatedBlocks
     }
 
-    public compress(): VCSSnapshotData {
+    private getFirstLineNumberInParent(): LineNumber | null {
+        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot calculate its first line number in its parent.") }
+        const parentLine = this.firstLine.getLineFor(this.parent)
+        const activeLine = parentLine.isActive ? parentLine : parentLine.getNextActiveLine()
+        const lineNumber = activeLine && this.containsPosition(activeLine.getPosition()) ? activeLine.getLineNumber() : null
+
+        if (!lineNumber) { throw new Error("This indicates that this child is not visible in the parent! Such children are currently not handled well.") }
+
+        return lineNumber
+    }
+
+    private getLastLineNumberInParent(): LineNumber | null {
+        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot calculate its last line number in its parent.") }
+        const parentLine = this.lastLine.getLineFor(this.parent)
+        const activeLine = parentLine.isActive ? parentLine : parentLine.getPreviousActiveLine()
+        const lineNumber = activeLine && this.containsPosition(activeLine.getPosition()) ? activeLine.getLineNumber() : null
+
+        if (!lineNumber) { throw new Error("This indicates that this child is not visible in the parent! Such children are currently not handled well.") }
+
+        return lineNumber
+    }
+
+    public compressForParent(): VCSSnapshotData {
         const parent = this
         return {
             uuid:         parent.blockId,
-            _startLine:   parent.getFirstLineNumber(),
-            _endLine:     parent.getLastLineNumber(),
+            _startLine:   parent.getFirstLineNumberInParent(),
+            _endLine:     parent.getLastLineNumberInParent(),
             versionCount: parent.getUserVersionCount(),
             versionIndex: parent.getCurrentVersionIndex()
         }
     }
 
     public getCompressedChildren(): VCSSnapshotData[] {
-        return this.getChildren().map(child => child.compress())
+        return this.getChildren().map(child => child.compressForParent())
     }
 
     // ---------------------- TAG FUNCTIONALITY ------------------------
@@ -1168,7 +1284,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {
         const block = this.getBlock(sessionId)
-        return block.createChild(range)?.compress()
+        return block.createChild(range)?.compressForParent()
     }
 
     public async deleteSnapshot(sessionId: SessionId, uuid: string): Promise<void> {
@@ -1178,7 +1294,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async getSnapshot(sessionId: SessionId, uuid: string): Promise<VCSSnapshotData> {
         const block = this.getBlock(sessionId)
-        return block.getChild(uuid).compress()
+        return block.getChild(uuid).compressForParent()
     }
 
     public async getSnapshots(sessionId: SessionId): Promise<VCSSnapshotData[]> {
@@ -1215,9 +1331,9 @@ export class GhostVCSServer extends BasicVCSServer {
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === block.eol
 
         const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > block.getLine(change.modifiedRange.startLineNumber).currentContent.length
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > block.getLineByLineNumber(change.modifiedRange.startLineNumber).currentContent.length
 
-        const insertedAtEnd   = change.modifiedRange.endColumn > block.getLine(change.modifiedRange.endLineNumber).currentContent.length
+        const insertedAtEnd   = change.modifiedRange.endColumn > block.getLineByLineNumber(change.modifiedRange.endLineNumber).currentContent.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
         const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn

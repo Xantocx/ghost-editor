@@ -330,6 +330,7 @@ export class GhostEditor extends View implements ReferenceProvider {
     public readonly enableFileManagement: boolean
     public readonly sideViewEnabled:      boolean
     public readonly mainViewFlex:         number
+    public readonly languageId?:          string
 
     // view containers to seperate main editor and side view
     public  readonly editorContainer:    HTMLDivElement
@@ -382,25 +383,27 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    public static createAsSubview(root: HTMLElement, options?: { blockId?: string, enableSideView?: boolean, mainViewFlex?: number, synchronizer?: Synchronizer }): GhostEditor {
+    public static createAsSubview(root: HTMLElement, options?: { blockId?: string, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
         return new GhostEditor(root, options)
     }
 
-    public static createVersionEditor(root: HTMLElement, version: VCSVersion, options?: { enableSideView?: boolean, mainViewFlex?: number, synchronizer?: Synchronizer }): GhostEditor {
+    public static createVersionEditor(root: HTMLElement, version: VCSVersion, options?: { enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
         return this.createAsSubview(root, { 
                                             blockId: version.blockId,
                                             enableSideView: options?.enableSideView,
                                             mainViewFlex: options?.mainViewFlex,
+                                            languageId: options?.languageId,
                                             synchronizer: options?.synchronizer
                                           })
     }
 
-    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, synchronizer?: Synchronizer }) {
+    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
         super(root, options?.synchronizer)
 
         this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
         this.sideViewEnabled      = options?.enableSideView       ? options.enableSideView       : false
         this.mainViewFlex         = options?.mainViewFlex         ? options.mainViewFlex         : 1
+        this.languageId           = options?.languageId
 
         // setup root for flex layout
         this.root.style.display       = "flex"
@@ -427,7 +430,11 @@ export class GhostEditor extends View implements ReferenceProvider {
         textModel.setValue(vcsContent)
         this.editorModel = new GhostEditorModel(textModel, session)
         this.core.setModel(textModel)
-        if (this.sideViewEnabled) { this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent }) }
+
+        if (this.sideViewEnabled) {
+            this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
+            this.sideView!.update(this.sideViewIdentifiers!.versionManager, { languageId: textModel.getLanguageId() })
+        }
     }
 
     public getTextModel(): MonacoModel {
@@ -496,12 +503,13 @@ export class GhostEditor extends View implements ReferenceProvider {
 
             const versionManager = this.sideView.addView("versionManager", root => {
                 return new VersionManagerView(root)
-            }, (view: VersionManagerView, versions: VCSVersion[]) => {
-                view.applyDiff(versions)
+            }, (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
+                if (args.languageId) { view.setLanguageId(args.languageId) }
+                if (args.versions)   { view.applyDiff(args.versions) }
             })
 
             this.sideViewIdentifiers = this.sideView.identifiers
-            this.defaultSideView     = this.sideViewIdentifiers.p5js
+            this.defaultSideView     = this.sideViewIdentifiers.vcs
             this.showDefaultSideView()
         }
     }
@@ -549,7 +557,7 @@ export class GhostEditor extends View implements ReferenceProvider {
         let textModel = uri ? monaco.editor.getModel(uri) : null
 
         if (textModel) { textModel.setValue(content) }
-        else           { textModel = monaco.editor.createModel(content, undefined, uri) }
+        else           { textModel = monaco.editor.createModel(content, this.languageId, uri) }
 
         const EOL    = extractEOLSymbol(textModel)
         const result = await this.createSession(EOL, { filePath, blockId, content: options?.content })
