@@ -216,17 +216,21 @@ class BlockLine extends LinkedListNode<BlockLine> {
 
     public getVersions(): LineVersion[] { return this.versions.getVersions() }
 
-    public addBlock(block: Block, head?: LineVersion): Line {
+    public addBlock(block: Block): Line {
         const currentLine = this.getLine(block)
-        if (!currentLine) {
-            head = head ? head : this.originLine.currentVersion
+        if (currentLine) { return currentLine }
+
+        if (block instanceof InlineBlock) {
+            const parentLine = this.getLine(block.parent!)
+            this.lines.set(block, parentLine)
+            return parentLine
+        } else if (block instanceof ForkBlock) {
+            const head = block.parent ? this.getLine(block.parent).currentVersion : this.originLine.currentVersion
             const line = new Line(this, block, { head })
             this.lines.set(block, line)
             return line
-        } else if (!head || currentLine.currentVersion === head) {
-            return currentLine
         } else {
-            throw new Error("This Block already exists for this line. It seems like your attempted to set the head to another version, but this is not the intended use of this function.")
+            throw new Error("The provided Block has an unknown subclass and cannot be added!")
         }
     }
 
@@ -314,7 +318,7 @@ class Line extends LinkedListNode<Line>  {
     }
 
     public getLineFor(block: Block):                      Line | undefined { return this.blockLine.getLine(block) }
-    public addBlock(block: Block, head?: LineVersion):    Line             { return this.blockLine.addBlock(block, head) }
+    public addBlock(block: Block):                        Line             { return this.blockLine.addBlock(block) }
     public removeBlock(block: Block, deleting?: boolean): Block[]          { return this.blockLine.removeBlock(block, deleting) }
 }
 
@@ -474,6 +478,14 @@ interface LineVersionRelations {
     next?: LineVersion | undefined
 }
 
+enum InsertionState {
+    Normal,
+    PreInsertion,
+    PreInsertionEngaged,
+    PreInsertionReleased,
+    Deletion
+}
+
 class LineVersion extends LinkedListNode<LineVersion> {
 
     public readonly history: LineHistory
@@ -493,6 +505,17 @@ class LineVersion extends LinkedListNode<LineVersion> {
 
     public get isPreInsertion(): boolean { return this.line.isInserted && this.isFirst }
     public get isDeletion():     boolean { return !this.isActive && !this.isFirst }
+
+    public get insertionState(): InsertionState {
+        if      (!this.isPreInsertion && !this.isDeletion)   { return InsertionState.Normal }
+        else if (!this.isPreInsertion &&  this.isDeletion)   { return InsertionState.Deletion }
+        else if ( this.isPreInsertion && !this.isDeletion)   {
+            if  (!this.isHead         && !this.next?.isHead) { return InsertionState.PreInsertion }
+            if  ( this.isHead         && !this.next?.isHead) { return InsertionState.PreInsertionEngaged }
+            if  (!this.isHead         &&  this.next?.isHead) { return InsertionState.PreInsertionReleased }
+            else                                             { throw new Error("Unexpected behaviour: Only one LineVersion should be head at any given time!") }
+        } else                                               { throw new Error("Unexpected behaviour: A LineVersion should not be able to be pre-insertion and deletion at the same time!") }
+    }
 
     public get isClone(): boolean { return this.origin ? true : false }
 
@@ -546,37 +569,45 @@ interface LineRange {
     endLine: number
 }
 
-interface BlockOptions { 
-    provider?:              BlockProvider
-    eol:                   EOLSymbol
-    filePath?:             string
-    parent?:               Block
-    firstLine?:            BlockLine
-    lastLine?:             BlockLine
-    content?:              string 
-    enableVersionMerging?: boolean
-}
 
-type EOLSymbol = string
+type EOLSymbol    = string
 type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 type LineNumber   = number  // line number within the editor, if this line is displayed
 
-class Block extends LinkedList<Line> {
 
-    public readonly provider?: BlockProvider
 
-    public readonly blockId:   BlockId
-    public readonly isClone:   boolean = false
-    public          isDeleted: boolean = false
 
-    public readonly eol:     EOLSymbol
-    public readonly parent?: Block
 
-    public readonly children = new Map<BlockId, Block>()
-    public readonly tags     = new Map<TagId, Tag>()
 
-    private enableVersionMerging = false
-    private lastModifiedLine: Line | null = null
+
+
+
+
+
+
+
+
+
+
+type ChildBlock  = InlineBlock
+type ClonedBlock = ForkBlock
+
+abstract class Block extends LinkedList<Line> {
+
+    public blockId:   BlockId
+    public provider?: BlockProvider
+
+    public isClone:   boolean = false
+    public isDeleted: boolean = false
+
+    public eol: EOLSymbol
+
+    public parent?: Block
+    public children = new Map<BlockId, ChildBlock>()
+    public tags     = new Map<TagId, Tag>()
+
+    public    enableVersionMerging: boolean     = false
+    protected lastModifiedLine:     Line | null = null
 
     public get firstLine(): Line | undefined { return this.first }
     public get lastLine():  Line | undefined { return this.last }
@@ -584,65 +615,37 @@ class Block extends LinkedList<Line> {
     public set firstLine(line: Line | undefined) { this.first = line }
     public set lastLine (line: Line | undefined) { this.last  = line }
 
-    public static create(eol: EOLSymbol, content: string, options?: { provider?: BlockProvider, fileName?: string }): Block {
-        const blockId = BlockProvider.createBlockIdFromFilePath(options?.fileName)
-        const block   = new Block({ provider: options?.provider, eol, blockId })
-        block.setContent(content)
-        return block
-    }
 
-    public constructor(options: BlockOptions | Block | EOLSymbol) {
-        super()
 
-        const blockOptions = options as BlockOptions
-        const clonedBlock  = options as Block
-
-        let firstBlockLine: BlockLine | undefined = undefined
-        let lastBlockLine:  BlockLine | undefined = undefined
-
-        if (blockOptions) {
-            this.blockId              = BlockProvider.createBlockIdFromFilePath(blockOptions.filePath)
-            this.provider             = blockOptions.provider
-            this.eol                  = blockOptions.eol
-            this.parent               = blockOptions.parent
-            this.enableVersionMerging = blockOptions.enableVersionMerging ? blockOptions.enableVersionMerging : false
-
-            firstBlockLine = blockOptions.firstLine
-            lastBlockLine  = blockOptions.lastLine
-
-            const content = blockOptions.content
-            if      (!firstBlockLine && !lastBlockLine) { this.setContent(content ? content : "") }
-            else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
-        
-            this.provider.register(this)
-        } else if (clonedBlock) {
-            this.blockId              = clonedBlock.blockId
-            this.isDeleted            = clonedBlock.isDeleted
-            this.provider             = clonedBlock.provider
-            this.eol                  = clonedBlock.eol
-            this.parent               = clonedBlock.parent
-            this.children             = clonedBlock.children
-            this.tags                 = clonedBlock.tags
-            this.enableVersionMerging = clonedBlock.enableVersionMerging
-            this.isClone              = true
-
-            firstBlockLine            = clonedBlock.firstLine?.blockLine
-            lastBlockLine             = clonedBlock.lastLine?.blockLine
-        } else {
-            this.eol = options as EOLSymbol
-        }
-
-        if      ( firstBlockLine && !lastBlockLine) { lastBlockLine  = firstBlockLine }
-        else if (!firstBlockLine &&  lastBlockLine) { firstBlockLine = lastBlockLine }
-
-        if (firstBlockLine && lastBlockLine) { this.setBlockLines(firstBlockLine, lastBlockLine) }
-    }
+    // -------------------------------- Line Data Accessors ---------------------------------------
 
     public getFirstPosition(): LinePosition { return this.firstLine.getPosition() }
     public getLastPosition():  LinePosition { return this.lastLine.getPosition() }
 
     public getFirstLineNumber(): LineNumber { return this.getFirstActiveLine().getLineNumber() }
     public getLastLineNumber():  LineNumber { return this.getLastActiveLine().getLineNumber() }
+
+    public getFirstLineNumberInParent(): LineNumber | null {
+        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot calculate its first line number in its parent.") }
+        const parentLine = this.firstLine.getLineFor(this.parent)
+        const activeLine = parentLine.isActive ? parentLine : parentLine.getNextActiveLine()
+        const lineNumber = activeLine && this.containsPosition(activeLine.getPosition()) ? activeLine.getLineNumber() : null
+
+        if (!lineNumber) { throw new Error("This indicates that this child is not visible in the parent! Such children are currently not handled well.") }
+
+        return lineNumber
+    }
+
+    public getLastLineNumberInParent(): LineNumber | null {
+        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot calculate its last line number in its parent.") }
+        const parentLine = this.lastLine.getLineFor(this.parent)
+        const activeLine = parentLine.isActive ? parentLine : parentLine.getPreviousActiveLine()
+        const lineNumber = activeLine && this.containsPosition(activeLine.getPosition()) ? activeLine.getLineNumber() : null
+
+        if (!lineNumber) { throw new Error("This indicates that this child is not visible in the parent! Such children are currently not handled well.") }
+
+        return lineNumber
+    }
 
     public getFirstActiveLine(): Line | null { return this.firstLine.isActive ? this.firstLine : this.firstLine.getNextActiveLine() }
     public getLastActiveLine():  Line | null { return this.lastLine.isActive  ? this.lastLine  : this.lastLine.getPreviousActiveLine() }
@@ -653,27 +656,40 @@ class Block extends LinkedList<Line> {
     public getLines():       Line[] { return this.toArray() }
     public getActiveLines(): Line[] { return this.filter(line => line.isActive) }
 
-    public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.getPosition() + "/" + line.currentVersion.timestamp + ": " + line.currentContent) }
+    public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.currentContent) }
     public getCurrentText(): string        { return this.getLineContent().join(this.eol) }
     public getFullText():    string        { return this.parent ? this.parent.getFullText() : this.getCurrentText() }
     
     public getVersions(): LineVersion[] { return this.flatMap(line => line.history.getVersions()) }
 
+
+
     public addToLines():                        Line[]  { return this.map(line => line.addBlock(this)) }
     public removeFromLines(deleting?: boolean): Block[] { return this.flatMap(line => line.removeBlock(this, deleting)) }
+
+
 
     // TODO: make sure this is actually working correctly
     public getLastModifiedLine(): Line | null { return this.lastModifiedLine }
     public setupVersionMerging(line: Line): void { if (this.enableVersionMerging) { this.lastModifiedLine = line } }
     public resetVersionMerging(): void { this.lastModifiedLine = null }
 
-    public containsPosition(position: LinePosition): boolean {
-        return this.getFirstPosition() <= position && position <= this.getLastPosition()
+
+
+    public lineNumberToPosition(lineNumber: LineNumber): LinePosition {
+        if (!this.containsLineNumber(lineNumber)) { throw new Error("Cannot convert invalid line number to position!") }
+        return this.getLineByLineNumber(lineNumber).getPosition()
     }
 
-    public containsLineNumber(lineNumber: LineNumber): boolean {
-        return this.getFirstLineNumber() <= lineNumber && lineNumber <= this.getLastLineNumber()
+    public positionToLineNumber(position: LinePosition): LineNumber {
+        if (!this.containsPosition(position)) { throw new Error("Cannot convert invalid position to line number!") }
+        return this.getLineByPosition(position).getLineNumber()
     }
+
+
+
+    public containsPosition(position: LinePosition):   boolean { return this.getFirstPosition()   <= position   && position   <= this.getLastPosition() }
+    public containsLineNumber(lineNumber: LineNumber): boolean { return this.getFirstLineNumber() <= lineNumber && lineNumber <= this.getLastLineNumber() }
 
     public containsRange(range: LineRange): boolean {
         const containsStart = this.containsLineNumber(range.startLine)
@@ -685,15 +701,7 @@ class Block extends LinkedList<Line> {
         return this.getFirstLineNumber() <= range.endLine && this.getLastLineNumber() >= range.startLine
     }
 
-    public lineNumberToPosition(lineNumber: LineNumber): LinePosition {
-        if (!this.containsLineNumber(lineNumber)) { throw new Error("Cannot convert invalid line number to position!") }
-        return this.getLineByLineNumber(lineNumber).getPosition()
-    }
 
-    public positionToLineNumber(position: LinePosition): LineNumber {
-        if (!this.containsPosition(position)) { throw new Error("Cannot convert invalid position to line number!") }
-        return this.getLineByPosition(position).getLineNumber()
-    }
 
     public getLineByPosition(position: LinePosition): Line {
         if (!this.containsPosition(position)) { throw new Error(`Cannot read line for invalid position ${position}!`) }
@@ -730,27 +738,13 @@ class Block extends LinkedList<Line> {
         return lines
     }
 
-    public setContent(content: string): void {
-        const lineStrings = content.split(this.eol)
-        const lines = lineStrings.map(content => Line.create(this, LineType.Original, content))
-        this.setLines(lines)
+    protected setLineList(firstLine: Line, lastLine: Line): void {
+        this.firstLine = firstLine
+        this.lastLine  = lastLine
     }
 
-    public setLines(lines: Line[]): void {
-        this.removeFromLines(true)
 
-        const lineCount = lines.length
-        let  previous: Line | undefined = undefined
-        lines.forEach((current: Line, index: number) => {
-            current.previous = previous
-            if (index + 1 < lineCount) { current.next = lines[index + 1] }
-            previous = current
-            current.addBlock(this)
-        })
-
-        this.firstLine = lineCount > 0 ? lines[0]             : undefined
-        this.lastLine  = lineCount > 0 ? lines[lineCount - 1] : undefined
-    }
+    // --------------------------------- Edit Mechanics ----------------------------------------
 
     public insertLine(lineNumber: LineNumber, content: LineContent): Line {
         this.resetVersionMerging()
@@ -845,10 +839,9 @@ class Block extends LinkedList<Line> {
         return lines
     }
 
-
     // -------------------------- Children Mechanics ---------------------------
 
-    public createChild(range: IRange): Block | null {
+    public createChild(range: IRange): ChildBlock | null {
 
         const lineRange = { startLine: range.startLineNumber, endLine: range.endLineNumber }
         const overlappingSnapshot = this.getChildren().find(snapshot => snapshot.overlapsWith(lineRange))
@@ -858,39 +851,44 @@ class Block extends LinkedList<Line> {
             return null
         }
 
-        const firstLine = this.getLineByLineNumber(range.startLineNumber).blockLine
-        const lastLine  = this.getLineByLineNumber(range.endLineNumber).blockLine
-        const child     = new Block({ provider: this.provider, eol: this.eol, parent: this, firstLine, lastLine })
-
+        const firstLine = this.getLineByLineNumber(range.startLineNumber)
+        const lastLine  = this.getLineByLineNumber(range.endLineNumber)
+        const child     = new InlineBlock({ eol: this.eol, 
+                                            parent: this, 
+                                            firstLine, 
+                                            lastLine, 
+                                            provider: this.provider, 
+                                            enableVersionMerging: this.enableVersionMerging
+                                          })
 
         this.addChild(child)
 
         return child
     }
 
-    public addChild(block: Block): void {
+    public addChild(block: ChildBlock): void {
         this.children.set(block.blockId, block)
     }
 
-    public getChild(blockId: BlockId): Block {
+    public getChild(blockId: BlockId): ChildBlock {
         if (!this.children.has(blockId)) { throw new Error(`Child Block with ID ${blockId} does not exist!`) }
         return this.children.get(blockId)
     }
 
-    public getChildren(): Block[] { 
+    public getChildren(): ChildBlock[] { 
         return Array.from(this.children.values())
     }
 
-    public getChildrenByPosition(position: LinePosition): Block[] {
+    public getChildrenByPosition(position: LinePosition): ChildBlock[] {
         return this.getChildren().filter(child => child.containsPosition(position))
     }
 
-    public getChildrenByLineNumber(lineNumber: LineNumber): Block[] {
+    public getChildrenByLineNumber(lineNumber: LineNumber): ChildBlock[] {
         const position = this.lineNumberToPosition(lineNumber)
         return this.getChildrenByPosition(position)
     }
 
-    public updateChild(update: VCSSnapshotData): Block {
+    public updateChild(update: VCSSnapshotData): ChildBlock {
         const child = this.getChild(update.uuid)
         child.updateInParent(update)
         return child
@@ -917,6 +915,8 @@ class Block extends LinkedList<Line> {
         return deletedBlocks
     }
 
+
+
     // ---------------------- SNAPSHOT FUNCTIONALITY ------------------------
 
     public getHeads(): LineVersion[] { return this.map(line => line.currentVersion) }
@@ -924,17 +924,20 @@ class Block extends LinkedList<Line> {
     public getOriginalLineCount(): number { return this.filter(line => !line.isInserted).length }
     public getUserVersionCount():  number { return this.getUnsortedTimeline().length - this.getOriginalLineCount() + 1 }
 
-    private getUnsortedTimeline(): LineVersion[] {
+    protected getUnsortedTimeline(): LineVersion[] {
         // isPreInsertion to avoid choosing versions following on a pre-insertion-version, as we simulate those.
         // Same for origin -> cloned versions are not displayed, and are just there for correct code structure
         return this.getVersions().filter(version => { return !version.previous?.isPreInsertion /*&& !version.origin*/ } )
     }
 
-    private getTimeline(): LineVersion[] {
+    protected getTimeline(): LineVersion[] {
         return this.getUnsortedTimeline().sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
     }
 
-    public getCurrentVersion(): LineVersion {
+    // WARNING: This function is a bit wild. It assumes we cannot have any pre-insertion versions as current version, as those are invisible, and thus "not yet existing" (the lines, that is).
+    // As a result it filters those. This function should ONLY BE USED WHEN YOU KNOW WHAT YOU DO. One example of that is the getCurrentVersionIndex, where the understanding of this
+    // function is used to extract the timeline index that should be visualized by the UI.
+    private getCurrentVersion(): LineVersion {
         return this.getHeads().filter(head          => !head.isPreInsertion)
                               .sort( (headA, headB) => headB.timestamp - headA.timestamp)[0]
     }
@@ -942,7 +945,9 @@ class Block extends LinkedList<Line> {
     public getCurrentVersionIndex(): number {
         // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
         let currentVersion = this.getCurrentVersion()
-        if (currentVersion.previous?.isPreInsertion) { currentVersion = currentVersion.previous }
+        if (currentVersion.previous?.isPreInsertion) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
+                                                                                                    // version. At the same time the pre-insertion versions are the only ones present in
+                                                                                                    // the timeline by default, because I can easily distinguished for further manipulation.
         //if (currentVersion.origin)                   { currentVersion = currentVersion.next }
 
         const timeline = this.getTimeline()
@@ -951,6 +956,11 @@ class Block extends LinkedList<Line> {
         if (index < 0) { throw new Error("Latest head not in timeline!") }
 
         return index
+    }
+
+    // THIS is the actual latest version in the timeline that is currently active. Unfortunately, there is no other easy way to calculate that...
+    public getLatestVersion(): LineVersion {
+        return this.getTimeline()[this.getCurrentVersionIndex()]
     }
 
     public applyIndex(targetIndex: number): void {
@@ -973,46 +983,35 @@ class Block extends LinkedList<Line> {
         targetIndex += this.getOriginalLineCount() - 1
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
-        let version = timeline[targetIndex] // actually targeted version
-        let nextVersion = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
+        let   selectedVersion = timeline[targetIndex] // actually targeted version
+        let   previousVersion = targetIndex - 1 >= 0              ? timeline[targetIndex - 1] : undefined
+        let   nextVersion     = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
+        const latestVersion   = timeline[this.getCurrentVersionIndex()]
 
+        console.log("")
+        console.log(this.getCurrentVersion().timestamp + ": " + this.getCurrentVersion().content)
         console.log("---")
 
-        // handle skipping the pre-insertion version, if it is already applied
-        if (version.isHead && version.isPreInsertion) {
-            console.log(version.next.content)
-            version.next.applyTo(this)
-        // handle the undo of the line insertion if we go back by one version
-        } else if (nextVersion?.isPreInsertion && nextVersion?.next?.isHead) {
-            console.log(nextVersion.content)
-            nextVersion.applyTo(this)
-        // handle all traditional cases
-        } else {
-            console.log(version.content)
-            version.applyTo(this)
-        }
+        // Default case
+        let version: LineVersion = selectedVersion
 
-        console.log("----")
-        console.log(this.getCurrentText())
-        console.log("-----")
-        console.log("\n\n")
-    }
 
-    private setBlockLines(firstBlockLine: BlockLine, lastBlockLine: BlockLine): void {
-        const lines: Line[] = []
+        // TO CONSIDER:
+        // If I edit a bunch of lines not all in a snapshot, and then rewind the changes, only changing the previously untouched lines, then the order will remain intakt (thanks to head tracking)
+        // but it can happen that the order of edits is weird (e.g., when one of these still original lines gets deleted, it immediately disappears instead of first being displayed).
+        // This is because I do not clone these lines that were never edited. Thus, all changes are instant. This can be good, but it feels different from the average editing experience
+        // that involves clones. I should think what the best course of action would be here...
 
-        let current = firstBlockLine
-        while (current && current !== lastBlockLine) {
-            lines.push(current.addBlock(this))
-            current = current.next
-        }
 
-        if (current && current === lastBlockLine) { lines.push(current.addBlock(this)) }
+        // If the previous version is selected and still on pre-insertion, disable pre-insertion
+        // I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
+        if (previousVersion === latestVersion && previousVersion.insertionState === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
+        // If the next version is selected and still on post-insertion, then set it to pre-insertion
+        else if (nextVersion === latestVersion && nextVersion.insertionState === InsertionState.PreInsertionReleased)   { version = nextVersion }
+        // If the current version is pre-insertion, skip the pre-insertion phase if necessary
+        else if (selectedVersion.isPreInsertion && (selectedVersion.isHead || nextVersion?.isHead))                     { version = selectedVersion.next }
 
-        if (lines.length > 0) {
-            this.firstLine = lines[0]
-            this.lastLine  = lines[lines.length - 1]
-        }
+        version.applyTo(this)
     }
 
     public updateInParent(range: VCSSnapshotData): Block[] {
@@ -1024,9 +1023,9 @@ class Block extends LinkedList<Line> {
         const oldLastLineNumber  = this.getLastLineNumber()
 
         this.removeFromLines()
-        const newFirstLine = this.parent.getLineByLineNumber(range._startLine).blockLine
-        const newLastLine  = this.parent.getLineByLineNumber(range._endLine).blockLine
-        this.setBlockLines(newFirstLine, newLastLine)
+        const newFirstLine = this.parent.getLineByLineNumber(range._startLine)
+        const newLastLine  = this.parent.getLineByLineNumber(range._endLine)
+        this.setLineList(newFirstLine, newLastLine)
 
         const newFirstLineNumber = this.getFirstLineNumber()
         const newLastLineNumber  = this.getLastLineNumber()
@@ -1056,28 +1055,6 @@ class Block extends LinkedList<Line> {
         return updatedBlocks
     }
 
-    private getFirstLineNumberInParent(): LineNumber | null {
-        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot calculate its first line number in its parent.") }
-        const parentLine = this.firstLine.getLineFor(this.parent)
-        const activeLine = parentLine.isActive ? parentLine : parentLine.getNextActiveLine()
-        const lineNumber = activeLine && this.containsPosition(activeLine.getPosition()) ? activeLine.getLineNumber() : null
-
-        if (!lineNumber) { throw new Error("This indicates that this child is not visible in the parent! Such children are currently not handled well.") }
-
-        return lineNumber
-    }
-
-    private getLastLineNumberInParent(): LineNumber | null {
-        if (!this.parent) { throw new Error("This Block does not have a parent! You cannot calculate its last line number in its parent.") }
-        const parentLine = this.lastLine.getLineFor(this.parent)
-        const activeLine = parentLine.isActive ? parentLine : parentLine.getPreviousActiveLine()
-        const lineNumber = activeLine && this.containsPosition(activeLine.getPosition()) ? activeLine.getLineNumber() : null
-
-        if (!lineNumber) { throw new Error("This indicates that this child is not visible in the parent! Such children are currently not handled well.") }
-
-        return lineNumber
-    }
-
     public compressForParent(): VCSSnapshotData {
         const parent = this
         return {
@@ -1093,9 +1070,11 @@ class Block extends LinkedList<Line> {
         return this.getChildren().map(child => child.compressForParent())
     }
 
+
+
     // ---------------------- TAG FUNCTIONALITY ------------------------
 
-    private createCurrentTag(): Tag {
+    protected createCurrentTag(): Tag {
         const heads = new Map<Line, LineVersion>()
         this.forEach(line => heads.set(line, line.currentVersion))
         return new Tag(this, heads)
@@ -1131,10 +1110,148 @@ class Block extends LinkedList<Line> {
     }
 
 
-    public clone(): Block {
-        return new Block(this)
+
+    public clone(): ClonedBlock {
+        return new ForkBlock(this)
     }
 }
+
+
+
+interface InlineBlockOptions { 
+    eol:                   EOLSymbol
+    parent:                Block
+    firstLine:             Line
+    lastLine:              Line
+    provider?:             BlockProvider
+    enableVersionMerging?: boolean
+}
+
+class InlineBlock extends Block {
+
+    public constructor(options: InlineBlockOptions) {
+        super()
+
+        this.blockId              = BlockProvider.newBlockId()
+        this.provider             = options.provider
+        this.eol                  = options.eol
+        this.parent               = options.parent
+        this.firstLine            = options.firstLine
+        this.lastLine             = options.lastLine
+        this.enableVersionMerging = options.enableVersionMerging ? options.enableVersionMerging : false
+
+        this.addToLines()
+        this.provider.register(this)
+    }
+}
+
+
+interface ForkBlockOptions { 
+    eol:                   EOLSymbol
+    filePath?:             string
+    parent?:               Block
+    firstLine?:            BlockLine
+    lastLine?:             BlockLine
+    content?:              string
+    provider?:             BlockProvider 
+    enableVersionMerging?: boolean
+}
+
+class ForkBlock extends Block {
+
+    public static create(eol: EOLSymbol, content: string, options?: { filePath?: string, provider?: BlockProvider }): ForkBlock {
+        return new ForkBlock({ eol, filePath: options?.filePath, content, provider: options?.provider })
+    }
+
+    public constructor(options: ForkBlockOptions | Block) {
+        super()
+
+        const blockOptions = options as ForkBlockOptions
+        const clonedBlock  = options as Block
+
+        let firstBlockLine: BlockLine | undefined = undefined
+        let lastBlockLine:  BlockLine | undefined = undefined
+
+        if (blockOptions) {
+            this.blockId              = BlockProvider.createBlockIdFromFilePath(blockOptions.filePath)
+            this.provider             = blockOptions.provider
+            this.eol                  = blockOptions.eol
+            this.parent               = blockOptions.parent
+            this.enableVersionMerging = blockOptions.enableVersionMerging ? blockOptions.enableVersionMerging : false
+
+            firstBlockLine = blockOptions.firstLine
+            lastBlockLine  = blockOptions.lastLine
+
+            const content = blockOptions.content
+            if      (!firstBlockLine && !lastBlockLine) { this.setContent(content ? content : "") }
+            else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
+        
+            this.provider.register(this)
+        } else if (clonedBlock) {
+            this.blockId              = clonedBlock.blockId
+            this.isDeleted            = clonedBlock.isDeleted
+            this.provider             = clonedBlock.provider
+            this.eol                  = clonedBlock.eol
+            this.parent               = clonedBlock.parent
+            this.children             = clonedBlock.children
+            this.tags                 = clonedBlock.tags
+            this.enableVersionMerging = clonedBlock.enableVersionMerging
+            this.isClone              = true
+
+            firstBlockLine            = clonedBlock.firstLine?.blockLine
+            lastBlockLine             = clonedBlock.lastLine?.blockLine
+        }
+
+        if      ( firstBlockLine && !lastBlockLine) { lastBlockLine  = firstBlockLine }
+        else if (!firstBlockLine &&  lastBlockLine) { firstBlockLine = lastBlockLine }
+
+        if (firstBlockLine && lastBlockLine) { this.setBlockList(firstBlockLine, lastBlockLine) }
+    }
+
+    protected override setLineList(firstLine: Line, lastLine: Line): void {
+        this.setBlockList(firstLine.blockLine, lastLine.blockLine)
+    }
+
+    private setBlockList(firstBlockLine: BlockLine, lastBlockLine: BlockLine) {
+        const lines: Line[]  = []
+
+        let current = firstBlockLine
+        while (current && current !== lastBlockLine) {
+            lines.push(current.addBlock(this))
+            current = current.next
+        }
+
+        if (current && current === lastBlockLine) { lines.push(current.addBlock(this)) }
+
+        if (lines.length > 0) {
+            this.firstLine = lines[0]
+            this.lastLine  = lines[lines.length - 1]
+        }
+    }
+
+    public setContent(content: string): void {
+        const lineStrings = content.split(this.eol)
+        const lines = lineStrings.map(content => Line.create(this, LineType.Original, content))
+        this.setLines(lines)
+    }
+
+    public setLines(lines: Line[]): void {
+        this.removeFromLines(true)
+
+        const lineCount = lines.length
+        let  previous: Line | undefined = undefined
+        lines.forEach((current: Line, index: number) => {
+            current.previous = previous
+            if (index + 1 < lineCount) { current.next = lines[index + 1] }
+            previous = current
+            current.addBlock(this)
+        })
+
+        this.firstLine = lineCount > 0 ? lines[0]             : undefined
+        this.lastLine  = lineCount > 0 ? lines[lineCount - 1] : undefined
+    }
+}
+
 
 type BlockId = string
 type TagId   = string
@@ -1212,7 +1329,7 @@ class Session {
 
     public static createWithNewBlock(eol: string, options?: { provider?: BlockProvider, filePath?: string, content?: string }): Session {
         const blockId = BlockProvider.createBlockIdFromFilePath(options?.filePath)
-        const block   = new Block({ provider: options?.provider, eol, blockId, content: options?.content })
+        const block   = new ForkBlock({ provider: options?.provider, eol, blockId, content: options?.content })
         return new Session(block)
     }
 
