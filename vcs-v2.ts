@@ -653,7 +653,7 @@ class Block extends LinkedList<Line> {
     public getLines():       Line[] { return this.toArray() }
     public getActiveLines(): Line[] { return this.filter(line => line.isActive) }
 
-    public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.currentContent) }
+    public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.getPosition() + "/" + line.currentVersion.timestamp + ": " + line.currentContent) }
     public getCurrentText(): string        { return this.getLineContent().join(this.eol) }
     public getFullText():    string        { return this.parent ? this.parent.getFullText() : this.getCurrentText() }
     
@@ -976,16 +976,26 @@ class Block extends LinkedList<Line> {
         let version = timeline[targetIndex] // actually targeted version
         let nextVersion = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
 
+        console.log("---")
+
         // handle skipping the pre-insertion version, if it is already applied
         if (version.isHead && version.isPreInsertion) {
+            console.log(version.next.content)
             version.next.applyTo(this)
         // handle the undo of the line insertion if we go back by one version
         } else if (nextVersion?.isPreInsertion && nextVersion?.next?.isHead) {
+            console.log(nextVersion.content)
             nextVersion.applyTo(this)
         // handle all traditional cases
         } else {
+            console.log(version.content)
             version.applyTo(this)
         }
+
+        console.log("----")
+        console.log(this.getCurrentText())
+        console.log("-----")
+        console.log("\n\n")
     }
 
     private setBlockLines(firstBlockLine: BlockLine, lastBlockLine: BlockLine): void {
