@@ -988,20 +988,14 @@ abstract class Block extends LinkedList<Line> {
         let   nextVersion     = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
         const latestVersion   = timeline[this.getCurrentVersionIndex()]
 
-        console.log("")
-        console.log(this.getCurrentVersion().timestamp + ": " + this.getCurrentVersion().content)
-        console.log("---")
-
-        // Default case
-        let version: LineVersion = selectedVersion
-
-
         // TO CONSIDER:
         // If I edit a bunch of lines not all in a snapshot, and then rewind the changes, only changing the previously untouched lines, then the order will remain intakt (thanks to head tracking)
         // but it can happen that the order of edits is weird (e.g., when one of these still original lines gets deleted, it immediately disappears instead of first being displayed).
         // This is because I do not clone these lines that were never edited. Thus, all changes are instant. This can be good, but it feels different from the average editing experience
         // that involves clones. I should think what the best course of action would be here...
 
+        // Default case
+        let version: LineVersion = selectedVersion
 
         // If the previous version is selected and still on pre-insertion, disable pre-insertion
         // I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
