@@ -8,10 +8,11 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
 
     public wrappedView?: WrappedView = undefined
     public updateCallback?: (view: WrappedView, args: UpdateArguments) => void = undefined
+    public resetCallback?:  (view: WrappedView)                        => void = undefined
 
     private isVisible: boolean = false
 
-    public constructor(root: HTMLElement, builder?: (root: HTMLElement) => WrappedView, updateCallback?: (view: WrappedView, args: UpdateArguments) => void, show?: boolean) {
+    public constructor(root: HTMLElement, builder?: (root: HTMLElement) => WrappedView, options?: { updateCallback?: (view: WrappedView, args: UpdateArguments) => void, resetCallback?: (view: WrappedView) => void, show?: boolean }) {
         super(root)
         
         this.container = document.createElement("div")
@@ -24,8 +25,8 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
         this.container.style.margin    = "0 0"
         this.container.style.overflow  = "hidden"
 
-        if (builder) { this.wrap(builder, updateCallback) }
-        if (show) { this.show() }
+        if (builder) { this.wrap(builder, options) }
+        if (options?.show) { this.show() }
     }
 
     public unwrap(): void {
@@ -34,10 +35,11 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
         this.updateCallback = undefined
     }
 
-    public wrap(builder: (root: HTMLElement) => WrappedView, updateCallback?: (view: WrappedView, args: UpdateArguments) => void): View {
+    public wrap(builder: (root: HTMLElement) => WrappedView, options?: { updateCallback?: (view: WrappedView, args: UpdateArguments) => void, resetCallback?: (view: WrappedView) => void }): View {
         this.unwrap()
-        this.wrappedView = builder(this.container)
-        this.updateCallback = updateCallback
+        this.wrappedView    = builder(this.container)
+        this.updateCallback = options?.updateCallback
+        this.resetCallback  = options?.resetCallback
         return this.wrappedView!
     }
 
@@ -52,6 +54,7 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
 
     public hide(): void {
         if (this.isVisible) {
+            this.reset()
             this.container.remove()
             this.isVisible = false
         }
@@ -59,6 +62,10 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
 
     public update(args: UpdateArguments): void {
         if (this.wrappedView && this.updateCallback) { this.updateCallback(this.wrappedView, args) }
+    }
+
+    public reset(): void {
+        if (this.wrappedView && this.resetCallback) { this.resetCallback(this.wrappedView) }
     }
 
     public override remove(): void {
@@ -112,15 +119,18 @@ export class MetaView extends View {
 
     public addView<WrappedView extends View, UpdateArguments>(identifier: ViewIdentifier, 
                                                               builder: (root: HTMLElement) => WrappedView, 
-                                                              updateCallback?: (view: WrappedView, args: UpdateArguments) => void, 
-                                                              show?: boolean): View {
+                                                              options?: {
+                                                                updateCallback?: (view: WrappedView, args: UpdateArguments) => void,
+                                                                resetCallback?:  (view: WrappedView)                        => void
+                                                                show?: boolean 
+                                                              }): View {
 
         if (this.views.has(identifier)) { throw new Error(`Please remove the existing view for ${identifier} before adding a new one!`) }
 
-        const wrapper = new ViewWrapper(this.root, builder, updateCallback)
+        const wrapper = new ViewWrapper(this.root, builder, { updateCallback: options?.updateCallback, resetCallback: options?.resetCallback })
         this.setIdentifier(identifier, wrapper)
 
-        if (show) { this.showView(identifier) }
+        if (options?.show) { this.showView(identifier) }
 
         return wrapper.wrappedView!
     }

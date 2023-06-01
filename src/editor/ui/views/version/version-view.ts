@@ -74,11 +74,20 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         this.versionsChanged()
     }
 
-    public applyDiff(versions: VCSVersion[]): void {
+    // returns removed versions
+    public applyDiff(versions: VCSVersion[]): VCSVersion[] {
         const currentVersions = this.getVersions()
-        currentVersions.forEach(   version => { if (!versions.includes(version)) { this.removeVersion(version) } })
+
+        const removedVersions = currentVersions.filter(version => {
+            const remove = !versions.includes(version)
+            if (remove) { this.removeVersion(version) }
+            return remove
+        })
+
         versions.reverse().forEach(version => { if (!this.versions.has(version)) { this.addVersion(version) } })
+        
         this.versionsChanged()
+        return removedVersions
     }
 
     public removeVersion(version: VCSVersion): void {

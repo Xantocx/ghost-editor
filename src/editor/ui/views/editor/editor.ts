@@ -491,21 +491,30 @@ export class GhostEditor extends View implements ReferenceProvider {
 
             const vcsPreview = this.sideView.addView("vcs", root => {
                 return new VCSPreview(root, this.editorModel)
-            }, (view: VCSPreview, args: { editorModel: GhostEditorModel, vcsContent?: string }) => {
-                view.updateEditor(args.editorModel, args.vcsContent)
+            }, { 
+                updateCallback: (view: VCSPreview, args: { editorModel: GhostEditorModel, vcsContent?: string }) => {
+                    view.updateEditor(args.editorModel, args.vcsContent)
+                }
             })
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
                 return new P5JSPreview(root, { padding: 5 })
-            }, (view: P5JSPreview, code: string) => {
-                view.update(code)
+            }, {
+                updateCallback: (view: P5JSPreview, code: string) => {
+                    view.update(code)
+                }
             })
 
             const versionManager = this.sideView.addView("versionManager", root => {
                 return new VersionManagerView(root)
-            }, (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
-                if (args.languageId) { view.setLanguageId(args.languageId) }
-                if (args.versions)   { view.applyDiff(args.versions) }
+            }, {
+                updateCallback: (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
+                    if (args.languageId) { view.setLanguageId(args.languageId) }
+                    if (args.versions)   { view.applyDiff(args.versions) }
+                },
+                resetCallback: (view: VersionManagerView) => {
+                    view.removeVersions()
+                }
             })
 
             this.sideViewIdentifiers = this.sideView.identifiers

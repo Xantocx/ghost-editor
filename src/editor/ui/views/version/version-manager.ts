@@ -79,18 +79,18 @@ export class VersionManagerView extends View implements IVersionViewContainer {
     }
 
     public applyDiff(versions: VCSVersion[]): void {
-        this.preview.applyDiff(versions)
-        //this.code.applyDiff(versions)
+        const removedVersions = this.preview.applyDiff(versions)
+        removedVersions.forEach(version => this.code.removeVersion(version))
     }
 
     public removeVersion(version: VCSVersion): void {
         this.preview.removeVersion(version)
-        //this.code.removeVersion(version)
+        this.code.removeVersion(version)
     }
 
     public removeVersions(): void {
         this.preview.removeVersions()
-        //this.code.removeVersions()
+        this.code.removeVersions()
     }
 
     public override remove(): void {

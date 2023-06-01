@@ -207,7 +207,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public showVersionManager(): void {
-        this.updateVersionManager()
         this.sideView?.showView(this.sideViewIdentifier)
         this.updateVersionManager()
     }
