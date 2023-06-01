@@ -1005,6 +1005,8 @@ abstract class Block extends LinkedList<Line> {
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
         else if (selectedVersion.isPreInsertion && (selectedVersion.isHead || nextVersion?.isHead))                     { version = selectedVersion.next }
 
+        console.log(this.getCurrentText())
+
         version.applyTo(this)
     }
 
