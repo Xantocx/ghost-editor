@@ -37,8 +37,9 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
     private get first(): Node | undefined { return this.list?.first }
     private get last():  Node | undefined { return this.list?.last }
 
-    public get isFirst(): boolean { return this.isEqualTo(this.first) }
-    public get isLast():  boolean { return this.isEqualTo(this.last) }
+    // This could be public, but interfers with parameterized implementation further down for the LineVersion
+    private get isFirst(): boolean { return this.isEqualTo(this.first) }
+    private get isLast():  boolean { return this.isEqualTo(this.last) }
 
     public constructor(list?: LinkedList<Node>) {
         this.list = list
@@ -179,8 +180,8 @@ class BlockLine extends LinkedListNode<BlockLine> {
 
     public readonly lines = new Map<Block, Line>()
 
-    public get isOriginal(): boolean  { return this.lineType === LineType.Original }
-    public get isInserted(): boolean  { return this.lineType === LineType.Inserted }
+    public get isOriginal(): boolean { return this.lineType === LineType.Original }
+    public get isInserted(): boolean { return this.lineType === LineType.Inserted }
 
     public get originLine(): Line { return this.getLine(this.originBlock) }
 
@@ -208,8 +209,9 @@ class BlockLine extends LinkedListNode<BlockLine> {
     public getPosition():               LinePosition           { return this.getAbsoluteIndex() }
     public getLineNumber(block: Block): LineNumber | undefined { return this.getLine(block)?.getLineNumber() }
 
-    public has(block: Block):     boolean          { return this.lines.has(block) }
-    public getLine(block: Block): Line | undefined { return this.lines.get(block) }
+    public has(block: Block):        boolean                 { return this.lines.has(block) }
+    public getLine(block: Block):    Line | undefined        { return this.lines.get(block) }
+    public getHistory(block: Block): LineHistory | undefined { return this.getLine(block)?.history }
 
     public getBlocks():   Block[]   { return Array.from(this.lines.keys()) }
     public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.blockId) }
@@ -346,6 +348,9 @@ class LineHistory {
     public  get head(): LineVersion { return this._head }
     private set head(version: LineVersion) { this._head = version } 
 
+    public get blockLine(): BlockLine { return this.line.blockLine }
+    public get block    (): Block     { return this.line.block }
+
     public get firstVersion(): LineVersion | undefined { return this.versions.firstVersion }
     public get lastVersion():  LineVersion | undefined { return this.versions.lastVersion }
 
@@ -377,11 +382,11 @@ class LineHistory {
         if (this.versions.isInitialized) { throw new Error("This line is already setup with initial content! This process cannot be preformed multiple times.") }
 
         if (this.line.isOriginal) {
-            this.firstVersion = new LineVersion(this, this.getNewTimestamp(), true, content)
+            this.firstVersion = new LineVersion(this.blockLine, this.getNewTimestamp(), true, content)
             this.lastVersion  = this.firstVersion
         } else if (this.line.isInserted) {
-            this.firstVersion = new LineVersion(this, this.getNewTimestamp(), false, "")
-            this.lastVersion  = new LineVersion(this, this.getNewTimestamp(), true, content, { previous: this.firstVersion })
+            this.firstVersion = new LineVersion(this.blockLine, this.getNewTimestamp(), false, "")
+            this.lastVersion  = new LineVersion(this.blockLine, this.getNewTimestamp(), true, content, { previous: this.firstVersion })
         } else {
             throw new Error(`Cannot create LineHistory for line with type "${this.line.lineType}"!`)
         }
@@ -396,12 +401,14 @@ class LineHistory {
     public getVersionCount(): number        { return this.versions.getLength() }
 
     public updateHead(version: LineVersion): void {
-        if (version.isHead) { return }
+        // checking for blockLine, as this may be called during initialization, and the line does not exist in blockLine yet
+        if (this.blockLine.has(this.block) && version.isHeadOf(this.block)) { return }
         this.head = version
         this.headTracking.set(this.getNewTimestamp(), version)
     }
 
     /*
+    // debug wrapper for getVersion
     public getVersion(timestamp: Timestamp): LineVersion {
 
         console.log("----------------")
@@ -438,11 +445,11 @@ class LineHistory {
     }
 
     public loadTimestamp(timestamp: Timestamp): LineVersion {
-        if (this.head.timestamp < timestamp && this.head.isLatestVersion()) {
+        if (this.head.timestamp < timestamp && this.head.isLatestVersion(this.block)) {
             return this.head
         } else {
             const version = this.getVersion(timestamp)
-            version.apply()
+            version.apply(this.block)
             return version
         }
     }
@@ -456,7 +463,7 @@ class LineHistory {
     public createNewVersion(isActive: boolean, content: LineContent): LineVersion {
         if (this.head !== this.lastVersion) { this.cloneHeadToEnd() }
 
-        this.lastVersion = new LineVersion(this, this.getNewTimestamp(), isActive, content, { previous: this.lastVersion })
+        this.lastVersion = new LineVersion(this.blockLine, this.getNewTimestamp(), isActive, content, { previous: this.lastVersion })
         this.head        = this.lastVersion
 
         return this.head
@@ -488,7 +495,7 @@ enum InsertionState {
 
 class LineVersion extends LinkedListNode<LineVersion> {
 
-    public readonly history: LineHistory
+    public readonly blockLine: BlockLine
 
     public readonly timestamp: Timestamp
     public readonly isActive:  boolean
@@ -497,33 +504,12 @@ class LineVersion extends LinkedListNode<LineVersion> {
     public  readonly origin?: LineVersion   = undefined
     private readonly clones:  LineVersion[] = []
 
-    public get line(): Line { return this.history.line }
-
-    public          get isHead():  boolean { return this.history.head         === this }
-    public override get isFirst(): boolean { return this.history.firstVersion === this }
-    public override get isLast():  boolean { return this.history.lastVersion  === this }
-
-    public get isPreInsertion(): boolean { return this.line.isInserted && this.isFirst }
-    public get isDeletion():     boolean { return !this.isActive && !this.isFirst }
-
-    public get insertionState(): InsertionState {
-        if      (!this.isPreInsertion && !this.isDeletion)   { return InsertionState.Normal }
-        else if (!this.isPreInsertion &&  this.isDeletion)   { return InsertionState.Deletion }
-        else if ( this.isPreInsertion && !this.isDeletion)   {
-            if  (!this.isHead         && !this.next?.isHead) { return InsertionState.PreInsertion }
-            if  ( this.isHead         && !this.next?.isHead) { return InsertionState.PreInsertionEngaged }
-            if  (!this.isHead         &&  this.next?.isHead) { return InsertionState.PreInsertionReleased }
-            else                                             { throw new Error("Unexpected behaviour: Only one LineVersion should be head at any given time!") }
-        } else                                               { throw new Error("Unexpected behaviour: A LineVersion should not be able to be pre-insertion and deletion at the same time!") }
-    }
-
     public get isClone(): boolean { return this.origin ? true : false }
 
-    public constructor(history: LineHistory, timestamp: Timestamp, isActive: boolean, content: LineContent, relations?: LineVersionRelations) {
-        super(history.versions)
+    public constructor(blockLine: BlockLine, timestamp: Timestamp, isActive: boolean, content: LineContent, relations?: LineVersionRelations) {
+        super(blockLine.versions)
 
-        this.history = history
-        
+        this.blockLine = blockLine
         this.timestamp = timestamp
         this.isActive  = isActive
         this.content   = content
@@ -539,19 +525,47 @@ class LineVersion extends LinkedListNode<LineVersion> {
         }
     }
 
-    public isLatestVersion(): boolean {
-        const trackedTimestamps = this.history.getTrackedTimestamps()
+    public getLine(block: Block):    Line        { if (this.blockLine.has(block)) { return this.blockLine.getLine(block)! } else { throw new Error("There is no Line for the required block!") } }
+    public getHistory(block: Block): LineHistory { return this.getLine(block).history }
+
+    public isHeadOf(block: Block):  boolean { return this.getHistory(block).head         === this }
+    public isFirstOf(block: Block): boolean { return this.getHistory(block).firstVersion === this }
+    public isLastOf(block: Block):  boolean { return this.getHistory(block).lastVersion  === this }
+
+    public isPreInsertion(block: Block): boolean { return this.getLine(block).isInserted && this.isFirstOf(block) }
+    public isDeletion(block: Block):     boolean { return !this.isActive && !this.isFirstOf(block) }
+
+    public isLatestVersion(block: Block): boolean {
+        const trackedTimestamps = this.getHistory(block).getTrackedTimestamps()
         const greatestTrackedTimestamp = trackedTimestamps.length > 0 ? trackedTimestamps[trackedTimestamps.length - 1] : 0
-        return this.isLast && this.timestamp >= greatestTrackedTimestamp
+        return this.isLastOf(block) && this.timestamp >= greatestTrackedTimestamp
     }
 
-    public apply():                      void { this.history.updateHead(this) }
+    public insertionState(block: Block): InsertionState {
+
+        const isPreInsertion = this.isPreInsertion(block)
+        const isDeletion     = this.isDeletion(block)
+        const isHead         = this.isHeadOf(block)
+        const nextIsHead     = this.next?.isHeadOf(block)
+
+        if      (!isPreInsertion && !isDeletion)   { return InsertionState.Normal }
+        else if (!isPreInsertion &&  isDeletion)   { return InsertionState.Deletion }
+        else if ( isPreInsertion && !isDeletion)   {
+            if  (!isHead         && !nextIsHead) { return InsertionState.PreInsertion }
+            if  ( isHead         && !nextIsHead) { return InsertionState.PreInsertionEngaged }
+            if  (!isHead         &&  nextIsHead) { return InsertionState.PreInsertionReleased }
+            else                                             { throw new Error("Unexpected behaviour: Only one LineVersion should be head at any given time!") }
+        } else                                               { throw new Error("Unexpected behaviour: A LineVersion should not be able to be pre-insertion and deletion at the same time!") }
+    }
+
+    public apply(block: Block):          void { this.getHistory(block).updateHead(this) }
     public update(content: LineContent): void {  this.content = content }
 
     public applyTo(block: Block): void {
+        const currentLine = this.getLine(block)
         block.forEach(line => {
-            if (line === this.line) {
-                this.apply()
+            if (line === currentLine) {
+                this.apply(block)
             } else {
                 line.loadTimestamp(this.timestamp)
             }
@@ -560,7 +574,7 @@ class LineVersion extends LinkedListNode<LineVersion> {
 
     public clone(timestamp: Timestamp, relations?: LineVersionRelations): LineVersion {
         if (!relations?.origin) { relations.origin = this }
-        return new LineVersion(this.history, timestamp, this.isActive, this.content, relations)
+        return new LineVersion(this.blockLine, timestamp, this.isActive, this.content, relations)
     }
 }
 
@@ -927,7 +941,7 @@ abstract class Block extends LinkedList<Line> {
     protected getUnsortedTimeline(): LineVersion[] {
         // isPreInsertion to avoid choosing versions following on a pre-insertion-version, as we simulate those.
         // Same for origin -> cloned versions are not displayed, and are just there for correct code structure
-        return this.getVersions().filter(version => { return !version.previous?.isPreInsertion /*&& !version.origin*/ } )
+        return this.getVersions().filter(version => { return !version.previous?.isPreInsertion(this) /*&& !version.origin*/ } )
     }
 
     protected getTimeline(): LineVersion[] {
@@ -938,14 +952,14 @@ abstract class Block extends LinkedList<Line> {
     // As a result it filters those. This function should ONLY BE USED WHEN YOU KNOW WHAT YOU DO. One example of that is the getCurrentVersionIndex, where the understanding of this
     // function is used to extract the timeline index that should be visualized by the UI.
     private getCurrentVersion(): LineVersion {
-        return this.getHeads().filter(head          => !head.isPreInsertion)
+        return this.getHeads().filter(head          => !head.isPreInsertion(this))
                               .sort( (headA, headB) => headB.timestamp - headA.timestamp)[0]
     }
 
     public getCurrentVersionIndex(): number {
         // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
         let currentVersion = this.getCurrentVersion()
-        if (currentVersion.previous?.isPreInsertion) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
+        if (currentVersion.previous?.isPreInsertion(this)) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
                                                                                                     // version. At the same time the pre-insertion versions are the only ones present in
                                                                                                     // the timeline by default, because I can easily distinguished for further manipulation.
         //if (currentVersion.origin)                   { currentVersion = currentVersion.next }
@@ -999,13 +1013,11 @@ abstract class Block extends LinkedList<Line> {
 
         // If the previous version is selected and still on pre-insertion, disable pre-insertion
         // I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
-        if (previousVersion === latestVersion && previousVersion.insertionState === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
+        if (previousVersion === latestVersion && previousVersion.insertionState(this) === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
         // If the next version is selected and still on post-insertion, then set it to pre-insertion
-        else if (nextVersion === latestVersion && nextVersion.insertionState === InsertionState.PreInsertionReleased)   { version = nextVersion }
+        else if (nextVersion === latestVersion && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
-        else if (selectedVersion.isPreInsertion && (selectedVersion.isHead || nextVersion?.isHead))                     { version = selectedVersion.next }
-
-        console.log(this.getCurrentText())
+        else if (selectedVersion.isPreInsertion(this) && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))                     { version = selectedVersion.next }
 
         version.applyTo(this)
     }
@@ -1306,9 +1318,9 @@ class Tag {
     public applyTo(block: Block): void {
         block.forEach(line => {
             if (this.has(line)) {
-                this.get(line).apply()
+                this.get(line).apply(block)
             } else if (this.block?.contains(line)) {
-                if (line.isInserted) { line.history.firstVersion.apply() }
+                if (line.isInserted) { line.history.firstVersion.apply(block) }
                 else                 { throw new Error("This tag does not allow for valid manipulation of this line. Potentially it was not defined correctly.") }
             }
         })

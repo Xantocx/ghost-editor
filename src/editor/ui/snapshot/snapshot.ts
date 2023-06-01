@@ -82,12 +82,21 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         for (let line = this.startLine; line <= this.endLine; line++) {
 
-            // what a pain...
-            const content = model.getLineContent(line)
-            const tabCount = content.split("\t").length - 1
-            const tabLength = tabCount * tabSize * spaceWidth
-            const contentLength = (content.length - tabCount) * characterWidth
-            const lineLength = contentLength + tabLength
+            let lineLength: number = 0
+
+            try {
+                // what a pain...
+                const content = model.getLineContent(line)
+                const tabCount = content.split("\t").length - 1
+                const tabLength = tabCount * tabSize * spaceWidth
+                const contentLength = (content.length - tabCount) * characterWidth
+                lineLength = contentLength + tabLength
+            } catch {
+                // This may fail if the snapshot got text is already updated to be shorter than the snapshot, or if the snapshot is updated to be longer than the text.
+                // Unfortunately, I cannot really prevent that, as setting the text will always immediately trigger a resizing. I could maybe pause the resizing then, but
+                // just ignoring the error and defaulting to length 0 for the missing line works just as well without complex modifications of the code in terms of updates.
+                // TODO: For the future, a proper system to avoid this error would be nice.
+            }
 
             longestLine = Math.max(longestLine, lineLength)
         }
