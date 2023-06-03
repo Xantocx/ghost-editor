@@ -214,7 +214,7 @@ class BlockLine extends LinkedListNode<BlockLine> {
     public getHistory(block: Block): LineHistory | undefined { return this.getLine(block)?.history }
 
     public getBlocks():   Block[]   { return Array.from(this.lines.keys()) }
-    public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.blockId) }
+    public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
 
     public getVersions(): LineVersion[] { return this.versions.getVersions() }
 
@@ -578,45 +578,105 @@ class LineVersion extends LinkedListNode<LineVersion> {
     }
 }
 
-interface LineRange {
-    startLine: number,
-    endLine: number
+type GhostId = string
+type BlockId = GhostId
+type TagId   = BlockId
+
+class BlockManager {
+
+    private readonly blocks = new Map<BlockId, Block>()
+    private readonly tags   = new Map<TagId, Tag>()
+
+    private          nextBlockId = 0
+    private readonly nextTagIds  = new Map<Block, number>()
+
+    public get blockIds(): BlockId[] { return Array.from(this.blocks.keys()) }
+    public get tagIds():   TagId[]   { return Array.from(this.tags.keys()) }
+
+    public constructor(options?: { blocks?: Block[], tags?: Tag[] }) {
+        options?.blocks?.forEach(block => this.registerBlock(block))
+        options?.tags?.forEach(  tag   => this.registerTag(tag))
+    }
+
+    private formatGhostId(id: string):             GhostId { return `ghost/${id}` }
+    private formatBlockId(id: string):             BlockId { return this.formatGhostId(`block/${id}`) }
+    private formatTagId(block: Block, id: string): TagId   { return block.id + `/tag/${id}` }
+
+    private getNextBlockId(): string {
+        const id = `${this.nextBlockId}`
+        this.nextBlockId++
+        return id
+    }
+
+    private getNextTagId(block: Block): string {
+        const id = this.nextTagIds.get(block)!
+        this.nextTagIds.set(block, id + 1)
+        return `${id}`
+    }
+
+    private newBlockId():             BlockId { return this.formatBlockId(this.getNextBlockId()) }
+    private newTagId(block: Block):   TagId   { return this.formatTagId(block, this.getNextTagId(block)) }
+
+    private filePathToBlockId(filePath: string):                       BlockId { return this.formatBlockId(`file/${filePath}`) }
+    public blockIdMatchesFilePath(blockId: BlockId, filePath: string): boolean { return blockId === this.filePathToBlockId(filePath) }
+
+    public hasBlock(blockId: BlockId): boolean { return this.blocks.has(blockId) }
+    public hasTag(tagId: BlockId):     boolean { return this.tags.has(tagId) }
+
+    public getBlock(blockId: BlockId): Block | undefined { return this.blocks.get(blockId) }
+    public getTag(tagId: TagId):       Tag   | undefined { return this.tags.get(tagId) }
+
+    public hasBlockForFilePath(filePath: string): boolean           { return this.hasBlock(this.filePathToBlockId(filePath)) }
+    public getBlockForFilePath(filePath: string): Block | undefined { return this.getBlock(this.filePathToBlockId(filePath)) }
+
+    public registerBlock(block: Block, filePath?: string): BlockId {
+        if (block.id) {
+            if (this.hasBlock(block.id)) { 
+                if (this.getBlock(block.id) === block) { return }
+                else                                   { throw new Error("A different Block is already registered with this ID!") }
+            } else                                     { throw new Error("A Block can currently not be registered with two different BlockManagers!") }
+        } else if (filePath && this.hasBlockForFilePath(filePath)) {
+            throw new Error(`This BlockManager already knows a Block for the path ${filePath}!`)
+        }
+
+        const id = filePath ? this.filePathToBlockId(filePath) : this.newBlockId()
+        this.blocks.set(id, block)
+        this.nextTagIds.set(block, 0)
+        block.children.forEach(child => this.registerBlock(child))
+        return id
+    }
+
+    public registerTag(tag: Tag): TagId {
+        this.registerBlock(tag.block)
+        const id = this.newTagId(tag.block)
+        this.tags.set(id, tag)
+        return id
+    }
 }
 
 
 type EOLSymbol    = string
 type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 type LineNumber   = number  // line number within the editor, if this line is displayed
+type ChildBlock   = InlineBlock
+type ClonedBlock  = ForkBlock
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-type ChildBlock  = InlineBlock
-type ClonedBlock = ForkBlock
+interface LineRange {
+    startLine: number,
+    endLine: number
+}
 
 abstract class Block extends LinkedList<Line> {
 
-    public blockId:   BlockId
-    public provider?: BlockProvider
+    public manager: BlockManager
+    public id:      BlockId
 
-    public isClone:   boolean = false
     public isDeleted: boolean = false
 
     public eol: EOLSymbol
 
-    public parent?: Block
+    public origin?: Block  // block this was cloned from
+    public parent?: Block  // block containing this block
     public children = new Map<BlockId, ChildBlock>()
     public tags     = new Map<TagId, Tag>()
 
@@ -628,6 +688,8 @@ abstract class Block extends LinkedList<Line> {
 
     public set firstLine(line: Line | undefined) { this.first = line }
     public set lastLine (line: Line | undefined) { this.last  = line }
+
+    public get isCloned(): boolean { return this.origin !== undefined }
 
 
 
@@ -867,13 +929,7 @@ abstract class Block extends LinkedList<Line> {
 
         const firstLine = this.getLineByLineNumber(range.startLineNumber)
         const lastLine  = this.getLineByLineNumber(range.endLineNumber)
-        const child     = new InlineBlock({ eol: this.eol, 
-                                            parent: this, 
-                                            firstLine, 
-                                            lastLine, 
-                                            provider: this.provider, 
-                                            enableVersionMerging: this.enableVersionMerging
-                                          })
+        const child     = new InlineBlock(this, firstLine, lastLine)
 
         this.addChild(child)
 
@@ -881,7 +937,7 @@ abstract class Block extends LinkedList<Line> {
     }
 
     public addChild(block: ChildBlock): void {
-        this.children.set(block.blockId, block)
+        this.children.set(block.id, block)
     }
 
     public getChild(blockId: BlockId): ChildBlock {
@@ -916,7 +972,7 @@ abstract class Block extends LinkedList<Line> {
     public delete(): Block[] {
 
         this.removeFromLines(true)
-        this.parent?.children.delete(this.blockId)
+        this.parent?.children.delete(this.id)
 
         this.firstLine = undefined
         this.lastLine  = undefined
@@ -1066,7 +1122,7 @@ abstract class Block extends LinkedList<Line> {
     public compressForParent(): VCSSnapshotData {
         const parent = this
         return {
-            uuid:         parent.blockId,
+            uuid:         parent.id,
             _startLine:   parent.getFirstLineNumberInParent(),
             _endLine:     parent.getLastLineNumberInParent(),
             versionCount: parent.getUserVersionCount(),
@@ -1094,7 +1150,7 @@ abstract class Block extends LinkedList<Line> {
         this.tags.set(tag.id, tag)
 
         return {
-            blockId:             this.blockId,
+            blockId:             this.id,
             uuid:                tag.id,
             name:                `Version ${this.tags.size}`,
             text:                this.getFullText(),
@@ -1126,50 +1182,37 @@ abstract class Block extends LinkedList<Line> {
 
 
 
-interface InlineBlockOptions { 
-    eol:                   EOLSymbol
-    parent:                Block
-    firstLine:             Line
-    lastLine:              Line
-    provider?:             BlockProvider
-    enableVersionMerging?: boolean
-}
-
 class InlineBlock extends Block {
 
-    public constructor(options: InlineBlockOptions) {
+    public constructor(parent: Block, firstLine: Line, lastLine: Line, enableVersionMerging?: boolean) {
         super()
 
-        this.blockId              = BlockProvider.newBlockId()
-        this.provider             = options.provider
-        this.eol                  = options.eol
-        this.parent               = options.parent
-        this.firstLine            = options.firstLine
-        this.lastLine             = options.lastLine
-        this.enableVersionMerging = options.enableVersionMerging ? options.enableVersionMerging : false
+        this.manager              = parent.manager
+        this.eol                  = parent.eol
+        this.parent               = parent
+        this.firstLine            = firstLine
+        this.lastLine             = lastLine
+        this.enableVersionMerging = enableVersionMerging ? enableVersionMerging : parent.enableVersionMerging
 
         this.addToLines()
-        this.provider.register(this)
+
+        this.id = this.manager.registerBlock(this)
     }
 }
 
 
-interface ForkBlockOptions { 
+interface ForkBlockOptions {
+    manager:               BlockManager 
     eol:                   EOLSymbol
     filePath?:             string
     parent?:               Block
     firstLine?:            BlockLine
     lastLine?:             BlockLine
     content?:              string
-    provider?:             BlockProvider 
     enableVersionMerging?: boolean
 }
 
 class ForkBlock extends Block {
-
-    public static create(eol: EOLSymbol, content: string, options?: { filePath?: string, provider?: BlockProvider }): ForkBlock {
-        return new ForkBlock({ eol, filePath: options?.filePath, content, provider: options?.provider })
-    }
 
     public constructor(options: ForkBlockOptions | Block) {
         super()
@@ -1181,8 +1224,7 @@ class ForkBlock extends Block {
         let lastBlockLine:  BlockLine | undefined = undefined
 
         if (blockOptions) {
-            this.blockId              = BlockProvider.createBlockIdFromFilePath(blockOptions.filePath)
-            this.provider             = blockOptions.provider
+            this.manager              = blockOptions.manager
             this.eol                  = blockOptions.eol
             this.parent               = blockOptions.parent
             this.enableVersionMerging = blockOptions.enableVersionMerging ? blockOptions.enableVersionMerging : false
@@ -1193,27 +1235,28 @@ class ForkBlock extends Block {
             const content = blockOptions.content
             if      (!firstBlockLine && !lastBlockLine) { this.setContent(content ? content : "") }
             else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
-        
-            this.provider.register(this)
         } else if (clonedBlock) {
-            this.blockId              = clonedBlock.blockId
+            this.manager              = clonedBlock.manager
             this.isDeleted            = clonedBlock.isDeleted
-            this.provider             = clonedBlock.provider
             this.eol                  = clonedBlock.eol
+            this.origin               = clonedBlock
             this.parent               = clonedBlock.parent
             this.children             = clonedBlock.children
             this.tags                 = clonedBlock.tags
             this.enableVersionMerging = clonedBlock.enableVersionMerging
-            this.isClone              = true
 
             firstBlockLine            = clonedBlock.firstLine?.blockLine
             lastBlockLine             = clonedBlock.lastLine?.blockLine
+        } else {
+            throw new Error("The options provided for this ForkBlock are in an incompatiple format!")
         }
 
         if      ( firstBlockLine && !lastBlockLine) { lastBlockLine  = firstBlockLine }
         else if (!firstBlockLine &&  lastBlockLine) { firstBlockLine = lastBlockLine }
 
         if (firstBlockLine && lastBlockLine) { this.setBlockList(firstBlockLine, lastBlockLine) }
+
+        this.id = this.manager.registerBlock(this, blockOptions.filePath)
     }
 
     protected override setLineList(firstLine: Line, lastLine: Line): void {
@@ -1261,42 +1304,20 @@ class ForkBlock extends Block {
 }
 
 
-type BlockId = string
-type TagId   = string
-
-class BlockProvider {
-
-    private readonly blocks = new Map<BlockId, Block>()
-
-    public constructor(blocks?: Block[]) {
-        blocks?.forEach(block => { this.register(block) })
-    }
-
-    public static newBlockId():                             BlockId { return crypto.randomUUID() }
-    public static createBlockIdFromFilePath(path?: string): BlockId { return path ? this.convertFilePathToBlockId(path) : this.newBlockId() }
-    public static convertFilePathToBlockId(path: string):   BlockId { return path }
-
-    public register(block: Block): void {
-        this.blocks.set(block.blockId, block)
-        block.children.forEach(child => this.register(child))
-    }
-
-    public getBlock(blockId: BlockId): Block | undefined {
-        return this.blocks.get(blockId)
-    }
-}
-
-
 class Tag {
 
-    public readonly id: TagId = crypto.randomUUID()
+    public readonly id: TagId
 
-    protected readonly block:    Block
-    protected readonly versions: Map<Line, LineVersion>
+    public readonly block:    Block
+    public readonly versions: Map<Line, LineVersion>
+
+    public get manager(): BlockManager { return this.block.manager }
 
     constructor(block: Block, versions?: Map<Line, LineVersion>) {
         this.block    = block
         this.versions = versions ? versions : new Map<Line, LineVersion>()
+
+        this.id = this.manager.registerTag(this)
     }
 
     public has(line: Line): boolean {
@@ -1330,14 +1351,12 @@ class Tag {
 class Session {
 
     public readonly sessionId: SessionId = crypto.randomUUID()
+    public readonly block:     Block
 
-    public readonly block: Block
+    public get blockId(): BlockId { return this.block.id }
 
-    public get blockId(): BlockId { return this.block.blockId }
-
-    public static createWithNewBlock(eol: string, options?: { provider?: BlockProvider, filePath?: string, content?: string }): Session {
-        const blockId = BlockProvider.createBlockIdFromFilePath(options?.filePath)
-        const block   = new ForkBlock({ provider: options?.provider, eol, blockId, content: options?.content })
+    public static createWithNewBlock(manager: BlockManager, eol: string, options?: { filePath?: string, content?: string }): Session {
+        const block = new ForkBlock({ manager, eol, filePath: options?.filePath, content: options?.content })
         return new Session(block)
     }
 
@@ -1361,7 +1380,7 @@ export class GhostVCSServer extends BasicVCSServer {
     // helper for preview update
     private browserWindow: BrowserWindow | undefined
 
-    private blocks   = new BlockProvider()
+    private blocks   = new BlockManager()
     private sessions = new Map<SessionId, Session>()
 
     public constructor(browserWindow?: BrowserWindow) {
@@ -1378,25 +1397,24 @@ export class GhostVCSServer extends BasicVCSServer {
 
     private updatePreview(block: Block) {
         const versionCounts = block.getActiveLines().map(line => { return line.getVersionCount() })
-        this.browserWindow?.webContents.send("update-vcs-preview", block.blockId, block.getCurrentText(), versionCounts)
+        this.browserWindow?.webContents.send("update-vcs-preview", block.id, block.getCurrentText(), versionCounts)
     }
 
     public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
-        const filePath        = options?.filePath
-        const providedBlockId = options?.blockId
-        const blockId         = filePath ? BlockProvider.convertFilePathToBlockId(filePath) : providedBlockId
+        const filePath = options?.filePath
+        const blockId  = options?.blockId
 
-        if (filePath && providedBlockId && providedBlockId !== blockId) { throw new Error("The provided file path and block IDs are not compatiple! Please use only one of them, or find the correct block ID for your file path!") }
+        if (filePath && blockId && !this.blocks.blockIdMatchesFilePath(blockId, filePath)) { throw new Error("The provided file path and block IDs are not compatiple! Please use only one of them, or find the correct block ID for your file path!") }
 
         const content  = options?.content
-        const block    = blockId ? this.blocks.getBlock(blockId) : undefined
+        const block    = blockId ? this.blocks.getBlock(blockId) : (filePath ? this.blocks.getBlockForFilePath(filePath) : undefined) // block id has prio, as it will def match a certain filePath, if one is provided
 
         let session: Session
         if (block) {
             if (content) { console.warn("Right now, we do not support updating the content of an existing block based on provided content. This will be ignored.") }
             session = Session.createFromBlock(block)
         } else {
-            session = Session.createWithNewBlock(eol, { provider: this.blocks, filePath, content })
+            session = Session.createWithNewBlock(this.blocks, eol, { filePath, content })
         }
 
         this.sessions.set(session.sessionId, session)
