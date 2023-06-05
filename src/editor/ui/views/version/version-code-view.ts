@@ -40,6 +40,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
     }
 
     public override remove(): void {
+        this.editor.remove()
         this.listElement.remove()
         super.remove()
     }

@@ -1,3 +1,4 @@
+import { LinkedListNode } from "../utils/linked-list"
 import { Timestamp } from "./metadata/timestamps"
 import { Block } from "./block"
 import { LineNode, Line } from "./line"

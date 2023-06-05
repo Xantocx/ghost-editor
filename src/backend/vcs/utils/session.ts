@@ -1,5 +1,5 @@
 import { SessionId, BlockId } from "../core/metadata/ids"
-import { ResourceManager } from "./resource-manager"
+import { Resource, ResourceManager } from "./resource-manager"
 import { Block, ForkBlock } from "../core/block"
 
 export interface SessionInfo {
@@ -8,10 +8,12 @@ export interface SessionInfo {
     content: string
 }
 
-export class Session {
+export class Session implements Resource {
 
-    public readonly sessionId: SessionId = crypto.randomUUID()
-    public readonly block:     Block
+    public readonly manager: ResourceManager
+    public readonly id:      SessionId
+
+    public readonly block: Block
 
     public get blockId(): BlockId { return this.block.id }
 
@@ -21,10 +23,14 @@ export class Session {
     }
 
     public static createFromBlock(block: Block): Session {
-        return new Session(block.clone())
+        return new Session(block)
     }
 
     public constructor(block: Block) {
-        this.block = block
+        this.manager = block.manager
+        // TODO: there might be a cleverer way for this decision, if a free copy of an InlineBlock is still available, for example (content check is required in this case!)
+        this.block   = block instanceof ForkBlock && !this.manager.hasSessionForBlockId(block.id) ? block : block.clone()
+
+        this.id = this.manager.registerSession(this)
     }
 }

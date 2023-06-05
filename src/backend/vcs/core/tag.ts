@@ -1,10 +1,10 @@
-import { ResourceManager } from "../utils/resource-manager"
-import { TagId } from "./metadata/ids"
+import { Resource, ResourceManager } from "../utils/resource-manager"
+import { TagId, BlockId } from "./metadata/ids"
 import { Block } from "./block"
 import { Line } from "./line"
 import { LineNodeVersion } from "./version"
 
-export class Tag {
+export class Tag implements Resource {
 
     public readonly id: TagId
 
@@ -12,6 +12,7 @@ export class Tag {
     public readonly versions: Map<Line, LineNodeVersion>
 
     public get manager(): ResourceManager { return this.block.manager }
+    public get blockId(): BlockId         { return this.block.id }
 
     constructor(block: Block, versions?: Map<Line, LineNodeVersion>) {
         this.block    = block

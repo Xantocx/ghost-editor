@@ -5,6 +5,10 @@ export type SessionId = GhostId
 export type BlockId   = GhostId
 export type TagId     = BlockId
 
+export interface Identifiable {
+    id: GhostId
+}
+
 abstract class IdManager<Id> {
 
     private nextId = 0
@@ -53,6 +57,10 @@ export class BlockIdManager extends GhostIdManager {
         const id = this.filePathToId(filePath)
         this.filePaths.set(filePath, id)
         return id
+    }
+
+    public getFilePathId(filePath: string): BlockId | undefined {
+        return this.filePaths.get(filePath)
     }
 }
 

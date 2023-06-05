@@ -1,3 +1,4 @@
+import { LinkedListNode } from "../utils/linked-list"
 import { BlockId } from "./metadata/ids"
 import { Timestamp } from "./metadata/timestamps"
 import { LineContent, LineNodeVersion } from "./version"
@@ -72,8 +73,9 @@ export class LineNode extends LinkedListNode<LineNode> {
             this.lines.set(block, parentLine)
             return parentLine
         } else if (block instanceof ForkBlock) {
-            const head = block.parent ? this.getLine(block.parent).currentVersion : this.originLine.currentVersion
-            const line = new Line(this, block, { head })
+            const headLine = block.origin ? this.getLine(block.origin) : (block.parent ? this.getLine(block.parent) : this.originLine)
+            const head     = headLine.currentVersion
+            const line     = new Line(this, block, { head })
             this.lines.set(block, line)
             return line
         } else {

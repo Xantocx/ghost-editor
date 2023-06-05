@@ -1,7 +1,8 @@
 import { IRange } from "../../../app/components/utils/range"
 import { VCSVersion, VCSSnapshotData } from "../../../app/components/data/snapshot"
 
-import { ResourceManager } from "../utils/resource-manager"
+import { LinkedList } from "../utils/linked-list"
+import { Resource, ResourceManager } from "../utils/resource-manager"
 import { BlockId, TagId } from "./metadata/ids"
 import { LineType, LineNode, Line } from "./line"
 import { InsertionState, LineContent, LineNodeVersion } from "./version"
@@ -19,7 +20,7 @@ interface LineRange {
     endLine: number
 }
 
-export abstract class Block extends LinkedList<Line> {
+export abstract class Block extends LinkedList<Line> implements Resource {
 
     public manager: ResourceManager
     public id:      BlockId
@@ -426,7 +427,7 @@ export abstract class Block extends LinkedList<Line> {
         // If the next version is selected and still on post-insertion, then set it to pre-insertion
         else if (nextVersion === latestVersion && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
-        else if (selectedVersion.isPreInsertion(this) && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))                     { version = selectedVersion.next }
+        else if (selectedVersion.isPreInsertion(this) && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))     { version = selectedVersion.next }
 
         version.applyTo(this)
     }

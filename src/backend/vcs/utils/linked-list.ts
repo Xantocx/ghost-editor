@@ -1,4 +1,4 @@
-abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
+export abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
 
     public readonly list?: LinkedList<Node>
 
@@ -59,8 +59,7 @@ abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
     }
 }
 
-
-abstract class LinkedList<Node extends LinkedListNode<Node>> {
+export abstract class LinkedList<Node extends LinkedListNode<Node>> {
 
     public first?: Node
     public last?:  Node

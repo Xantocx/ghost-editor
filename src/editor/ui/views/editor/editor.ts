@@ -603,4 +603,9 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.interactionManager.withDisabledVcsSync(() => this.core.setValue(text) )
         this.snapshotManager.forEach(snapshot => snapshot.manualUpdate())
     }
+
+    public override remove(): void {
+        this.getSession()?.close()
+        super.remove()
+    }
 }

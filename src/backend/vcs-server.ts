@@ -15,8 +15,7 @@ export class GhostVCSServer extends BasicVCSServer {
     // helper for preview update
     private browserWindow: BrowserWindow | undefined
 
-    private blocks   = new ResourceManager()
-    private sessions = new Map<SessionId, Session>()
+    private resources = new ResourceManager()
 
     public constructor(browserWindow?: BrowserWindow) {
         super()
@@ -24,8 +23,8 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     private getSession(sessionId: SessionId): Session {
-        if (this.sessions.has(sessionId)) { return this.sessions.get(sessionId)! }
-        else                              { throw new Error("This session ID is unknown!") }
+        if (this.resources.hasSession(sessionId)) { return this.resources.getSession(sessionId)! }
+        else                                      { throw new Error("This session ID is unknown!") }
     }
 
     private getBlock(sessionId: SessionId): Block { return this.getSession(sessionId).block }
@@ -36,30 +35,41 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
-        const filePath = options?.filePath
-        const blockId  = options?.blockId
-        const tagId    = options?.tagId
+        const filePath   = options?.filePath
+        const filePathId = this.resources.getBlockIdForFilePath(filePath)
+        const blockId    = options?.blockId
+        const tagId      = options?.tagId
+        const content    = options?.content
 
-        if (filePath && blockId && !this.blocks.blockIdMatchesFilePath(blockId, filePath)) { throw new Error("The provided file path and block IDs are not compatiple! Please use only one of them, or find the correct block ID for your file path!") }
+        const tag = tagId ? this.resources.getTag(tagId) : undefined
+        if (tagId && !tag)   { throw new Error(`Could not find a Tag for the selected Tag ID "${tagId}"!`) }
 
-        const content  = options?.content
-        const block    = blockId ? this.blocks.getBlock(blockId) : (filePath ? this.blocks.getBlockForFilePath(filePath) : undefined) // block id has prio, as it will def match a certain filePath, if one is provided
+        // TODO: currently, I will always choose the TagId with highest prio -> in the future, the BlockId might be higher, when the TagId is compatiple 
+        const selectedBlockId = tag ? tag.blockId : (blockId ? blockId : (filePath ? filePathId : undefined))
+        const block = this.resources.getBlock(selectedBlockId)
+
+        // parameter validation
+        if      (tag        && tag.blockId !== selectedBlockId) { throw new Error(`Tag with Block ID "${tag.blockId}" was provided, but was not selected for this session! If you wanted to apply the Tag to another child/parent Block, then this is currently not supported.`) }
+        else if (blockId    && blockId     !== selectedBlockId) { throw new Error(`Block ID "${blockId}" incompatible with Tag ID! If you try to apply a Tag to a different parent/child Block, then this is unfortunately currently not supported.`) }
+        else if (filePathId && filePathId  !== selectedBlockId) { throw new Error(`ID "${filePathId}" exists for the provided file path, but it is incompatiple withe either the Tag or Block ID provided!`) }
+        else if (filePath   && !filePathId  && selectedBlockId) { throw new Error("A file path without existing ID was provided alonside a Tag or Block ID! This cannot be resolved!") }
+        else if (selectedBlockId && !block)                     { throw new Error(`Could not find a Block for the selected Block ID "${selectedBlockId}"!`) }
+        else if (!block && tag)                                 { throw new Error("Could not find Block to apply the provided Tag to!") }
 
         let session: Session
         if (block) {
             if (content) { console.warn("Right now, we do not support updating the content of an existing block based on provided content. This will be ignored.") }
             session = Session.createFromBlock(block)
+            if (tag) { tag.applyTo(block) }
         } else {
-            session = Session.createWithNewBlock(this.blocks, eol, { filePath, content })
+            session = Session.createWithNewBlock(this.resources, eol, { filePath, content })
         }
 
-        this.sessions.set(session.sessionId, session)
-
-        return { sessionId: session.sessionId, blockId: session.blockId, content: session.block.getCurrentText() }
+        return { sessionId: session.id, blockId: session.blockId, content: session.block.getCurrentText() }
     }
 
     public async closeSession(sessionId: SessionId): Promise<void> {
-        this.sessions.delete(sessionId)
+        this.resources.closeSession(sessionId)
     }
 
     public async updatePath(sessionId: SessionId, filePath: string): Promise<void> {
