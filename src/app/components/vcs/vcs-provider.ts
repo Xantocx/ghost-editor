@@ -9,8 +9,9 @@ export type SessionId    = string
 
 export interface SessionOptions { 
     filePath?: string
-    blockId?: string
-    content?: string 
+    blockId?:  string
+    tagId?:    string
+    content?:  string 
 }
 
 export interface SessionInfo { 
