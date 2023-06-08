@@ -92,7 +92,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public getCurrentText(): string        { return this.getLineContent().join(this.eol) }
     public getFullText():    string        { return this.parent ? this.parent.getFullText() : this.getCurrentText() }
     
-    public getVersions(): LineNodeVersion[] { return this.flatMap(line => line.history.getVersions()) }
+    public getVersions():     LineNodeVersion[] { return this.flatMap(line => line.history.getVersions()) }
+    public getVersionCount(): number            { return this.getVersions().length }
 
 
 
@@ -189,12 +190,11 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         const expandedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber - 1, lastLineNumber))
         const affectedChildren = Array.from(new Set(includedChildren.concat(expandedChildren)))
 
-        const root = this.getRootBlock()
         let createdLine: Line
 
         if (adjustedLineNumber === 1) {
             const firstActive = this.getFirstActiveLine()
-            createdLine = Line.create(root, LineType.Inserted, content, { 
+            createdLine = Line.create(this, LineType.Inserted, content, { 
                 previous:    firstActive.previous,
                 next:        firstActive,
                 knownBlocks: firstActive.node.getBlocks()
@@ -205,7 +205,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             }
         } else if (adjustedLineNumber === newLastLine) {
             const lastActive  = this.getLastActiveLine()
-            createdLine = Line.create(root, LineType.Inserted, content, { 
+            createdLine = Line.create(this, LineType.Inserted, content, { 
                 previous:    lastActive,
                 next:        lastActive.next,
                 knownBlocks: lastActive.node.getBlocks()
@@ -216,7 +216,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             }
         } else {
             const currentLine = this.getLineByLineNumber(adjustedLineNumber)
-            createdLine = Line.create(root, LineType.Inserted, content, { 
+            createdLine = Line.create(this, LineType.Inserted, content, { 
                 previous:    currentLine.previous, 
                 next:        currentLine,
                 knownBlocks: currentLine.node.getBlocks()
@@ -351,16 +351,14 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public getHeads(): LineNodeVersion[] { return this.map(line => line.currentVersion) }
 
     public getOriginalLineCount(): number { return this.filter(line => !line.isInserted).length }
-    public getUserVersionCount():  number { return this.getUnsortedTimeline().length - this.getOriginalLineCount() + 1 }
-
-    private getUnsortedTimeline(): LineNodeVersion[] {
-        // isPreInsertion to avoid choosing versions following on a pre-insertion-version, as we simulate those.
-        // Same for origin -> cloned versions are not displayed, and are just there for correct code structure
-        return this.getVersions().filter(version => { return !version.previous?.isPreInsertion(this) /*&& !version.origin*/ } )
-    }
+    public getUserVersionCount():  number { return this.getVersionCount() - this.getLineCount() + 1 }
 
     private getTimeline(): LineNodeVersion[] {
-        return this.getUnsortedTimeline().sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
+        const timeline = this.getVersions()
+            .filter(version => { return !version.previous?.isPreInsertion(this) })
+            .sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
+        timeline.splice(0, this.getOriginalLineCount() - 1) // remove the first unused original versions
+        return timeline
     }
 
     // WARNING: This function is a bit wild. It assumes we cannot have any pre-insertion versions as current version, as those are invisible, and thus "not yet existing" (the lines, that is).
@@ -409,7 +407,6 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         this.resetVersionMerging()
         const timeline = this.getTimeline()
 
-        targetIndex += this.getOriginalLineCount() - 1
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
         let   selectedVersion = timeline[targetIndex] // actually targeted version

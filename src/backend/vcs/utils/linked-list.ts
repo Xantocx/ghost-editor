@@ -68,7 +68,11 @@ export abstract class LinkedList<Node extends LinkedListNode<Node>> {
     public get hasLast():       boolean { return this.last  ? true : false }
     public get isInitialized(): boolean { return this.hasFirst && this.hasLast }
 
-    public getLength(): number  { return this.last.getIndex() + 1 }
+    public getLength(): number  { 
+        let counter = 0
+        this.forEach(() => counter++)
+        return counter
+     }
 
     public contains(node: Node): boolean { 
         return this.find(testedNode => testedNode === node) ? true : false 

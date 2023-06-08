@@ -1,11 +1,11 @@
-import { IRange, MonacoEditor, MonacoModel, LayoutInfo, Disposable } from "../../utils/types"
+import { IRange, MonacoEditor, MonacoModel, LayoutInfo } from "../../utils/types"
 import { GhostEditor } from "../views/editor/editor"
 import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
 import { VCSSnapshotData, VCSSnapshot, VCSVersion } from "../../../app/components/data/snapshot"
-import { SnapshotUUID, VCSClient, VCSSession } from "../../../app/components/vcs/vcs-provider"
+import { SnapshotUUID, VCSSession } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { MetaView } from "../views/meta-view"
 
@@ -261,6 +261,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public async update(manualUpdate?: boolean): Promise<void> {
         const snapshot = await this.session.getSnapshot(this.uuid)
+        console.log(snapshot)
         
         this.snapshot = VCSSnapshot.create(this.session, snapshot)
         this.locator.rangeProvider = this.snapshot

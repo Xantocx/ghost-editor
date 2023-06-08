@@ -20,7 +20,7 @@ interface LineNodeRelations {
 // This most likely requires merging the headTracking property somehow across all Lines of a LineNode, or reapplying old changes if they do not match the head anymore
 export class LineNode extends LinkedListNode<LineNode> {
 
-    public readonly originBlock: Block
+    public          originBlock: Block
     public readonly lineType:    LineType
     public readonly versions:    LineNodeHistory
 
@@ -91,7 +91,14 @@ export class LineNode extends LinkedListNode<LineNode> {
 
     public removeBlock(block: Block, deleting?: boolean): Block[] {
         if (block === this.originBlock) {
-            return this.delete()
+            // TODO: Test this behaviour
+            if (block.parent) { 
+                this.addBlock(block.parent!)
+                this.originBlock = block.parent!
+            }
+            else { 
+                this.delete()
+            }
         } else if (deleting) {
             return this.lines.delete(block) ? [block] : []
         }
