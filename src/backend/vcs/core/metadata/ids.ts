@@ -13,7 +13,7 @@ abstract class IdManager<Id> {
 
     private nextId = 0
 
-    private getNextId(): string {
+    protected getNextId(): string {
         const id = `${this.nextId}`
         this.nextId++
         return id
@@ -52,6 +52,10 @@ export class BlockIdManager extends GhostIdManager {
         return this.formatId(`file/${filePath}`)
     }
 
+    public getFilePathId(filePath: string): BlockId | undefined {
+        return this.filePaths.get(filePath)
+    }
+
     public newIdFromFilePath(filePath: string): BlockId {
         if (this.filePaths.has(filePath)) { throw new Error("This file path was already used to create a BlockId!") }
         const id = this.filePathToId(filePath)
@@ -59,8 +63,8 @@ export class BlockIdManager extends GhostIdManager {
         return id
     }
 
-    public getFilePathId(filePath: string): BlockId | undefined {
-        return this.filePaths.get(filePath)
+    public newIdFromOrigin(origin: Block): BlockId {
+        return this.formatId(`origin/${origin.id}/clone/${this.getNextId()}`)
     }
 }
 

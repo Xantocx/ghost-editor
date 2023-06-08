@@ -29,6 +29,9 @@ export class LineNode extends LinkedListNode<LineNode> {
     public get isOriginal(): boolean { return this.lineType === LineType.Original }
     public get isInserted(): boolean { return this.lineType === LineType.Inserted }
 
+    public get firstVersion(): LineNodeVersion { return this.versions.firstVersion }
+    public get lastVersion():  LineNodeVersion { return this.versions.lastVersion }
+
     public get originLine(): Line { return this.getLine(this.originBlock) }
 
     public constructor(originBlock: Block, lineType: LineType, content: LineContent, relations?: LineNodeRelations) {
@@ -38,11 +41,7 @@ export class LineNode extends LinkedListNode<LineNode> {
         this.lineType    = lineType
         this.versions    = new LineNodeHistory()
 
-        const originLine = new Line(this, originBlock, { content })
-        this.lines.set(originBlock, originLine)
-
-        relations?.knownBlocks?.forEach(block => this.addBlock(block))
-
+        // guaranteing that the line list is coherent before creating Line mirrors
         if (relations) {
             this.previous = relations.previous
             this.next     = relations.next
@@ -50,6 +49,13 @@ export class LineNode extends LinkedListNode<LineNode> {
             if (this.previous) { this.previous.next = this }
             if (this.next)     { this.next.previous = this }
         }
+
+        // This makes sure the line exists and caries the necessary versions
+        const originLine = new Line(this, originBlock, { content })
+        this.lines.set(originBlock, originLine)
+
+        // TODO: I really don't like the use of a head input in this function as it might lead another programmer to the assumption that you can set the head using this function, but I couldn't think of any better way yet...
+        relations?.knownBlocks?.forEach(block => this.addBlock(block, this.firstVersion))
     }
 
     public getPosition():               LinePosition           { return this.getAbsoluteIndex() }
@@ -64,17 +70,17 @@ export class LineNode extends LinkedListNode<LineNode> {
 
     public getVersions(): LineNodeVersion[] { return this.versions.getVersions() }
 
-    public addBlock(block: Block): Line {
+    public addBlock(block: Block, head?: LineNodeVersion): Line {
         const currentLine = this.getLine(block)
         if (currentLine) { return currentLine }
 
         if (block instanceof InlineBlock) {
-            const parentLine = this.getLine(block.parent!)
+            const parentLine = this.addBlock(block.parent!, head)
             this.lines.set(block, parentLine)
             return parentLine
         } else if (block instanceof ForkBlock) {
             const headLine = block.origin ? this.getLine(block.origin) : (block.parent ? this.getLine(block.parent) : this.originLine)
-            const head     = headLine.currentVersion
+            head           = head ? head : headLine.currentVersion
             const line     = new Line(this, block, { head })
             this.lines.set(block, line)
             return line

@@ -55,7 +55,8 @@ export class LineHistory {
         else if (this.lastVersion)      { this.updateHead(this.lastVersion) }
         else                            { throw new Error("Cannot set head as no acceptable version is available!") }
 
-        this.head = this.lastVersion
+        // TODO: if nothing breaks, remove this line
+        // this.head = this.lastVersion
     }
 
     private setupContent(content: LineContent): void {

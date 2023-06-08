@@ -2,7 +2,7 @@ import { BrowserWindow } from "electron"
 
 import { VCSSnapshotData, VCSVersion } from "../app/components/data/snapshot"
 import { IRange } from "../app/components/utils/range"
-import { BasicVCSServer, SessionId, SessionOptions, SnapshotUUID } from "../app/components/vcs/vcs-provider"
+import { BasicVCSServer, SessionData, SessionId, SessionOptions, SnapshotUUID } from "../app/components/vcs/vcs-provider"
 import { LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { ResourceManager } from "./vcs/utils/resource-manager"
@@ -65,7 +65,7 @@ export class GhostVCSServer extends BasicVCSServer {
             session = Session.createWithNewBlock(this.resources, eol, { filePath, content })
         }
 
-        return { sessionId: session.id, blockId: session.blockId, content: session.block.getCurrentText() }
+        return { sessionId: session.id, blockId: session.blockId, sessionData: session.getData() }
     }
 
     public async closeSession(sessionId: SessionId): Promise<void> {
@@ -79,6 +79,11 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
         console.log("CLONE TO PATH NOT IMPLEMENTED")
+    }
+
+    public async reloadSessionData(sessionId: string): Promise<SessionData> {
+        this.updatePreview(this.getBlock(sessionId))
+        return this.getSession(sessionId).getData()
     }
 
     public async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {

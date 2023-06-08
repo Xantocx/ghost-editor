@@ -14,10 +14,15 @@ export interface SessionOptions {
     content?:  string 
 }
 
+export interface SessionData {
+    content:   string,
+    snapshots: VCSSnapshotData[]
+}
+
 export interface SessionInfo { 
-    sessionId: SessionId
-    blockId: string
-    content: string
+    sessionId:   SessionId
+    blockId:     string
+    sessionData: SessionData
 }
 
 // functionality that the VCS needs to provide
@@ -29,6 +34,9 @@ export interface VCSProvider {
 
     updatePath(sessionId: SessionId, filePath: string): Promise<void>
     cloneToPath(sessionId: SessionId, filePath: string): Promise<void>
+
+    // reload all data in a Block
+    reloadSessionData(sessionId: SessionId): Promise<SessionData>
 
     // snapshot interface
     createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null>
@@ -63,6 +71,10 @@ export abstract class BasicVCSProvider implements VCSProvider {
     }
 
     public async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
+        throw new Error("Method not implemented.")
+    }
+
+    public async reloadSessionData(sessionId: string): Promise<SessionData> {
         throw new Error("Method not implemented.")
     }
 
@@ -129,9 +141,9 @@ export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServ
 // client-side interface which may call server end-points
 export interface VCSClient extends VCSProvider {}
 export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {
-    public async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, content: string }> {
+    public async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
         const result = await  this.startSession(eol, options)
-        return { session: new VCSSession(result.sessionId, result.blockId, this), content: result.content }
+        return { session: new VCSSession(result.sessionId, result.blockId, this), sessionData: result.sessionData }
     }
 }
 
@@ -153,6 +165,10 @@ export class VCSSession {
 
     public async cloneToPath(filePath: string): Promise<void> {
         return this.client.cloneToPath(this.sessionId, filePath)
+    }
+
+    public async reloadData(): Promise<SessionData> {
+        return this.client.reloadSessionData(this.sessionId)
     }
 
     public async createSnapshot(range: IRange): Promise<VCSSnapshotData | null> {
@@ -242,6 +258,10 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
 
     public async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
         this.adapter.cloneToPath(sessionId, filePath)
+    }
+
+    public async reloadSessionData(sessionId: string): Promise<SessionData> {
+        return this.adapter.reloadSessionData(sessionId)
     }
 
     public async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {

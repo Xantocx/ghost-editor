@@ -49,6 +49,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
     // -------------------------------- Line Data Accessors ---------------------------------------
 
+    public getRootBlock(): Block { return this.parent ? this.parent.getRootBlock() : this }
+
     public getFirstPosition(): LinePosition { return this.firstLine.getPosition() }
     public getLastPosition():  LinePosition { return this.lastLine.getPosition() }
 
@@ -187,14 +189,15 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         const expandedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber - 1, lastLineNumber))
         const affectedChildren = Array.from(new Set(includedChildren.concat(expandedChildren)))
 
+        const root = this.getRootBlock()
         let createdLine: Line
 
         if (adjustedLineNumber === 1) {
             const firstActive = this.getFirstActiveLine()
-            createdLine = Line.create(this, LineType.Inserted, content, { 
+            createdLine = Line.create(root, LineType.Inserted, content, { 
                 previous:    firstActive.previous,
                 next:        firstActive,
-                knownBlocks: affectedChildren
+                knownBlocks: firstActive.node.getBlocks()
             })
 
             if (!createdLine.previous) { 
@@ -202,10 +205,10 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             }
         } else if (adjustedLineNumber === newLastLine) {
             const lastActive  = this.getLastActiveLine()
-            createdLine = Line.create(this, LineType.Inserted, content, { 
+            createdLine = Line.create(root, LineType.Inserted, content, { 
                 previous:    lastActive,
                 next:        lastActive.next,
-                knownBlocks: affectedChildren
+                knownBlocks: lastActive.node.getBlocks()
             })
 
             if (!createdLine.next) { 
@@ -213,10 +216,10 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             }
         } else {
             const currentLine = this.getLineByLineNumber(adjustedLineNumber)
-            createdLine  = Line.create(this, LineType.Inserted, content, { 
+            createdLine = Line.create(root, LineType.Inserted, content, { 
                 previous:    currentLine.previous, 
                 next:        currentLine,
-                knownBlocks: affectedChildren
+                knownBlocks: currentLine.node.getBlocks()
             })
         }
 
@@ -225,6 +228,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             const lineNumber   = createdLine.getLineNumber()
             if (snapshotData._endLine < lineNumber) {
                 snapshotData._endLine = lineNumber
+                console.log("EXPAND CHILD")
+                console.log(snapshotData)
                 child.updateInParent(snapshotData)
             }
         })
@@ -348,13 +353,13 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public getOriginalLineCount(): number { return this.filter(line => !line.isInserted).length }
     public getUserVersionCount():  number { return this.getUnsortedTimeline().length - this.getOriginalLineCount() + 1 }
 
-    protected getUnsortedTimeline(): LineNodeVersion[] {
+    private getUnsortedTimeline(): LineNodeVersion[] {
         // isPreInsertion to avoid choosing versions following on a pre-insertion-version, as we simulate those.
         // Same for origin -> cloned versions are not displayed, and are just there for correct code structure
         return this.getVersions().filter(version => { return !version.previous?.isPreInsertion(this) /*&& !version.origin*/ } )
     }
 
-    protected getTimeline(): LineNodeVersion[] {
+    private getTimeline(): LineNodeVersion[] {
         return this.getUnsortedTimeline().sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
     }
 
@@ -370,12 +375,12 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
         let currentVersion = this.getCurrentVersion()
         if (currentVersion.previous?.isPreInsertion(this)) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
-                                                                                                    // version. At the same time the pre-insertion versions are the only ones present in
-                                                                                                    // the timeline by default, because I can easily distinguished for further manipulation.
+                                                                                                          // version. At the same time the pre-insertion versions are the only ones present in
+                                                                                                          // the timeline by default, because I can easily distinguished for further manipulation.
         //if (currentVersion.origin)                   { currentVersion = currentVersion.next }
 
         const timeline = this.getTimeline()
-        const index = timeline.indexOf(currentVersion, 0)
+        const index    = timeline.indexOf(currentVersion, 0)
 
         if (index < 0) { throw new Error("Latest head not in timeline!") }
 
@@ -437,8 +442,14 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         if (!this.parent.containsLineNumber(range._startLine)) { throw new Error("Start line is not in range of parent!") }
         if (!this.parent.containsLineNumber(range._endLine))   { throw new Error("End line is not in range of parent!") }
 
+        console.log("\n--- START UPDATE IN PARENT ---")
+
+        console.log(range)
+
         const oldFirstLineNumber = this.getFirstLineNumber()
         const oldLastLineNumber  = this.getLastLineNumber()
+
+        console.log(oldLastLineNumber)
 
         this.removeFromLines()
         const newFirstLine = this.parent.getLineByLineNumber(range._startLine)
@@ -447,6 +458,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
         const newFirstLineNumber = this.getFirstLineNumber()
         const newLastLineNumber  = this.getLastLineNumber()
+
+        console.log(newLastLineNumber)
 
         const updatedBlocks = this.getChildren().flatMap(child => {
 
@@ -468,6 +481,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
                 return []
             }
         })
+
+        console.log("--- END UPDATE IN PARENT ---\n")
 
         updatedBlocks.push(this)
         return updatedBlocks
@@ -530,7 +545,9 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
 
     public clone(): ClonedBlock {
-        return new ForkBlock(this)
+        const clone = new ForkBlock(this)
+        //this.addChild(clone)
+        return clone
     }
 }
 
@@ -586,6 +603,8 @@ export class ForkBlock extends Block {
             const content = blockOptions.content
             if      (!firstLineNode && !lastLineNode) { this.setContent(content ? content : "") }
             else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
+            
+            this.id = this.manager.registerBlock(this, blockOptions.filePath)
         } else if (clonedBlock) {
             this.manager              = clonedBlock.manager
             this.isDeleted            = clonedBlock.isDeleted
@@ -598,6 +617,8 @@ export class ForkBlock extends Block {
 
             firstLineNode            = clonedBlock.firstLine?.node
             lastLineNode             = clonedBlock.lastLine?.node
+
+            this.id = this.manager.registerClonedBlock(this)
         } else {
             throw new Error("The options provided for this ForkBlock are in an incompatiple format!")
         }
@@ -606,8 +627,6 @@ export class ForkBlock extends Block {
         else if (!firstLineNode &&  lastLineNode) { firstLineNode = lastLineNode }
 
         if (firstLineNode && lastLineNode) { this.setLineNodes(firstLineNode, lastLineNode) }
-
-        this.id = this.manager.registerBlock(this, blockOptions.filePath)
     }
 
     protected override setLineList(firstLine: Line, lastLine: Line): void {

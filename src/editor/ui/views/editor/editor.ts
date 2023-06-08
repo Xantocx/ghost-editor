@@ -5,7 +5,7 @@ import * as monaco from "monaco-editor"
 import { View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
+import { SessionData, SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { MetaView, ViewIdentifier } from "../meta-view";
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
@@ -13,7 +13,7 @@ import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionManagerView } from "../version/version-manager";
-import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { VCSSnapshotData, VCSVersion } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
 import { uuid } from "../../../utils/uuid";
@@ -32,9 +32,14 @@ class GhostEditorSnapshotManager {
         this.editor = editor
     }
 
+    public replaceSnapshots(snapshots: VCSSnapshotData[]): void {
+        this.removeSnapshots()
+        this.snapshots = snapshots.map(snapshot => new GhostSnapshot(this.editor, snapshot))
+    }
+
     public async loadSnapshots(): Promise<void> {
         const snapshots = await this.session.getSnapshots()
-        this.snapshots = snapshots.map(snapshot => new GhostSnapshot(this.editor, snapshot))
+        this.replaceSnapshots(snapshots)
     }
 
     public async createSnapshot(range: IRange): Promise<GhostSnapshot | null> {
@@ -506,7 +511,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             })
 
             const versionManager = this.sideView.addView("versionManager", root => {
-                return new VersionManagerView(root)
+                return new VersionManagerView(root, { synchronizer: this.synchronizer })
             }, {
                 updateCallback: (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
                     if (args.languageId) { view.setLanguageId(args.languageId) }
@@ -533,12 +538,15 @@ export class GhostEditor extends View implements ReferenceProvider {
 
     public async applyChangeSet(changeSet: ChangeSet): Promise<void> {
         // forEach is a bitch for anything but synchronous arrays...
-        const changedSnapshots = new Set(await this.getSession().applyChanges(changeSet))
-        changedSnapshots.forEach(uuid => this.snapshotManager.getSnapshot(uuid)?.update())
+        const changedSnapshots = Array.from(new Set(await this.getSession().applyChanges(changeSet)))
+        await Promise.all(changedSnapshots.map(uuid => this.snapshotManager.getSnapshot(uuid)?.update()))
+        if (changedSnapshots.length > 0) { this.triggerSync() }
     }
 
-    public override sync(trigger: Synchronizable): void {
-        throw new Error("Method not implemented.")
+    public override async sync(trigger: Synchronizable): Promise<void> {
+        console.log("SYNCING: " + this.getSession().blockId)
+        const snapshotData = await this.getSession().reloadData()
+        this.update(snapshotData.content, snapshotData.snapshots)
     }
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
@@ -550,9 +558,9 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.editorModel = undefined
     }
 
-    private async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, content: string }> {
+    private async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
         const result = await this.vcs.startSession(eol, options)
-        return { session: new VCSSession(result.sessionId, result.blockId, this.vcs), content: result.content }
+        return { session: new VCSSession(result.sessionId, result.blockId, this.vcs), sessionData: result.sessionData }
     }
 
     public async load(options?: { uri?: URI, filePath?: string, blockId?: string, content?: string }): Promise<void> {
@@ -568,12 +576,12 @@ export class GhostEditor extends View implements ReferenceProvider {
         if (textModel) { textModel.setValue(content) }
         else           { textModel = monaco.editor.createModel(content, this.languageId, uri) }
 
-        const EOL    = extractEOLSymbol(textModel)
-        const result = await this.createSession(EOL, { filePath, blockId, content: options?.content })
+        const EOL         = extractEOLSymbol(textModel)
+        const result      = await this.createSession(EOL, { filePath, blockId, content: options?.content })
+        const sessionData = result.sessionData
 
-        this.createEditorModel(textModel, result.session, result.content)
-
-        this.snapshotManager.loadSnapshots()
+        this.createEditorModel(textModel, result.session, sessionData.content)
+        this.snapshotManager.replaceSnapshots(sessionData.snapshots)
     }
 
     public async loadFile(filePath: string, content: string): Promise<void> {
@@ -599,9 +607,11 @@ export class GhostEditor extends View implements ReferenceProvider {
         }
     }
 
-    public update(text: string): void {
+    public update(text: string, snapshots?: VCSSnapshotData[]): void {
         this.interactionManager.withDisabledVcsSync(() => this.core.setValue(text) )
-        this.snapshotManager.forEach(snapshot => snapshot.manualUpdate())
+
+        if (snapshots) { this.snapshotManager.replaceSnapshots(snapshots) }
+        else           { this.snapshotManager.forEach(snapshot => snapshot.manualUpdate()) }
     }
 
     public override remove(): void {

@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import { BasicVCSClient, VCSSession, SessionId, SnapshotUUID, Text, VCSClient, VersionUUID, SessionOptions, SessionInfo } from "../vcs-provider"
+import { BasicVCSClient, VCSSession, SessionId, SnapshotUUID, Text, VCSClient, SessionOptions, SessionInfo, SessionData } from "../vcs-provider"
 import { ElectronVCSServer } from "../servers/electron-server"
 
 import { IRange } from "monaco-editor"
@@ -26,6 +26,10 @@ export const ElectronVCSClient: VCSClient = {
 
     async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
         return invoke(ElectronVCSServer.cloneToPathChannel, sessionId, filePath)
+    },
+
+    async reloadSessionData(sessionId: SessionId): Promise<SessionData> {
+        return invoke(ElectronVCSServer.reloadSessionDataChannel, sessionId)
     },
 
     async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {

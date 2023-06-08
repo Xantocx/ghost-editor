@@ -8,6 +8,10 @@ export abstract class Synchronizable {
     public constructor(synchronizer?: Synchronizer) {
         synchronizer?.register(this)
     }
+
+    public remove(): void {
+        this.synchronizer?.deregister(this)
+    }
 }
 
 export class Synchronizer {
@@ -28,6 +32,8 @@ export class Synchronizer {
 
     public sync(trigger: Synchronizable): void {
         if (!this.objects.includes(trigger)) { throw new Error("Only Synchronizables registered with a Synchronizer can trigger a sync!") }
-        this.objects.forEach(target => target.sync(trigger))
+        this.objects.forEach(target => {
+            if (target !== trigger) { target.sync(trigger) }
+        })
     }
 }

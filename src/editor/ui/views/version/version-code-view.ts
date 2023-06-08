@@ -36,7 +36,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
         this.editorContainer.style.border  = "1px solid black"
         this.listElement.appendChild(this.editorContainer)
 
-        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
+        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { enableSideView: true, /*mainViewFlex: 3,*/ languageId: this.languageId, synchronizer })
     }
 
     public override remove(): void {

@@ -6,21 +6,22 @@ import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/ch
 
 export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSServer<Adapter> {
 
-    public static startSessionChannel = "vcs-start-session"
-    public static closeSessionChannel = "vcs-close-session"
-    public static updatePathChannel = "vcs-update-path"
-    public static cloneToPathChannel = "vcs-clone-to-path"
-    public static createSnapshotChannel = "vcs-create-snapshot"
-    public static deleteSnapshotChannel = "vcs-delete-snapshot"
-    public static getSnapshotChannel = "vcs-get-snapshot"
-    public static getSnapshotsChannel = "vcs-get-snapshots"
-    public static updateSnapshotChannel = "vcs-update-snapshot"
+    public static startSessionChannel              = "vcs-start-session"
+    public static closeSessionChannel              = "vcs-close-session"
+    public static reloadSessionDataChannel         = "vcs-reload-session-data"
+    public static updatePathChannel                = "vcs-update-path"
+    public static cloneToPathChannel               = "vcs-clone-to-path"
+    public static createSnapshotChannel            = "vcs-create-snapshot"
+    public static deleteSnapshotChannel            = "vcs-delete-snapshot"
+    public static getSnapshotChannel               = "vcs-get-snapshot"
+    public static getSnapshotsChannel              = "vcs-get-snapshots"
+    public static updateSnapshotChannel            = "vcs-update-snapshot"
     public static applySnapshotVersionIndexChannel = "vcs-apply-snapshot-version-index"
-    public static lineChangedChannel = "vcs-line-changed"
-    public static linesChangedChannel = "vcs-lines-Changed"
-    public static applyChangeChannel = "vcs-apply-change"
-    public static applyChangesChannel = "vcs-apply-changes"
-    public static saveCurrentVersionChannel = "vcs-save-current-version"
+    public static lineChangedChannel               = "vcs-line-changed"
+    public static linesChangedChannel              = "vcs-lines-Changed"
+    public static applyChangeChannel               = "vcs-apply-change"
+    public static applyChangesChannel              = "vcs-apply-changes"
+    public static saveCurrentVersionChannel        = "vcs-save-current-version"
 
     constructor(adapter: Adapter) {
         super(adapter)
@@ -35,6 +36,10 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
         const closeSessionSubscription = ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, sessionId: SessionId) => {
             return this.closeSession(sessionId)
+        })
+
+        const reloadSessionDataSubscription = ipcMain.handle(ElectronVCSServer.reloadSessionDataChannel, async (event, sessionId: SessionId) => {
+            return this.reloadSessionData(sessionId)
         })
 
         const updatePathSubscription = ipcMain.handle(ElectronVCSServer.updatePathChannel, async (event, sessionId: SessionId, filePath: string) => {

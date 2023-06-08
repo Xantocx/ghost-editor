@@ -122,6 +122,17 @@ export class ResourceManager {
         return id
     }
 
+    public registerClonedBlock(block: Block): BlockId {
+        if      (!this.validateBlock(block)) { return } 
+        else if (!block.isCloned)            { throw new Error("This Block is not cloned, and can as such not be registered as a cloned Block!") }
+
+        const id = this.blockIdManager.newIdFromOrigin(block.origin!)
+        this.blocks.set(id, block)
+        this.tagIdManagers.set(block, new TagIdManager(block))
+        block.children.forEach(child => this.registerBlock(child))
+        return id
+    }
+
     public registerTag(tag: Tag): TagId {
         if (!this.validateTag(tag)) { return }
 

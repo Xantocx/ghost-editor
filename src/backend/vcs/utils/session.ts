@@ -1,12 +1,9 @@
 import { SessionId, BlockId } from "../core/metadata/ids"
 import { Resource, ResourceManager } from "./resource-manager"
 import { Block, ForkBlock } from "../core/block"
+import { SessionInfo, SessionData } from "../../../app/components/vcs/vcs-provider"
 
-export interface SessionInfo {
-    sessionId: SessionId,
-    blockId: BlockId,
-    content: string
-}
+export { SessionInfo, SessionData }
 
 export class Session implements Resource {
 
@@ -32,5 +29,13 @@ export class Session implements Resource {
         this.block   = block instanceof ForkBlock && !this.manager.hasSessionForBlockId(block.id) ? block : block.clone()
 
         this.id = this.manager.registerSession(this)
+    }
+
+    public getData(): SessionData {
+        const parent = this
+        return {
+            content:   parent.block.getCurrentText(),
+            snapshots: parent.block.getCompressedChildren()
+        }
     }
 }
