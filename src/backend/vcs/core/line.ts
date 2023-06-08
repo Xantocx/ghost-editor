@@ -148,8 +148,7 @@ export class Line extends LinkedListNode<Line>  {
     }
 
     public constructor(node: LineNode, block: Block, setup?: { content?: LineContent, head?: LineNodeVersion }) {
-        super(block)
-
+        super()
         this.node    = node
         this.block   = block
         this.history = new LineHistory(this, this.versions, setup)
@@ -159,8 +158,8 @@ export class Line extends LinkedListNode<Line>  {
     public getVersionCount():     number       { return this.history.getVersionCount() }
     public getAffectedBlockIds(): BlockId[]    { return this.node.getBlockIds() }
 
-    public getPreviousActiveLine(): Line | undefined { return this.findPrevious(line => line.isActive) }
-    public getNextActiveLine():     Line | undefined { return this.findNext    (line => line.isActive) }
+    public getPreviousActiveLine(): Line | undefined { return this.findPreviousIn(this.block, line => line.isActive) }
+    public getNextActiveLine():     Line | undefined { return this.findNextIn    (this.block, line => line.isActive) }
 
     public getLineNumber(): LineNumber | null { 
         if (!this.isActive) { return null }
@@ -177,8 +176,22 @@ export class Line extends LinkedListNode<Line>  {
     }
 
     public update(content: LineContent): LineNodeVersion {
-        if (content === this.currentContent)      { return this.history.head }
-        if (this.block.getLastModifiedLine() === this) { return this.history.updateCurrentVersion(content) }
+        if (content === this.currentContent) { return this.history.head }
+
+        // TODO: always merge trailing whitespace versions -> when time-traveling between changes, this merging might not always result in the same end-state, but the difference is minor
+        const previousContent             = this.currentVersion.previous?.content
+        const previousContentEqual        = previousContent?.trimEnd() === this.currentContent.trimEnd()
+        const onlyTrailingWhitespaceAdded = content.trimEnd()          === this.currentContent.trimEnd()
+        const mergeWhitespace             = previousContent !== undefined && previousContentEqual && onlyTrailingWhitespaceAdded
+
+        console.log("--------------")
+        console.log("'" + this.currentContent + "'")
+        console.log("'" + content + "'")
+        console.log(mergeWhitespace)
+
+        if      (mergeWhitespace)                           { return this.history.updateCurrentVersion(content) }
+        else if (this.block.getLastModifiedLine() === this) { return this.history.updateCurrentVersion(content) }
+
         return this.history.createNewVersion(true, content)
     }
 

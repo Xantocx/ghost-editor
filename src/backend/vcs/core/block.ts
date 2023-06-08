@@ -355,7 +355,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
     private getTimeline(): LineNodeVersion[] {
         const timeline = this.getVersions()
-            .filter(version => { return !version.previous?.isPreInsertion(this) })
+            .filter(version => { return !version.previous?.isPreInsertion })
             .sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
         timeline.splice(0, this.getOriginalLineCount() - 1) // remove the first unused original versions
         return timeline
@@ -365,14 +365,14 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     // As a result it filters those. This function should ONLY BE USED WHEN YOU KNOW WHAT YOU DO. One example of that is the getCurrentVersionIndex, where the understanding of this
     // function is used to extract the timeline index that should be visualized by the UI.
     private getCurrentVersion(): LineNodeVersion {
-        return this.getHeads().filter(head          => !head.isPreInsertion(this))
+        return this.getHeads().filter(head          => !head.isPreInsertion)
                               .sort( (headA, headB) => headB.timestamp - headA.timestamp)[0]
     }
 
     public getCurrentVersionIndex(): number {
         // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
         let currentVersion = this.getCurrentVersion()
-        if (currentVersion.previous?.isPreInsertion(this)) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
+        if (currentVersion.previous?.isPreInsertion) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
                                                                                                           // version. At the same time the pre-insertion versions are the only ones present in
                                                                                                           // the timeline by default, because I can easily distinguished for further manipulation.
         //if (currentVersion.origin)                   { currentVersion = currentVersion.next }
@@ -429,7 +429,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         // If the next version is selected and still on post-insertion, then set it to pre-insertion
         else if (nextVersion === latestVersion && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
-        else if (selectedVersion.isPreInsertion(this) && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))     { version = selectedVersion.next }
+        else if (selectedVersion.isPreInsertion && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))     { version = selectedVersion.next }
 
         version.applyTo(this)
     }

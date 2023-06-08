@@ -2,7 +2,7 @@ import { LinkedListNode } from "../utils/linked-list"
 import { Timestamp } from "./metadata/timestamps"
 import { Block } from "./block"
 import { LineNode, Line } from "./line"
-import { LineHistory } from "./history"
+import { LineHistory, LineNodeHistory } from "./history"
 
 export type LineContent = string
 
@@ -31,10 +31,18 @@ export class LineNodeVersion extends LinkedListNode<LineNodeVersion> {
     public  readonly origin?: LineNodeVersion   = undefined
     private readonly clones:  LineNodeVersion[] = []
 
+    public get versions(): LineNodeHistory { return this.node.versions }
+
     public get isClone(): boolean { return this.origin ? true : false }
 
+    public get isFirst(): boolean { return this.versions.firstVersion === this }
+    public get isLast():  boolean { return this.versions.lastVersion  === this }
+
+    public get isPreInsertion(): boolean { return this.node.isInserted &&  this.isFirst }
+    public get isDeletion():     boolean { return !this.isActive       && !this.isFirst }
+
     public constructor(node: LineNode, timestamp: Timestamp, isActive: boolean, content: LineContent, relations?: LineNodeVersionRelations) {
-        super(node.versions)
+        super()
 
         this.node      = node
         this.timestamp = timestamp
@@ -55,23 +63,18 @@ export class LineNodeVersion extends LinkedListNode<LineNodeVersion> {
     public getLine(block: Block):    Line        { if (this.node.has(block)) { return this.node.getLine(block)! } else { throw new Error("There is no Line for the required block!") } }
     public getHistory(block: Block): LineHistory { return this.getLine(block).history }
 
-    public isHeadOf(block: Block):  boolean { return this.getHistory(block).head         === this }
-    public isFirstOf(block: Block): boolean { return this.getHistory(block).firstVersion === this }
-    public isLastOf(block: Block):  boolean { return this.getHistory(block).lastVersion  === this }
-
-    public isPreInsertion(block: Block): boolean { return this.getLine(block).isInserted && this.isFirstOf(block) }
-    public isDeletion(block: Block):     boolean { return !this.isActive && !this.isFirstOf(block) }
+    public isHeadOf(block: Block): boolean { return this.getHistory(block).head === this }
 
     public isLatestVersion(block: Block): boolean {
         const trackedTimestamps = this.getHistory(block).getTrackedTimestamps()
         const greatestTrackedTimestamp = trackedTimestamps.length > 0 ? trackedTimestamps[trackedTimestamps.length - 1] : 0
-        return this.isLastOf(block) && this.timestamp >= greatestTrackedTimestamp
+        return this.isLast && this.timestamp >= greatestTrackedTimestamp
     }
 
     public insertionState(block: Block): InsertionState {
 
-        const isPreInsertion = this.isPreInsertion(block)
-        const isDeletion     = this.isDeletion(block)
+        const isPreInsertion = this.isPreInsertion
+        const isDeletion     = this.isDeletion
         const isHead         = this.isHeadOf(block)
         const nextIsHead     = this.next?.isHeadOf(block)
 
@@ -86,7 +89,7 @@ export class LineNodeVersion extends LinkedListNode<LineNodeVersion> {
     }
 
     public apply(block: Block):          void { this.getHistory(block).updateHead(this) }
-    public update(content: LineContent): void {  this.content = content }
+    public update(content: LineContent): void { this.content = content }
 
     public applyTo(block: Block): void {
         const currentLine = this.getLine(block)

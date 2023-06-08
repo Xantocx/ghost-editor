@@ -40,7 +40,7 @@ export class LineHistory {
     public get isActive(): boolean  { return this.head.isActive }
 
     public constructor(line: Line, versions: LineNodeHistory, setup?: { content?: LineContent, head?: LineNodeVersion }) {
-        this.line = line
+        this.line     = line
         this.versions = versions
 
         const content = setup?.content
@@ -82,7 +82,7 @@ export class LineHistory {
     public getVersionCount(): number        { return this.versions.getLength() }
 
     public updateHead(version: LineNodeVersion): void {
-        // checking for LineNode, as this may be called during initialization, and the line does not exist in LineNode yet
+        // checking for LineNode (first part of check), as this may be called during initialization, and the line does not exist in LineNode yet
         if (this.node.has(this.block) && version.isHeadOf(this.block)) { return }
         this.head = version
         this.headTracking.set(this.getNewTimestamp(), version)
