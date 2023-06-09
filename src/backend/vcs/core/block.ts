@@ -1,5 +1,5 @@
 import { IRange } from "../../../app/components/utils/range"
-import { VCSVersion, VCSSnapshotData } from "../../../app/components/data/snapshot"
+import { VCSTag, VCSSnapshotData } from "../../../app/components/data/snapshot"
 
 import { LinkedList } from "../utils/linked-list"
 import { Resource, ResourceManager } from "../utils/resource-manager"
@@ -524,14 +524,14 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         return new Tag(this, heads)
     }
 
-    public createTag(): VCSVersion {
+    public createTag(): VCSTag {
 
         const tag = this.createCurrentTag()
         this.tags.set(tag.id, tag)
 
         return {
             blockId:             this.id,
-            tagId:                tag.id,
+            id:                tag.id,
             name:                `Version ${this.tags.size}`,
             text:                this.getFullText(),
             automaticSuggestion: false

@@ -5,15 +5,15 @@ import * as monaco from "monaco-editor"
 import { CodeProvider, View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { SessionData, SessionFactory, SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
+import { SessionData, SessionFactory, SessionOptions, SnapshotUUID, TagId, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { MetaView, ViewIdentifier } from "../meta-view";
-import { GhostSnapshot } from "../../snapshot/snapshot";
+import { GhostSnapshot, VCSVersion } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
 import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionManagerView } from "../version/version-manager";
-import { VCSSnapshotData, VCSVersion } from "../../../../app/components/data/snapshot";
+import { VCSSnapshotData, VCSTag } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
 import { extractEOLSymbol } from "../../../utils/helpers";
@@ -389,21 +389,18 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    public static createAsSubview(root: HTMLElement, options?: { blockId?: string, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
-        return new GhostEditor(root, options)
+    public static createVersionEditor(root: HTMLElement, tag: VCSTag, options?: { session?: VCSSession, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
+        return new GhostEditor(root, { 
+                                        tagId: tag.id,
+                                        session: options?.session,
+                                        enableSideView: options?.enableSideView,
+                                        mainViewFlex: options?.mainViewFlex,
+                                        languageId: options?.languageId,
+                                        synchronizer: options?.synchronizer
+                                     })
     }
 
-    public static createVersionEditor(root: HTMLElement, version: VCSVersion, options?: { enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
-        return this.createAsSubview(root, { 
-                                            blockId: version.blockId,
-                                            enableSideView: options?.enableSideView,
-                                            mainViewFlex: options?.mainViewFlex,
-                                            languageId: options?.languageId,
-                                            synchronizer: options?.synchronizer
-                                          })
-    }
-
-    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
+    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, tagId?: TagId, content?: string, session?: VCSSession, enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
         super(root, options?.synchronizer)
 
         this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
@@ -429,7 +426,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         this.interactionManager = new GhostEditorInteractionManager(this)
 
         this.setup()
-        this.load({ filePath: options?.filePath, blockId: options?.blockId })
+        this.load(options)
     }
 
     private createEditorModel(textModel: MonacoModel, session: VCSSession, vcsContent: string): void {
@@ -513,7 +510,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
             })
 
             const versionManager = this.sideView.addView("versionManager", root => {
-                return new VersionManagerView(root, this, { synchronizer: this.synchronizer })
+                return new VersionManagerView(root, { synchronizer: this.synchronizer })
             }, {
                 updateCallback: (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
                     if (args.languageId) { view.setLanguageId(args.languageId) }
@@ -565,12 +562,13 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         return { session: new VCSSession(info, this.vcs), sessionData: info.sessionData }
     }
 
-    public async load(options?: { uri?: URI, filePath?: string, blockId?: string, content?: string, session?: VCSSession }): Promise<void> {
+    public async load(options?: { uri?: URI, filePath?: string, blockId?: string, tagId?: TagId, content?: string, session?: VCSSession }): Promise<void> {
         this.unload()
 
-        const uri      = options?.uri      ? options.uri      : undefined
+        const uri      = options?.uri
         const filePath = options?.filePath ? options.filePath : uri?.fsPath
-        const blockId  = options?.blockId  ? options.blockId  : undefined
+        const blockId  = options?.blockId
+        const tagId    = options?.tagId
         const content  = options?.content  ? options.content  : ""
 
         let textModel = uri ? monaco.editor.getModel(uri) : null
@@ -587,7 +585,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
             sessionData = await session.reloadData()
         } else {
             const EOL    = extractEOLSymbol(textModel)
-            const result = await this.createSession({ filePath, blockId, eol: EOL, content: options?.content })
+            const result = await this.createSession({ filePath, blockId, tagId, eol: EOL, content: options?.content })
 
             session      = result.session
             sessionData  = result.sessionData

@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron"
 
-import { VCSSnapshotData, VCSVersion } from "../app/components/data/snapshot"
+import { VCSSnapshotData, VCSTag } from "../app/components/data/snapshot"
 import { IRange } from "../app/components/utils/range"
 import { BasicVCSServer, SessionData, SessionId, SessionOptions, SnapshotUUID } from "../app/components/vcs/vcs-provider"
 import { LineChange, MultiLineChange } from "../app/components/data/change"
@@ -67,7 +67,7 @@ export class GhostVCSServer extends BasicVCSServer {
             session = Session.createWithNewBlock(this.resources, eol, { filePath, content })
         }
 
-        return { sessionId: session.id, blockId: session.blockId, filePath: block.filePath, sessionData: session.getData() }
+        return { sessionId: session.id, blockId: session.blockId, filePath: session.filePath, sessionData: session.getData() }
     }
 
     public async closeSession(sessionId: SessionId): Promise<void> {
@@ -217,7 +217,7 @@ export class GhostVCSServer extends BasicVCSServer {
         return affectedLines.map(line => line.getAffectedBlockIds()).flat()
     }
 
-    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion> {
+    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSTag> {
         const block = this.getBlock(sessionId)
         const snapshot = block.getChild(uuid)
         return snapshot.createTag()

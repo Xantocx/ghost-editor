@@ -13,6 +13,8 @@ export class P5JSPreview extends CodeProviderPreview {
 
     private readonly container: HTMLDivElement
 
+    private currentCode?: string
+
     private iframeVisible = false
     private iframe:       HTMLIFrameElement
     
@@ -26,7 +28,55 @@ export class P5JSPreview extends CodeProviderPreview {
 
     private get id(): string { return `p5js-preview-${this.uuid}` }
 
-    private async getHtml(): Promise<string> {
+    public get style():         CSSStyleDeclaration { return this.container.style }
+    public get iFrameResizer(): any | undefined     { return (this.iframe as any).iFrameResizer }
+
+    private readonly padding:   number
+    private readonly minWidth:  number
+    private readonly minHeight: number
+
+    constructor(root: HTMLElement, options?: { provider?: CodeProvider, padding?: number, minWidth?: number, minHeight?: number, errorMessageColor?: string, synchronizer?: Synchronizer }) {
+        super(root, options)
+        this.padding           = options?.padding           ? options.padding           : 0
+        this.minWidth          = options?.minWidth          ? options.minWidth          : 50
+        this.minHeight         = options?.minHeight         ? options.minHeight         : 50
+        this.errorMessageColor = options?.errorMessageColor ? options.errorMessageColor : "black"
+
+        this.container = document.createElement("div")
+        this.style.position  = "relative"
+        this.style.boxSizing = "border-box"
+        this.style.width     = "100%"
+        this.style.height    = "100%"
+        this.style.padding   = `${this.padding}px`
+        this.style.margin    = "0"
+        this.root.appendChild(this.container)
+
+        // setup iframe
+        this.iframe = document.createElement("iframe") as HTMLIFrameElement
+        this.iframe.id = this.id
+        this.iframe.frameBorder = "0"
+        this.iframe.style.position  = "absolute"
+        this.iframe.style.top       = "50%"
+        this.iframe.style.left      = "50%"
+        this.iframe.style.transform = "translate(-50%, -50%)"
+        this.iframe.style.padding = "0"
+        this.iframe.style.margin  = "0"
+        this.iframe.style.border  = "none"
+
+        // setup div for error message, should it be needed
+        this.errorMessage = document.createElement("div")
+        this.errorMessage.style.display   = "inline-block"
+        this.errorMessage.style.boxSizing = "border-box"
+        this.errorMessage.style.width     = "100%"
+        this.errorMessage.style.height    = "100%"
+        this.errorMessage.style.padding   = "3px"
+        this.errorMessage.style.color     = this.errorMessageColor
+        this.errorMessage.style.border    = `1px solid ${this.errorMessageColor}`
+
+        if (this.provider) { this.render() }
+    }
+
+    private async getHtml(code: string): Promise<string> {
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -96,7 +146,7 @@ export class P5JSPreview extends CodeProviderPreview {
                         for (let i = 0; i < p5Canvas.length; i++) { p5Canvas[i].remove() }
                     }
 
-                    const code = ${JSON.stringify(await this.getCode())}
+                    const code = ${JSON.stringify(code)}
 
                     if (!code.includes("setup") || !code.includes("draw")) {
                         createErrorMessage({ message: "Your code must include a 'setup' and a 'draw' function to be rendered in this P5JS preview.", stack: "" })
@@ -159,57 +209,9 @@ export class P5JSPreview extends CodeProviderPreview {
         `
     }
 
-    private async getHtmlUrl(): Promise<string> {
-        const htmlBlob = new Blob([await this.getHtml()], { type: 'text/html' });
+    private async getHtmlUrl(code: string): Promise<string> {
+        const htmlBlob = new Blob([await this.getHtml(code)], { type: 'text/html' });
         return URL.createObjectURL(htmlBlob);
-    }
-
-    public get style():         CSSStyleDeclaration { return this.container.style }
-    public get iFrameResizer(): any | undefined     { return (this.iframe as any).iFrameResizer }
-
-    private readonly padding:   number
-    private readonly minWidth:  number
-    private readonly minHeight: number
-
-    constructor(root: HTMLElement, options?: { provider?: CodeProvider, padding?: number, minWidth?: number, minHeight?: number, errorMessageColor?: string, synchronizer?: Synchronizer }) {
-        super(root, options)
-        this.padding           = options?.padding           ? options.padding           : 0
-        this.minWidth          = options?.minWidth          ? options.minWidth          : 50
-        this.minHeight         = options?.minHeight         ? options.minHeight         : 50
-        this.errorMessageColor = options?.errorMessageColor ? options.errorMessageColor : "black"
-
-        this.container = document.createElement("div")
-        this.style.position  = "relative"
-        this.style.boxSizing = "border-box"
-        this.style.width     = "100%"
-        this.style.height    = "100%"
-        this.style.padding   = `${this.padding}px`
-        this.style.margin    = "0"
-        this.root.appendChild(this.container)
-
-        // setup iframe
-        this.iframe = document.createElement("iframe") as HTMLIFrameElement
-        this.iframe.id = this.id
-        this.iframe.frameBorder = "0"
-        this.iframe.style.position  = "absolute"
-        this.iframe.style.top       = "50%"
-        this.iframe.style.left      = "50%"
-        this.iframe.style.transform = "translate(-50%, -50%)"
-        this.iframe.style.padding = "0"
-        this.iframe.style.margin  = "0"
-        this.iframe.style.border  = "none"
-
-        // setup div for error message, should it be needed
-        this.errorMessage = document.createElement("div")
-        this.errorMessage.style.display   = "inline-block"
-        this.errorMessage.style.boxSizing = "border-box"
-        this.errorMessage.style.width     = "100%"
-        this.errorMessage.style.height    = "100%"
-        this.errorMessage.style.padding   = "3px"
-        this.errorMessage.style.color     = this.errorMessageColor
-        this.errorMessage.style.border    = `1px solid ${this.errorMessageColor}`
-
-        if (this.provider) { this.render() }
     }
 
     private padValue(value: number): number {
@@ -336,14 +338,18 @@ export class P5JSPreview extends CodeProviderPreview {
     public override async render(): Promise<void> {
         if (!this.provider) { return }
 
-        this.iframe.src = await this.getHtmlUrl()
+        const code = await this.getCode()
+        if (code && this.currentCode !== code) {
+            this.iframe.src = await this.getHtmlUrl(code)
+            this.currentCode = code
 
-        if (this.hasErrorMessage) {
-            this.errorMessage.remove()
-            this.hasErrorMessage = false
+            if (this.hasErrorMessage) {
+                this.errorMessage.remove()
+                this.hasErrorMessage = false
+            }
+
+            this.showIFrame()
         }
-
-        this.showIFrame()
     }
 
     public override remove(): void {

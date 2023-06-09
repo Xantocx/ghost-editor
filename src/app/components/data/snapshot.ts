@@ -10,9 +10,9 @@ export interface VCSSnapshotData {
     versionIndex: number
 }
 
-export interface VCSVersion {
+export interface VCSTag {
+    id:                  TagId
     blockId:             string
-    tagId:               TagId
     name:                string
     text:                Text
     automaticSuggestion: boolean

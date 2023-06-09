@@ -1,4 +1,4 @@
-import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { VCSTag } from "../../../../app/components/data/snapshot";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { Disposable } from "../../../utils/types";
 import { View } from "../view";
@@ -53,23 +53,23 @@ export abstract class VersionViewContainer<Version, CustomView extends VersionVi
         this.versionsChangedCallbacks.forEach(callback => callback(versions))
     }
 
-    protected createCustomView(version: Version): CustomView {
+    protected async createCustomView(version: Version): Promise<CustomView> {
         throw new Error("This method should be implemented by you.")
     }
 
-    public showVersions(versions: Version[]): void {
+    public async showVersions(versions: Version[]): Promise<void> {
         this.removeVersions()
-        versions.forEach(version => {
-            const codeView = this.createCustomView(version)
+        await Promise.all(versions.map(async version => {
+            const codeView = await this.createCustomView(version)
             this.versions.set(version, codeView)
-        })
+        }))
         this.versionsChanged()
     }
 
-    public addVersion(version: Version): void {
+    public async addVersion(version: Version): Promise<void> {
         if (this.versions.has(version)) { return }
 
-        const codeView = this.createCustomView(version)
+        const codeView = await this.createCustomView(version)
         this.versions.set(version, codeView)
         this.versionsChanged()
     }
@@ -122,7 +122,7 @@ export abstract class VersionViewContainer<Version, CustomView extends VersionVi
     }
 }
 
-export class VCSVersionView extends VersionView<VCSVersion> {}
-export class VCSVersionViewElement<CustomView extends VCSVersionViewElement<CustomView, Container>, Container extends VCSVersionViewContainer<CustomView>> extends VersionViewElement<VCSVersion, CustomView, Container> {}
-export class VCSVersionViewContainer<CustomView extends VCSVersionViewElement<CustomView, VCSVersionViewContainer<CustomView>>> extends VersionViewContainer<VCSVersion, CustomView> {}
-export interface IVCSVersionViewContainer extends IVersionViewContainer<VCSVersion> {}
+export class TagView extends VersionView<VCSTag> {}
+export class TagViewElement<CustomView extends TagViewElement<CustomView, Container>, Container extends TagViewContainer<CustomView>> extends VersionViewElement<VCSTag, CustomView, Container> {}
+export class TagViewContainer<CustomView extends TagViewElement<CustomView, TagViewContainer<CustomView>>> extends VersionViewContainer<VCSTag, CustomView> {}
+export interface ITagViewContainer extends IVersionViewContainer<VCSTag> {}

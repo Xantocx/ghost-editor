@@ -1,11 +1,11 @@
-import { VCSVersion } from "../../../app/components/data/snapshot"
-import { VersionViewContainer } from "../views/version/version-view"
+import { VCSTag } from "../../../app/components/data/snapshot"
+import { TagViewContainer } from "../views/version/version-view"
 import { Button, P5JSPreviewButton } from "./button"
 
-class SideScrollVersionListElement extends VersionViewContainer<P5JSPreviewButton<SideScrollVersionListElement>> {
+class SideScrollVersionListElement extends TagViewContainer<P5JSPreviewButton<VCSTag, SideScrollVersionListElement>> {
 
     public readonly list:    SideScrollVersionList
-    public readonly content: VCSVersion
+    public readonly content: VCSTag
     public readonly button:  Button
 
     public get htmlList(): HTMLUListElement {
@@ -16,7 +16,7 @@ class SideScrollVersionListElement extends VersionViewContainer<P5JSPreviewButto
         return this.button.style
     }
 
-    constructor(list: SideScrollVersionList, content: VCSVersion, onClick?: () => void) {
+    constructor(list: SideScrollVersionList, content: VCSTag, onClick?: () => void) {
         const element = document.createElement("li")
         list.list.appendChild(element)
 
@@ -27,7 +27,7 @@ class SideScrollVersionListElement extends VersionViewContainer<P5JSPreviewButto
 
         //this.button = Button.basicButton(this.element, content.name, onClick)
         //this.button  = Button.versionPreviewButton(this.element, this.content, sizeConstraints, onClick)
-        this.button  = Button.p5jsPreviewButton(this as SideScrollVersionListElement, this.content, onClick)
+        //this.button  = Button.p5jsPreviewButton(this as SideScrollVersionListElement, this.content, onClick)
     }
 
     public remove(): void {
@@ -63,11 +63,11 @@ export class SideScrollVersionList {
         return this.list.style
     }
 
-    public get versions(): VCSVersion[] {
+    public get versions(): VCSTag[] {
         return this.elements.map(elem => elem.content)
     }
 
-    constructor(root: HTMLElement, versions?: VCSVersion[], placeholderText?: string) {
+    constructor(root: HTMLElement, versions?: VCSTag[], placeholderText?: string) {
         // set root style
         this.root = root
         this.rootStyle.display = "flex"
@@ -119,19 +119,19 @@ export class SideScrollVersionList {
         this.list.appendChild(this.emptyPlaceholder)
     }
 
-    public fillList(versions: VCSVersion[]): void {
+    public fillList(versions: VCSTag[]): void {
         this.emptyPlaceholder.remove()
 
         if (versions.length === 0) {
             this.clearList()
         } else {
-            versions.forEach((version: VCSVersion, index: number) => {
+            versions.forEach((version: VCSTag, index: number) => {
                 this.addVersion(version, index === 0)
             })
         }
     }
 
-    public addVersion(version: VCSVersion, isFirst?: boolean): void {
+    public addVersion(version: VCSTag, isFirst?: boolean): void {
         if (!isFirst && this.elements.length === 0) {
             this.emptyPlaceholder.remove()
             isFirst = true

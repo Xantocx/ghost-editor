@@ -1,5 +1,5 @@
 import { IRange } from "monaco-editor"
-import { VCSSnapshotData, VCSVersion } from "../data/snapshot"
+import { VCSSnapshotData, VCSTag } from "../data/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 import { CodeProvider } from "../../../editor/ui/views/view"
 
@@ -57,7 +57,7 @@ export interface VCSProvider {
     applyChanges(sessionId: SessionId, changes: ChangeSet): Promise<SnapshotUUID[]>
 
     // version interface
-    saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion>
+    saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSTag>
 }
 
 export abstract class BasicVCSProvider implements VCSProvider {
@@ -133,7 +133,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
         return uuids.flat()
     }
 
-    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion> {
+    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSTag> {
         throw new Error("Method not implemented.")
     }
 }
@@ -233,7 +233,7 @@ export class VCSSession implements CodeProvider {
         return this.client.applyChanges(this.sessionId, changes)
     }
 
-    async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSVersion> {
+    async saveCurrentVersion(uuid: SnapshotUUID): Promise<VCSTag> {
         return this.client.saveCurrentVersion(this.sessionId, uuid)
     }
 
@@ -318,7 +318,7 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         return this.adapter.linesChanged(sessionId, change)
     }
 
-    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSVersion> {
+    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSTag> {
         return this.adapter.saveCurrentVersion(sessionId, uuid)
     }
 }

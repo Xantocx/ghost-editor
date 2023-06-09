@@ -4,10 +4,44 @@ import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
-import { VCSSnapshotData, VCSSnapshot, VCSVersion } from "../../../app/components/data/snapshot"
-import { SnapshotUUID, VCSSession } from "../../../app/components/vcs/vcs-provider"
+import { VCSSnapshotData, VCSSnapshot, VCSTag } from "../../../app/components/data/snapshot"
+import { SessionFactory, SnapshotUUID, TagId, VCSSession } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { MetaView } from "../views/meta-view"
+
+export class VCSVersion implements VCSTag {
+
+    public readonly snapshot: GhostSnapshot
+    public readonly tag:      VCSTag
+    
+    private     session?:         VCSSession
+    private get sessionFactory(): SessionFactory { return this.snapshot.editor }
+
+    public get id(): string                   { return this.tag.id }
+    public get blockId(): string              { return this.tag.blockId }
+    public get name(): string                 { return this.tag.name }
+    public get text(): string                 { return this.tag.text }
+    public get automaticSuggestion(): boolean { return this.tag.automaticSuggestion }
+
+    public constructor(snapshot: GhostSnapshot, tag: VCSTag) {
+        this.snapshot = snapshot
+        this.tag      = tag
+    }
+
+    public async getSession(): Promise<VCSSession> {
+        if (!this.session) {
+            const result = await this.sessionFactory.createSession({ tagId: this.id })
+            this.session = result.session
+        }
+
+        return this.session
+    }
+
+    public closeSession(): void {
+        this.session?.close()
+        this.session = undefined
+    }
+}
 
 export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
 
@@ -17,6 +51,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     public snapshot: VCSSnapshot
     private readonly locator: LineLocator
 
+    public versions: VCSVersion[] = []
+
     public readonly viewZonesOnly: boolean
     public readonly toggleMode: boolean
 
@@ -25,7 +61,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     private footer: GhostSnapshotFooter
 
     private readonly sideViewIdentifier = "versionManager"
-    public  versions: VCSVersion[] = []
 
     public get uuid(): SnapshotUUID {
         return this.snapshot.uuid
@@ -228,8 +263,12 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
     }
 
-    public updateVersions(versions: VCSVersion[]): void {
-        this.versions = versions
+    public addVersion(tag: VCSTag): void {
+        this.versions.push(new VCSVersion(this, tag))
+    }
+
+    public updateVersions(tags: VCSTag[]): void {
+        this.versions = tags.map(tag => new VCSVersion(this, tag))
         this.updateVersionManager()
     }
 

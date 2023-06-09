@@ -1,12 +1,12 @@
-import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { VCSTag } from "../../../../app/components/data/snapshot";
 import { VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { Synchronizer } from "../../../utils/synchronizer";
+import { VCSVersion } from "../../snapshot/snapshot";
 import { GhostEditor } from "../editor/editor";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
-import { ViewVersion } from "./version-manager";
 
-export class VersionCodeView<Container extends VersionViewContainer<ViewVersion, VersionCodeView<Container>>> extends VersionViewElement<ViewVersion, VersionCodeView<Container>, Container> {
+export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, VersionCodeView<Container>>> extends VersionViewElement<VCSVersion, VersionCodeView<Container>, Container> {
 
     public readonly languageId?: string
 
@@ -18,7 +18,7 @@ export class VersionCodeView<Container extends VersionViewContainer<ViewVersion,
 
     public get style(): CSSStyleDeclaration { return this.listElement.style }
 
-    public constructor(root: Container, version: ViewVersion, session: VCSSession, languageId?: string, synchronizer?: Synchronizer) {
+    public constructor(root: Container, version: VCSVersion, session: VCSSession, languageId?: string, synchronizer?: Synchronizer) {
         super(root, version)
         this.languageId = languageId
 
@@ -48,7 +48,7 @@ export class VersionCodeView<Container extends VersionViewContainer<ViewVersion,
     }
 }
 
-export class VersionCodeViewList extends VersionViewContainer<ViewVersion, VersionCodeView<VersionCodeViewList>> {
+export class VersionCodeViewList extends VersionViewContainer<VCSVersion, VersionCodeView<VersionCodeViewList>> {
 
     private          languageId?:         string
     private readonly editorSynchronizer?: Synchronizer
@@ -72,7 +72,8 @@ export class VersionCodeViewList extends VersionViewContainer<ViewVersion, Versi
 
     public setLanguageId(languageId: string): void { this.languageId = languageId }
 
-    protected override createCustomView(version: ViewVersion): VersionCodeView<VersionCodeViewList> {
-        return new VersionCodeView(this as VersionCodeViewList, version, version.session, this.languageId, this.editorSynchronizer)
+    protected override async createCustomView(version: VCSVersion): Promise<VersionCodeView<VersionCodeViewList>> {
+        const session = await version.getSession()
+        return new VersionCodeView(this as VersionCodeViewList, version, session, this.languageId, this.editorSynchronizer)
     }
 }

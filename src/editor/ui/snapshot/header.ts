@@ -3,7 +3,7 @@ import { IRange } from "../../utils/types"
 import { Range } from "monaco-editor"
 import { SideScrollVersionList } from "../components/version-list"
 import { Button } from "../components/button"
-import { VCSVersion } from "../../../app/components/data/snapshot"
+import { VCSTag } from "../../../app/components/data/snapshot"
 
 export class GhostSnapshotHeader extends InlineEditorBanner {
 
@@ -53,7 +53,7 @@ export class GhostSnapshotHeader extends InlineEditorBanner {
         })
     }
 
-    private createVersionList(container: HTMLElement, elements: VCSVersion[]): SideScrollVersionList {
+    private createVersionList(container: HTMLElement, elements: VCSTag[]): SideScrollVersionList {
         const versionDiv = document.createElement("div")
         versionDiv.style.flexGrow = "1"
         versionDiv.style.overflow = "hidden"
