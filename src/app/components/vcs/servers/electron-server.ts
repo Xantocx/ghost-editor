@@ -30,8 +30,8 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     private mapChannels() {
 
-        const startSessionSubscription = ipcMain.handle(ElectronVCSServer.startSessionChannel, async (event, eol: string, options?: SessionOptions) => {
-            return this.startSession(eol, options)
+        const startSessionSubscription = ipcMain.handle(ElectronVCSServer.startSessionChannel, async (event, options: SessionOptions) => {
+            return this.startSession(options)
         })
 
         const closeSessionSubscription = ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, sessionId: SessionId) => {

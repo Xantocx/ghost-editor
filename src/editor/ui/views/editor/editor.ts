@@ -5,7 +5,7 @@ import * as monaco from "monaco-editor"
 import { CodeProvider, View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { SessionData, SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
+import { SessionData, SessionFactory, SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { MetaView, ViewIdentifier } from "../meta-view";
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
@@ -331,7 +331,7 @@ export class GhostEditorModel {
     }
 }
 
-export class GhostEditor extends View implements ReferenceProvider {
+export class GhostEditor extends View implements ReferenceProvider, SessionFactory {
 
     public readonly enableFileManagement: boolean
     public readonly sideViewEnabled:      boolean
@@ -513,7 +513,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             })
 
             const versionManager = this.sideView.addView("versionManager", root => {
-                return new VersionManagerView(root, { synchronizer: this.synchronizer })
+                return new VersionManagerView(root, this, { synchronizer: this.synchronizer })
             }, {
                 updateCallback: (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
                     if (args.languageId) { view.setLanguageId(args.languageId) }
@@ -560,8 +560,8 @@ export class GhostEditor extends View implements ReferenceProvider {
         this.editorModel = undefined
     }
 
-    private async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
-        const info = await this.vcs.startSession(eol, options)
+    public async createSession(options: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
+        const info = await this.vcs.startSession(options)
         return { session: new VCSSession(info, this.vcs), sessionData: info.sessionData }
     }
 
@@ -587,7 +587,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             sessionData = await session.reloadData()
         } else {
             const EOL    = extractEOLSymbol(textModel)
-            const result = await this.createSession(EOL, { filePath, blockId, content: options?.content })
+            const result = await this.createSession({ filePath, blockId, eol: EOL, content: options?.content })
 
             session      = result.session
             sessionData  = result.sessionData

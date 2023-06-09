@@ -12,8 +12,8 @@ function invoke<Type>(channel: string, ...args: any): Promise<Type> {
 
 export const ElectronVCSClient: VCSClient = {
 
-    async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
-        return invoke(ElectronVCSServer.startSessionChannel, eol, options)
+    async startSession(options: SessionOptions): Promise<SessionInfo> {
+        return invoke(ElectronVCSServer.startSessionChannel, options)
     },
 
     async closeSession(sessionId: SessionId): Promise<void> {

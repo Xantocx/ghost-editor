@@ -1,10 +1,12 @@
 import { VCSVersion } from "../../../../app/components/data/snapshot";
+import { VCSSession } from "../../../../app/components/vcs/vcs-provider";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { GhostEditor } from "../editor/editor";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
+import { ViewVersion } from "./version-manager";
 
-export class VersionCodeView<Container extends VersionViewContainer<VersionCodeView<Container>>> extends VersionViewElement<VersionCodeView<Container>, Container> {
+export class VersionCodeView<Container extends VersionViewContainer<ViewVersion, VersionCodeView<Container>>> extends VersionViewElement<ViewVersion, VersionCodeView<Container>, Container> {
 
     public readonly languageId?: string
 
@@ -16,7 +18,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
 
     public get style(): CSSStyleDeclaration { return this.listElement.style }
 
-    public constructor(root: Container, version: VCSVersion, languageId?: string, synchronizer?: Synchronizer) {
+    public constructor(root: Container, version: ViewVersion, session: VCSSession, languageId?: string, synchronizer?: Synchronizer) {
         super(root, version)
         this.languageId = languageId
 
@@ -36,7 +38,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
         this.editorContainer.style.border  = "1px solid black"
         this.listElement.appendChild(this.editorContainer)
 
-        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { enableSideView: true, /*mainViewFlex: 3,*/ languageId: this.languageId, synchronizer })
+        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { session, enableSideView: true, /*mainViewFlex: 3,*/ languageId: this.languageId, synchronizer })
     }
 
     public override remove(): void {
@@ -46,7 +48,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VersionCodeV
     }
 }
 
-export class VersionCodeViewList extends VersionViewContainer<VersionCodeView<VersionCodeViewList>> {
+export class VersionCodeViewList extends VersionViewContainer<ViewVersion, VersionCodeView<VersionCodeViewList>> {
 
     private          languageId?:         string
     private readonly editorSynchronizer?: Synchronizer
@@ -70,7 +72,7 @@ export class VersionCodeViewList extends VersionViewContainer<VersionCodeView<Ve
 
     public setLanguageId(languageId: string): void { this.languageId = languageId }
 
-    protected override createCustomView(version: VCSVersion): VersionCodeView<VersionCodeViewList> {
-        return new VersionCodeView(this as VersionCodeViewList, version, this.languageId, this.editorSynchronizer)
+    protected override createCustomView(version: ViewVersion): VersionCodeView<VersionCodeViewList> {
+        return new VersionCodeView(this as VersionCodeViewList, version, version.session, this.languageId, this.editorSynchronizer)
     }
 }

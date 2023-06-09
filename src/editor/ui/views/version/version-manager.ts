@@ -2,10 +2,18 @@ import { VCSVersion } from "../../../../app/components/data/snapshot"
 import { View } from "../view"
 import { VersionGridView } from "./version-grid-view"
 import { VersionCodeViewList } from "./version-code-view"
-import { IVersionViewContainer } from "./version-view"
+import { IVCSVersionViewContainer } from "./version-view"
 import { Synchronizer } from "../../../utils/synchronizer"
+import { SessionFactory, VCSSession } from "../../../../app/components/vcs/vcs-provider"
 
-export class VersionManagerView extends View implements IVersionViewContainer {
+export interface ViewVersion extends VCSVersion {
+    session: VCSSession
+}
+
+export class VersionManagerView extends View implements IVCSVersionViewContainer {
+
+    private readonly sessionFactory: SessionFactory
+    private readonly versions = new Map<VCSVersion, ViewVersion>()
 
     private readonly previewContainer: HTMLDivElement
     private readonly codeContainer:    HTMLDivElement
@@ -16,8 +24,9 @@ export class VersionManagerView extends View implements IVersionViewContainer {
     public get previewStyle(): CSSStyleDeclaration { return this.previewContainer.style }
     public get codeStyle():    CSSStyleDeclaration { return this.codeContainer.style }
 
-    public constructor(root: HTMLElement, options?: { languageId?: string, synchronizer?: Synchronizer, versions?: VCSVersion[] }) {
+    public constructor(root: HTMLElement, sessionFactory: SessionFactory, options?: { languageId?: string, synchronizer?: Synchronizer, versions?: VCSVersion[] }) {
         super(root)
+        this.sessionFactory = sessionFactory
 
         this.root.style.display = "flex"
         this.root.style.flexDirection = "column"
@@ -65,33 +74,79 @@ export class VersionManagerView extends View implements IVersionViewContainer {
         if (options?.versions) { this.showVersions(options?.versions) }
     }
 
+    public getVersions(): ViewVersion[] { return Array.from(this.versions.values()) }
+
     public setLanguageId(languageId: string): void { this.code.setLanguageId(languageId) }
 
-    public getVersions(): VCSVersion[] { return this.preview.getVersions() }
+    private async createSession(version: VCSVersion): Promise<VCSSession> {
+        const result  = await this.sessionFactory.createSession({ tagId: version.tagId })
+        return result.session
+    }
 
-    public showVersions(versions: VCSVersion[]): void {
-        this.preview.showVersions(versions)
+    private async replaceViewVersions(versions: VCSVersion[]): Promise<void> {
+        this.removeViewVwersions()
+        await Promise.all(versions.map(async version => await this.addViewVersion(version)))
+    }
+
+    private async addViewVersion(version: VCSVersion): Promise<ViewVersion> {
+        const session = await this.createSession(version)
+        const viewVersion = {
+            blockId:             version.blockId,
+            tagId:               version.tagId,
+            name:                version.name,
+            text:                version.text,
+            automaticSuggestion: version.automaticSuggestion,
+            session:             session
+        }
+
+        this.versions.set(version, viewVersion)
+        return viewVersion
+    }
+
+    private async removeViewVersion(version: VCSVersion): Promise<void> {
+        this.versions.get(version)?.session?.close()
+        this.versions.delete(version)
+    }
+
+    private removeViewVwersions(): void {
+        this.getVersions().forEach(version => version.session.close())
+        this.versions.clear()
+    }
+
+    public async showVersions(versions: VCSVersion[]): Promise<void> {
+        this.replaceViewVersions(versions)
+
+        this.preview.showVersions(this.getVersions())
         //this.code.showVersions(versions)
     }
 
-    public addVersion(version: VCSVersion): void {
-        this.preview.addVersion(version)
-        //this.code.addVersion(version)
+    public async addVersion(version: VCSVersion): Promise<void> {
+        const viewVersion = await this.addViewVersion(version)
+        
+        this.preview.addVersion(viewVersion)
+        //this.code.addVersion(viewVersion)
     }
 
     public applyDiff(versions: VCSVersion[]): void {
         const removedVersions = this.preview.applyDiff(versions)
-        removedVersions.forEach(version => this.code.removeVersion(version))
+        removedVersions.forEach(version => {
+            this.code.removeVersion(version)
+            this.removeViewVersion(version)
+        })
     }
 
     public removeVersion(version: VCSVersion): void {
         this.preview.removeVersion(version)
         this.code.removeVersion(version)
+
+        this.removeViewVersion(version)
     }
 
     public removeVersions(): void {
         this.preview.removeVersions()
         this.code.removeVersions()
+
+        this.removeViewVwersions()
     }
 
     public override remove(): void {

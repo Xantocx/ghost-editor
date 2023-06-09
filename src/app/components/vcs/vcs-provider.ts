@@ -12,6 +12,7 @@ export interface SessionOptions {
     filePath?: string
     blockId?:  string
     tagId?:    string
+    eol?:      string
     content?:  string 
 }
 
@@ -32,7 +33,7 @@ export interface SessionInfo {
 export interface VCSProvider {
 
     // file handling
-    startSession(eol: string, options?: SessionOptions): Promise<SessionInfo>
+    startSession(options: SessionOptions): Promise<SessionInfo>
     closeSession(sessionId: SessionId): Promise<void>
 
     updatePath(sessionId: SessionId, filePath: string): Promise<void>
@@ -61,7 +62,7 @@ export interface VCSProvider {
 
 export abstract class BasicVCSProvider implements VCSProvider {
 
-    public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
+    public async startSession(options: SessionOptions): Promise<SessionInfo> {
         throw new Error("Method not implemented.")
     }
 
@@ -143,9 +144,14 @@ export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServ
 
 // client-side interface which may call server end-points
 export interface VCSClient extends VCSProvider {}
-export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {
-    public async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
-        const info = await  this.startSession(eol, options)
+
+export interface SessionFactory {
+    createSession(options: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }>
+}
+
+export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient, SessionFactory {
+    public async createSession(options: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
+        const info = await this.startSession(options)
         return { session: new VCSSession(info, this), sessionData: info.sessionData }
     }
 }
@@ -260,8 +266,8 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSProv
         this.adapter = adapter
     }
 
-    public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
-        return this.adapter.startSession(eol, options)
+    public async startSession(options: SessionOptions): Promise<SessionInfo> {
+        return this.adapter.startSession(options)
     }
 
     public async closeSession(sessionId: SessionId): Promise<void> {

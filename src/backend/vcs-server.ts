@@ -34,11 +34,12 @@ export class GhostVCSServer extends BasicVCSServer {
         this.browserWindow?.webContents.send("update-vcs-preview", block.id, block.getCurrentText(), versionCounts)
     }
 
-    public async startSession(eol: string, options?: SessionOptions): Promise<SessionInfo> {
+    public async startSession(options?: SessionOptions): Promise<SessionInfo> {
         const filePath   = options?.filePath
         const filePathId = this.resources.getBlockIdForFilePath(filePath)
         const blockId    = options?.blockId
         const tagId      = options?.tagId
+        const eol        = options?.eol
         const content    = options?.content
 
         const tag = tagId ? this.resources.getTag(tagId) : undefined
@@ -62,6 +63,7 @@ export class GhostVCSServer extends BasicVCSServer {
             session = Session.createFromBlock(block)
             if (tag) { tag.applyTo(block) }
         } else {
+            if (!eol) { throw new Error("The provided options do not allow for the retrieval of an existing Block. To create a new Block, please also provide the EOL sequence!") }
             session = Session.createWithNewBlock(this.resources, eol, { filePath, content })
         }
 

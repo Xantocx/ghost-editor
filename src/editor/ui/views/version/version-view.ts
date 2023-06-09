@@ -3,40 +3,40 @@ import { Synchronizer } from "../../../utils/synchronizer";
 import { Disposable } from "../../../utils/types";
 import { View } from "../view";
 
-export abstract class VersionView extends View {
+export abstract class VersionView<Version> extends View {
     
-    public readonly version:   VCSVersion
+    public readonly version: Version
 
-    public constructor(root: HTMLElement, version: VCSVersion, synchronizer?: Synchronizer) {
+    public constructor(root: HTMLElement, version: Version, synchronizer?: Synchronizer) {
         super(root, synchronizer)
         this.version = version
     }
 }
 
-export abstract class VersionViewElement<CustomView extends VersionViewElement<CustomView, Container>, Container extends VersionViewContainer<CustomView>> extends VersionView {
+export abstract class VersionViewElement<Version, CustomView extends VersionViewElement<Version, CustomView, Container>, Container extends VersionViewContainer<Version, CustomView>> extends VersionView<Version> {
 
     public readonly container: Container
 
-    public constructor(root: Container, version: VCSVersion) {
+    public constructor(root: Container, version: Version) {
         super(root.container, version)
     }
 }
 
-export interface IVersionViewContainer extends View {
-    getVersions(): VCSVersion[]
-    showVersions(versions: VCSVersion[]): void
-    addVersion(version: VCSVersion): void
-    applyDiff(versions: VCSVersion[]): void
-    removeVersion(version: VCSVersion): void
+export interface IVersionViewContainer<Version> extends View {
+    getVersions(): Version[]
+    showVersions(versions: Version[]): void
+    addVersion(version: Version): void
+    applyDiff(versions: Version[]): void
+    removeVersion(version: Version): void
     removeVersions(): void
 }
 
-export abstract class VersionViewContainer<CustomView extends VersionViewElement<CustomView, VersionViewContainer<CustomView>>> extends View implements IVersionViewContainer {
+export abstract class VersionViewContainer<Version, CustomView extends VersionViewElement<Version, CustomView, VersionViewContainer<Version, CustomView>>> extends View implements IVersionViewContainer<Version> {
 
     public readonly container: HTMLElement
-    public readonly versions = new Map<VCSVersion, CustomView>()
+    public readonly versions = new Map<Version, CustomView>()
 
-    private readonly versionsChangedCallbacks: { (versions: VCSVersion[]): void }[] = []
+    private readonly versionsChangedCallbacks: { (versions: Version[]): void }[] = []
 
     public get style(): CSSStyleDeclaration { return this.container.style }
 
@@ -45,7 +45,7 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         this.container = container
     }
 
-    public getVersions(): VCSVersion[] { return Array.from(this.versions.keys()) }
+    public getVersions(): Version[]    { return Array.from(this.versions.keys()) }
     public getViews():    CustomView[] { return Array.from(this.versions.values()) }
 
     private versionsChanged(): void {
@@ -53,11 +53,11 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         this.versionsChangedCallbacks.forEach(callback => callback(versions))
     }
 
-    protected createCustomView(version: VCSVersion): CustomView {
+    protected createCustomView(version: Version): CustomView {
         throw new Error("This method should be implemented by you.")
     }
 
-    public showVersions(versions: VCSVersion[]): void {
+    public showVersions(versions: Version[]): void {
         this.removeVersions()
         versions.forEach(version => {
             const codeView = this.createCustomView(version)
@@ -66,7 +66,7 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         this.versionsChanged()
     }
 
-    public addVersion(version: VCSVersion): void {
+    public addVersion(version: Version): void {
         if (this.versions.has(version)) { return }
 
         const codeView = this.createCustomView(version)
@@ -75,7 +75,7 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
     }
 
     // returns removed versions
-    public applyDiff(versions: VCSVersion[]): VCSVersion[] {
+    public applyDiff(versions: Version[]): Version[] {
         const currentVersions = this.getVersions()
 
         const removedVersions = currentVersions.filter(version => {
@@ -90,7 +90,7 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         return removedVersions
     }
 
-    public removeVersion(version: VCSVersion): void {
+    public removeVersion(version: Version): void {
         this.versions.get(version)?.remove()
         this.versions.delete(version)
         this.versionsChanged()
@@ -102,7 +102,7 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         this.versionsChanged()
     }
 
-    public onVersionsChange(callback: (versions: VCSVersion[]) => void): Disposable {
+    public onVersionsChange(callback: (versions: Version[]) => void): Disposable {
         this.versionsChangedCallbacks.push(callback)
 
         const parent = this
@@ -121,3 +121,8 @@ export abstract class VersionViewContainer<CustomView extends VersionViewElement
         super.remove()
     }
 }
+
+export class VCSVersionView extends VersionView<VCSVersion> {}
+export class VCSVersionViewElement<CustomView extends VCSVersionViewElement<CustomView, Container>, Container extends VCSVersionViewContainer<CustomView>> extends VersionViewElement<VCSVersion, CustomView, Container> {}
+export class VCSVersionViewContainer<CustomView extends VCSVersionViewElement<CustomView, VCSVersionViewContainer<CustomView>>> extends VersionViewContainer<VCSVersion, CustomView> {}
+export interface IVCSVersionViewContainer extends IVersionViewContainer<VCSVersion> {}

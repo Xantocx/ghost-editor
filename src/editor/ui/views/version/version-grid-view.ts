@@ -1,8 +1,9 @@
 import { VCSVersion } from "../../../../app/components/data/snapshot"
 import { Button, P5JSPreviewToggleButton } from "../../components/button"
 import { VersionViewContainer } from "./version-view"
+import { ViewVersion } from "./version-manager"
 
-export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButton<VersionGridView>> {
+export class VersionGridView extends VersionViewContainer<ViewVersion, P5JSPreviewToggleButton<ViewVersion, VersionGridView>> {
 
     private readonly onClick: (version: VCSVersion, selected: boolean) => void
 
@@ -23,7 +24,7 @@ export class VersionGridView extends VersionViewContainer<P5JSPreviewToggleButto
         this.style.overflow            = "auto"
     }
 
-    protected override createCustomView(version: VCSVersion): P5JSPreviewToggleButton<VersionGridView> {
+    protected override createCustomView(version: ViewVersion): P5JSPreviewToggleButton<ViewVersion, VersionGridView> {
         const preview = Button.p5jsPreviewToggleButton(this as VersionGridView, version, (version, selected) => this.onClick(version, selected))
         preview.style.width  = "100%"
         preview.style.height = "100%"

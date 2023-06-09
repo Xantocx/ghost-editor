@@ -49,11 +49,11 @@ export class Button extends SubscriptionManager {
         return new VersionButton(root, version, onClick)
     }
 
-    public static p5jsPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, provider: CodeProvider, onClick: (button: Button) => void, synchronizer?: Synchronizer): P5JSPreviewButton<Container> {
+    public static p5jsPreviewButton<Version extends VCSVersion, Container extends VersionViewContainer<Version, P5JSPreviewButton<Version, Container>>>(root: Container, version: Version, provider: CodeProvider, onClick: (button: Button) => void, synchronizer?: Synchronizer): P5JSPreviewButton<Version, Container> {
         return new P5JSPreviewButton(root, version, provider, { onClick, synchronizer })
     }
 
-    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, provider: CodeProvider, onSelect: (version: VCSVersion, selected: boolean) => void, synchronizer?: Synchronizer): P5JSPreviewToggleButton<Container> {
+    public static p5jsPreviewToggleButton<Version extends VCSVersion, Container extends VersionViewContainer<Version, P5JSPreviewToggleButton<Version, Container>>>(root: Container, version: Version, provider: CodeProvider, onSelect: (version: VCSVersion, selected: boolean) => void, synchronizer?: Synchronizer): P5JSPreviewToggleButton<Version, Container> {
         return new P5JSPreviewToggleButton(root, version, provider, undefined, { onSelect, synchronizer })
     }
 
@@ -146,15 +146,15 @@ export class VersionButton extends TextButton {
 }
 
 
-export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>> extends Button implements VersionViewElement<P5JSPreviewButton<Container>, VersionViewContainer<P5JSPreviewButton<Container>>> {
+export class P5JSPreviewButton<Version extends VCSVersion, Container extends VersionViewContainer<Version, P5JSPreviewButton<Version, Container>>> extends Button implements VersionViewElement<Version, P5JSPreviewButton<Version, Container>, VersionViewContainer<Version, P5JSPreviewButton<Version, Container>>> {
 
     public  readonly container: Container
-    public  readonly version:  VCSVersion
+    public  readonly version:  Version
     private readonly preview:  P5JSPreview
 
     private readonly namePadding = 5
 
-    constructor(container: Container, version: VCSVersion, provider: CodeProvider, options?: { onClick?: (button: Button) => void, synchronizer?: Synchronizer }) {
+    constructor(container: Container, version: Version, provider: CodeProvider, options?: { onClick?: (button: Button) => void, synchronizer?: Synchronizer }) {
         super(container.container, options)
         this.version = version
 
@@ -200,7 +200,7 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPrevie
 }
 
 
-export class P5JSPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>> extends P5JSPreviewButton<Container> {
+export class P5JSPreviewToggleButton<Version extends VCSVersion, Container extends VersionViewContainer<Version, P5JSPreviewToggleButton<Version, Container>>> extends P5JSPreviewButton<Version, Container> {
 
     private readonly colors?: {selected?: string, default?: string}
 
@@ -220,7 +220,7 @@ export class P5JSPreviewToggleButton<Container extends VersionViewContainer<P5JS
     }
 
     constructor(container: Container, 
-                version: VCSVersion,
+                version: Version,
                 provider: CodeProvider,
                 colors?: {selected?: string, default?: string}, 
                 options?: {
