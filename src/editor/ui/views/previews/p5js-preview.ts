@@ -1,3 +1,4 @@
+import { throttle } from "../../../utils/helpers";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
 import { Disposable } from "../../../utils/types";
 import { uuid } from "../../../utils/uuid";
@@ -13,7 +14,8 @@ export class P5JSPreview extends CodeProviderPreview {
 
     private readonly container: HTMLDivElement
 
-    private currentCode?: string
+    private          currentCode?: string
+    private readonly renderThrottled: () => Promise<void> | undefined
 
     private iframeVisible = false
     private iframe:       HTMLIFrameElement
@@ -37,10 +39,14 @@ export class P5JSPreview extends CodeProviderPreview {
 
     constructor(root: HTMLElement, options?: { provider?: CodeProvider, padding?: number, minWidth?: number, minHeight?: number, errorMessageColor?: string, synchronizer?: Synchronizer }) {
         super(root, options)
+
         this.padding           = options?.padding           ? options.padding           : 0
         this.minWidth          = options?.minWidth          ? options.minWidth          : 50
         this.minHeight         = options?.minHeight         ? options.minHeight         : 50
         this.errorMessageColor = options?.errorMessageColor ? options.errorMessageColor : "black"
+
+        // TODO: Test debounce timing
+        this.renderThrottled = throttle(async () => { await this.render() }, 500)
 
         this.container = document.createElement("div")
         this.style.position  = "relative"
@@ -332,7 +338,7 @@ export class P5JSPreview extends CodeProviderPreview {
     }
 
     public override async sync(trigger: Synchronizable): Promise<void> {
-        await this.render()
+        await this.renderThrottled()
     }
 
     public override async render(): Promise<void> {
