@@ -32,6 +32,7 @@ export class Synchronizer {
 
     public sync(trigger: Synchronizable): void {
         if (!this.objects.includes(trigger)) { throw new Error("Only Synchronizables registered with a Synchronizer can trigger a sync!") }
+        console.log(`Syncing: ${this.objects.length - 1}`)
         this.objects.forEach(target => {
             if (target !== trigger) { target.sync(trigger) }
         })

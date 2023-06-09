@@ -495,18 +495,25 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
             const vcsPreview = this.sideView.addView("vcs", root => {
                 return new VCSPreview(root, this.editorModel)
-            }, { 
+            }, {
                 updateCallback: (view: VCSPreview, args: { editorModel: GhostEditorModel, vcsContent?: string }) => {
                     view.updateEditor(args.editorModel, args.vcsContent)
                 }
             })
 
+            // TODO: showing/hiding mechanic still kinda buggy with iFrame...
             const p5jsPreview = this.sideView.addView("p5js", root => {
                 return new P5JSPreview(root, { padding: 5, synchronizer: this.synchronizer })
             }, {
+                showCallback(view: P5JSPreview) {
+                    //view.showIFrame()
+                },
                 updateCallback: (view: P5JSPreview, provider: CodeProvider) => {
                     view.update(provider)
-                }
+                },
+                hideCallback(view: P5JSPreview) {
+                    view.hideIFrame()
+                },
             })
 
             const versionManager = this.sideView.addView("versionManager", root => {
@@ -516,7 +523,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
                     if (args.languageId) { view.setLanguageId(args.languageId) }
                     if (args.versions)   { view.applyDiff(args.versions) }
                 },
-                resetCallback: (view: VersionManagerView) => {
+                hideCallback: (view: VersionManagerView) => {
                     view.removeVersions()
                 }
             })

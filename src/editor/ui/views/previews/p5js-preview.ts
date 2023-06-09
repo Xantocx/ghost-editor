@@ -311,7 +311,7 @@ export class P5JSPreview extends CodeProviderPreview {
         })
     }
 
-    private hideIFrame(): void {
+    public hideIFrame(): void {
         if (this.iframeVisible) {
             this.resizeObserver?.disconnect()
             this.iFrameResizer?.close()
@@ -359,7 +359,7 @@ export class P5JSPreview extends CodeProviderPreview {
     }
 
     public override remove(): void {
-        this.showIFrame()
+        this.hideIFrame()
         this.errorMessage.remove()
         super.remove()
     }
