@@ -1,5 +1,7 @@
 import { Synchronizer } from "../../utils/synchronizer"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
+import { MonacoModel } from "../../utils/types"
+import { VCSSession } from "../../../app/components/vcs/vcs-provider"
 
 export abstract class View extends SubscriptionManager {
 
@@ -27,5 +29,30 @@ export abstract class CodeView extends View {
     public update(code: string): void {
         this.code = code
         this.render()
+    }
+}
+
+export interface CodeProvider {
+    getCode(): Promise<string>
+}
+
+export abstract class CodeProviderView extends View {
+
+    protected provider?: CodeProvider
+
+    constructor(root: HTMLElement, options?: { provider?: CodeProvider, synchronizer?: Synchronizer }) {
+        super(root, options?.synchronizer)
+        this.provider = options?.provider
+    }
+
+    protected async getCode(): Promise<string | undefined> { return await this.provider?.getCode() }
+
+    public update(provider: CodeProvider): void {
+        this.provider = provider
+        this.render()
+    }
+
+    public render(): void {
+        throw new Error("Method is not implemented!")
     }
 }

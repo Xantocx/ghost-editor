@@ -52,8 +52,15 @@ export class BlockIdManager extends GhostIdManager {
         return this.formatId(`file/${filePath}`)
     }
 
-    public getFilePathId(filePath: string): BlockId | undefined {
+    public getIdForFilePath(filePath: string): BlockId | undefined {
         return this.filePaths.get(filePath)
+    }
+
+    public getFilePathForId(id: BlockId): string | undefined {
+        for (let [filePath, blockId] of this.filePaths) {
+            if (blockId === id) { return filePath }
+        }
+        return undefined
     }
 
     public newIdFromFilePath(filePath: string): BlockId {

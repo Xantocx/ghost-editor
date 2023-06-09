@@ -184,11 +184,6 @@ export class Line extends LinkedListNode<Line>  {
         const onlyTrailingWhitespaceAdded = content.trimEnd()          === this.currentContent.trimEnd()
         const mergeWhitespace             = previousContent !== undefined && previousContentEqual && onlyTrailingWhitespaceAdded
 
-        console.log("--------------")
-        console.log("'" + this.currentContent + "'")
-        console.log("'" + content + "'")
-        console.log(mergeWhitespace)
-
         if      (mergeWhitespace)                           { return this.history.updateCurrentVersion(content) }
         else if (this.block.getLastModifiedLine() === this) { return this.history.updateCurrentVersion(content) }
 

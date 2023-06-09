@@ -22,8 +22,9 @@ interface LineRange {
 
 export abstract class Block extends LinkedList<Line> implements Resource {
 
-    public manager: ResourceManager
-    public id:      BlockId
+    public     manager:    ResourceManager
+    public     id:         BlockId
+    public get filePath(): string | undefined { return this.manager.getFilePathForBlock(this) }
 
     public isDeleted: boolean = false
 
@@ -43,6 +44,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public set firstLine(line: Line | undefined) { this.first = line }
     public set lastLine (line: Line | undefined) { this.last  = line }
 
+    public get isRoot():   boolean { return this.parent === undefined }
     public get isCloned(): boolean { return this.origin !== undefined }
 
 
@@ -90,7 +92,19 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
     public getLineContent(): LineContent[] { return this.getActiveLines().map(line => line.currentContent) }
     public getCurrentText(): string        { return this.getLineContent().join(this.eol) }
-    public getFullText():    string        { return this.parent ? this.parent.getFullText() : this.getCurrentText() }
+
+    public getFullText(selectedLines?: Map<LineNode, Line>): string {
+        if (this.isRoot && !selectedLines) { return this.getCurrentText() }
+
+        selectedLines = selectedLines ? selectedLines : new Map()
+        this.forEach(line => { if (!selectedLines.has(line.node)) { selectedLines.set(line.node, line) } })
+
+        if (this.parent) {
+            return this.parent.getFullText(selectedLines)
+        } else {
+            return this.map(line => selectedLines.get(line.node)!.currentContent).join(this.eol)
+        }
+    }
     
     public getVersions():     LineNodeVersion[] { return this.flatMap(line => line.history.getVersions()) }
     public getVersionCount(): number            { return this.getVersions().length }
@@ -517,7 +531,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
         return {
             blockId:             this.id,
-            uuid:                tag.id,
+            tagId:                tag.id,
             name:                `Version ${this.tags.size}`,
             text:                this.getFullText(),
             automaticSuggestion: false

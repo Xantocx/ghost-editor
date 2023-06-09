@@ -1,9 +1,10 @@
+import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
 import { Disposable } from "../../../utils/types";
 import { uuid } from "../../../utils/uuid";
-import { CodePreview } from "./preview";
+import { CodeProvider, CodeProviderPreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
 
-export class P5JSPreview extends CodePreview {
+export class P5JSPreview extends CodeProviderPreview {
 
     private static p5jsScript          = new URL("./libs/p5js/p5.min.js", document.baseURI).href
     private static iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
@@ -25,7 +26,7 @@ export class P5JSPreview extends CodePreview {
 
     private get id(): string { return `p5js-preview-${this.uuid}` }
 
-    private get html(): string {
+    private async getHtml(): Promise<string> {
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -95,7 +96,7 @@ export class P5JSPreview extends CodePreview {
                         for (let i = 0; i < p5Canvas.length; i++) { p5Canvas[i].remove() }
                     }
 
-                    const code = ${JSON.stringify(this.code)}
+                    const code = ${JSON.stringify(await this.getCode())}
 
                     if (!code.includes("setup") || !code.includes("draw")) {
                         createErrorMessage({ message: "Your code must include a 'setup' and a 'draw' function to be rendered in this P5JS preview.", stack: "" })
@@ -158,8 +159,8 @@ export class P5JSPreview extends CodePreview {
         `
     }
 
-    private get htmlUrl(): string {
-        const htmlBlob = new Blob([this.html], { type: 'text/html' });
+    private async getHtmlUrl(): Promise<string> {
+        const htmlBlob = new Blob([await this.getHtml()], { type: 'text/html' });
         return URL.createObjectURL(htmlBlob);
     }
 
@@ -170,8 +171,8 @@ export class P5JSPreview extends CodePreview {
     private readonly minWidth:  number
     private readonly minHeight: number
 
-    constructor(root: HTMLElement, options?: { code?: string, padding?: number, minWidth?: number, minHeight?: number, errorMessageColor?: string }) {
-        super(root, options?.code)
+    constructor(root: HTMLElement, options?: { provider?: CodeProvider, padding?: number, minWidth?: number, minHeight?: number, errorMessageColor?: string, synchronizer?: Synchronizer }) {
+        super(root, options)
         this.padding           = options?.padding           ? options.padding           : 0
         this.minWidth          = options?.minWidth          ? options.minWidth          : 50
         this.minHeight         = options?.minHeight         ? options.minHeight         : 50
@@ -208,7 +209,7 @@ export class P5JSPreview extends CodePreview {
         this.errorMessage.style.color     = this.errorMessageColor
         this.errorMessage.style.border    = `1px solid ${this.errorMessageColor}`
 
-        if (this.code) { this.render() }
+        if (this.provider) { this.render() }
     }
 
     private padValue(value: number): number {
@@ -328,8 +329,14 @@ export class P5JSPreview extends CodePreview {
         }
     }
 
+    public override async sync(trigger: Synchronizable): Promise<void> {
+        await this.render()
+    }
+
     public override async render(): Promise<void> {
-        this.iframe.src = this.htmlUrl
+        if (!this.provider) { return }
+
+        this.iframe.src = await this.getHtmlUrl()
 
         if (this.hasErrorMessage) {
             this.errorMessage.remove()

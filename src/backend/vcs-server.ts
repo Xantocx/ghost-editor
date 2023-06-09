@@ -65,7 +65,7 @@ export class GhostVCSServer extends BasicVCSServer {
             session = Session.createWithNewBlock(this.resources, eol, { filePath, content })
         }
 
-        return { sessionId: session.id, blockId: session.blockId, sessionData: session.getData() }
+        return { sessionId: session.id, blockId: session.blockId, filePath: block.filePath, sessionData: session.getData() }
     }
 
     public async closeSession(sessionId: SessionId): Promise<void> {

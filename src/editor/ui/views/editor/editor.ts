@@ -2,7 +2,7 @@ import "../../../utils/environment"
 
 import * as monaco from "monaco-editor"
 
-import { View } from "../view";
+import { CodeProvider, View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
 import { SessionData, SessionOptions, SnapshotUUID, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
@@ -16,7 +16,6 @@ import { VersionManagerView } from "../version/version-manager";
 import { VCSSnapshotData, VCSVersion } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
-import { uuid } from "../../../utils/uuid";
 import { extractEOLSymbol } from "../../../utils/helpers";
 
 class GhostEditorSnapshotManager {
@@ -197,6 +196,7 @@ class GhostEditorInteractionManager extends SubscriptionManager {
         // side view keybindings
         if (editor.sideViewEnabled) {
 
+            /*
             // update P5JS Preview
             this.keybindings.push(core.addAction({
                 id: "p5-preview",
@@ -214,6 +214,7 @@ class GhostEditorInteractionManager extends SubscriptionManager {
                     editor.sideView!.update(editor.sideViewIdentifiers!.p5js, editor!.text)
                 },
             }))
+            */
 
             // show versions in side view
             this.keybindings.push(core.addAction({
@@ -315,8 +316,8 @@ class GhostEditorInteractionManager extends SubscriptionManager {
 
 export class GhostEditorModel {
 
-    public readonly textModel:   MonacoModel
-    public readonly session: VCSSession
+    public readonly textModel: MonacoModel
+    public readonly session:   VCSSession
 
     public get uri(): URI { return this.textModel.uri }
 
@@ -359,7 +360,7 @@ export class GhostEditor extends View implements ReferenceProvider {
     // accessors for editor meta info and content
     public get uri():  URI           { return this.getTextModel().uri }
     public get path(): string | null { return this.uri.scheme === 'file' ? this.uri.fsPath : null }
-    public get text(): string        { return this.core.getValue() }
+    public get code(): string        { return this.core.getValue() }
 
     // accessors for useful config info of the editor
     public get firstVisibleLine(): number { return this.core.getVisibleRanges()[0].startLineNumber }
@@ -438,6 +439,7 @@ export class GhostEditor extends View implements ReferenceProvider {
 
         if (this.sideViewEnabled) {
             this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
+            this.sideView!.update(this.sideViewIdentifiers!.p5js, session)
             this.sideView!.update(this.sideViewIdentifiers!.versionManager, { languageId: textModel.getLanguageId() })
         }
     }
@@ -503,10 +505,10 @@ export class GhostEditor extends View implements ReferenceProvider {
             })
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
-                return new P5JSPreview(root, { padding: 5 })
+                return new P5JSPreview(root, { padding: 5, synchronizer: this.synchronizer })
             }, {
-                updateCallback: (view: P5JSPreview, code: string) => {
-                    view.update(code)
+                updateCallback: (view: P5JSPreview, provider: CodeProvider) => {
+                    view.update(provider)
                 }
             })
 
@@ -523,7 +525,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             })
 
             this.sideViewIdentifiers = this.sideView.identifiers
-            this.defaultSideView     = this.sideViewIdentifiers.vcs
+            this.defaultSideView     = this.sideViewIdentifiers.p5js
             this.showDefaultSideView()
         }
     }
@@ -559,11 +561,11 @@ export class GhostEditor extends View implements ReferenceProvider {
     }
 
     private async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
-        const result = await this.vcs.startSession(eol, options)
-        return { session: new VCSSession(result.sessionId, result.blockId, this.vcs), sessionData: result.sessionData }
+        const info = await this.vcs.startSession(eol, options)
+        return { session: new VCSSession(info, this.vcs), sessionData: info.sessionData }
     }
 
-    public async load(options?: { uri?: URI, filePath?: string, blockId?: string, content?: string }): Promise<void> {
+    public async load(options?: { uri?: URI, filePath?: string, blockId?: string, content?: string, session?: VCSSession }): Promise<void> {
         this.unload()
 
         const uri      = options?.uri      ? options.uri      : undefined
@@ -576,11 +578,22 @@ export class GhostEditor extends View implements ReferenceProvider {
         if (textModel) { textModel.setValue(content) }
         else           { textModel = monaco.editor.createModel(content, this.languageId, uri) }
 
-        const EOL         = extractEOLSymbol(textModel)
-        const result      = await this.createSession(EOL, { filePath, blockId, content: options?.content })
-        const sessionData = result.sessionData
+        let session:     VCSSession
+        let sessionData: SessionData
 
-        this.createEditorModel(textModel, result.session, sessionData.content)
+        if (options?.session) {
+            if (!options.session.validateSession({ filePath, blockId })) { throw new Error("Provided Session is not compatiple with the provided file path or BlockID!") }
+            session     = options.session
+            sessionData = await session.reloadData()
+        } else {
+            const EOL    = extractEOLSymbol(textModel)
+            const result = await this.createSession(EOL, { filePath, blockId, content: options?.content })
+
+            session      = result.session
+            sessionData  = result.sessionData
+        }
+
+        this.createEditorModel(textModel, session!, sessionData.content)
         this.snapshotManager.replaceSnapshots(sessionData.snapshots)
     }
 
@@ -597,7 +610,7 @@ export class GhostEditor extends View implements ReferenceProvider {
         // TODO: make sure files without a path can be saved at new path!
         if (this.enableFileManagement) {
             if (this.path) {
-                window.ipcRenderer.invoke('save-file', { path: this.path, content: this.text })
+                window.ipcRenderer.invoke('save-file', { path: this.path, content: this.code })
             } else {
                 throw new Error("Currently, we do not support choosing a filename for new files. Sorry.")
                 //if (this.path) this.vcs.updatePath(this.path)

@@ -56,7 +56,7 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
             this.editor.activeSnapshot = this.snapshot
         })
 
-        this.slider    = new Slider(container, this.snapshot.snapshot.uuid, 0, this.versionCount - 1, this.versionIndex)
+        this.slider = new Slider(container, this.snapshot.snapshot.uuid, 0, this.versionCount - 1, this.versionIndex)
     }
 
     public updateSlider(): void {

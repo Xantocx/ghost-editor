@@ -71,8 +71,6 @@ export class ResourceManager {
         else                         { throw new Error("This ResourceManager does not contain the Block required for this Tag!") }
     }
 
-    //public blockIdMatchesFilePath(blockId: BlockId, filePath: string): boolean { return blockId === this.filePathToBlockId(filePath) }
-
     public hasSession(sessionId: SessionId): boolean { return this.sessions.has(sessionId) }
     public hasBlock(blockId: BlockId):       boolean { return this.blocks.has(blockId) }
     public hasTag(tagId: BlockId):           boolean { return this.tags.has(tagId) }
@@ -86,8 +84,12 @@ export class ResourceManager {
         return sessions.find(session => session.blockId === blockId) !== undefined
     }
 
-    public getBlockIdForFilePath(filePath: string): BlockId {
-        return this.blockIdManager.getFilePathId(filePath)
+    public getBlockIdForFilePath(filePath: string): BlockId | undefined {
+        return this.blockIdManager.getIdForFilePath(filePath)
+    }
+
+    public getFilePathForBlock(block: Block): string | undefined {
+        return this.blockIdManager.getFilePathForId(block.id)
     }
 
     public hasBlockForFilePath(filePath: string): boolean {

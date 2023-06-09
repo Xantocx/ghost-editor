@@ -1,11 +1,12 @@
 import { IRange } from "monaco-editor"
 import { VCSSnapshotData, VCSVersion } from "../data/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
+import { CodeProvider } from "../../../editor/ui/views/view"
 
 export type Text = string
 export type SnapshotUUID = string
-export type VersionUUID  = string
 export type SessionId    = string
+export type TagId        = string
 
 export interface SessionOptions { 
     filePath?: string
@@ -15,13 +16,15 @@ export interface SessionOptions {
 }
 
 export interface SessionData {
-    content:   string,
-    snapshots: VCSSnapshotData[]
+    content:     string,
+    fullContent: string,
+    snapshots:   VCSSnapshotData[]
 }
 
 export interface SessionInfo { 
     sessionId:   SessionId
     blockId:     string
+    filePath?:   string
     sessionData: SessionData
 }
 
@@ -142,21 +145,34 @@ export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServ
 export interface VCSClient extends VCSProvider {}
 export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {
     public async createSession(eol: string, options?: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
-        const result = await  this.startSession(eol, options)
-        return { session: new VCSSession(result.sessionId, result.blockId, this), sessionData: result.sessionData }
+        const info = await  this.startSession(eol, options)
+        return { session: new VCSSession(info, this), sessionData: info.sessionData }
     }
 }
 
-export class VCSSession {
+export class VCSSession implements CodeProvider {
 
     public readonly sessionId: SessionId
     public readonly blockId:   string
+    public readonly filePath?: string
     public readonly client:    VCSClient
 
-    public constructor(sessionId: SessionId, blockId: string, client: VCSClient) {
-        this.sessionId = sessionId
-        this.blockId   = blockId
+    public constructor(info: SessionInfo, client: VCSClient) {
+        this.sessionId = info.sessionId
+        this.blockId   = info.blockId
+        this.filePath  = info.filePath
         this.client    = client
+    }
+
+    public validateSession(options: { sessionId?: SessionId, blockId?: string, filePath?: string }): boolean {
+        return (!options.sessionId || this.sessionId === options.sessionId) &&
+               (!options.blockId   || this.blockId   === options.blockId)   &&
+               (!options.filePath  || this.filePath  === options.filePath)
+    }
+
+    public async getCode(): Promise<string> {
+        const data = await this.reloadData()
+        return data.fullContent
     }
 
     public async updatePath(filePath: string): Promise<void> {

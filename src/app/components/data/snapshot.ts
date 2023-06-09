@@ -1,5 +1,5 @@
 import { IRange, Range } from "../utils/range"
-import { SnapshotUUID, Text, VCSProvider, VCSSession, VersionUUID } from "../vcs/vcs-provider"
+import { SnapshotUUID, Text, VCSProvider, VCSSession, TagId } from "../vcs/vcs-provider"
 import { RangeProvider } from "../../../editor/utils/line-locator"
 
 export interface VCSSnapshotData {
@@ -11,10 +11,10 @@ export interface VCSSnapshotData {
 }
 
 export interface VCSVersion {
-    blockId: string
-    uuid: VersionUUID
-    name: string
-    text: Text
+    blockId:             string
+    tagId:               TagId
+    name:                string
+    text:                Text
     automaticSuggestion: boolean
 }
 

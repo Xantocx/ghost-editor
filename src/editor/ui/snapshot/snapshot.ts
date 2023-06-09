@@ -261,7 +261,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public async update(manualUpdate?: boolean): Promise<void> {
         const snapshot = await this.session.getSnapshot(this.uuid)
-        console.log(snapshot)
         
         this.snapshot = VCSSnapshot.create(this.session, snapshot)
         this.locator.rangeProvider = this.snapshot

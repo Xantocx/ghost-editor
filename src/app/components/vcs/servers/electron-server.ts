@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { VCSAdapter, AdaptableVCSServer, VersionUUID, SnapshotUUID, Text, SessionOptions, SessionId } from "../vcs-provider"
+import { VCSAdapter, AdaptableVCSServer, TagId, SnapshotUUID, Text, SessionOptions, SessionId } from "../vcs-provider"
 import { IRange } from "../../../../editor/utils/types"
 import { VCSSnapshotData } from "../../data/snapshot"
 import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
@@ -90,7 +90,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
             return this.applyChanges(sessionId, changes)
         })
 
-        const saveCurrentVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentVersionChannel, async (event, sessionId: SessionId, uuid: VersionUUID) => {
+        const saveCurrentVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentVersionChannel, async (event, sessionId: SessionId, uuid: TagId) => {
             return this.saveCurrentVersion(sessionId, uuid)
         })
     }

@@ -3,6 +3,8 @@ import { Disposable } from "../../utils/types"
 import { VersionViewContainer, VersionViewElement } from "../views/version/version-view"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { P5JSPreview } from "../views/previews/p5js-preview"
+import { CodeProvider } from "../views/view"
+import { Synchronizer } from "../../utils/synchronizer"
 
 export class Button extends SubscriptionManager {
 
@@ -47,12 +49,12 @@ export class Button extends SubscriptionManager {
         return new VersionButton(root, version, onClick)
     }
 
-    public static p5jsPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, onClick?: (button: Button) => void): P5JSPreviewButton<Container> {
-        return new P5JSPreviewButton(root, version, onClick)
+    public static p5jsPreviewButton<Container extends VersionViewContainer<P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, provider: CodeProvider, onClick: (button: Button) => void, synchronizer?: Synchronizer): P5JSPreviewButton<Container> {
+        return new P5JSPreviewButton(root, version, provider, { onClick, synchronizer })
     }
 
-    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, onSelect?: (version: VCSVersion, selected: boolean) => void): P5JSPreviewToggleButton<Container> {
-        return new P5JSPreviewToggleButton(root, version, undefined, onSelect)
+    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, provider: CodeProvider, onSelect: (version: VCSVersion, selected: boolean) => void, synchronizer?: Synchronizer): P5JSPreviewToggleButton<Container> {
+        return new P5JSPreviewToggleButton(root, version, provider, undefined, { onSelect, synchronizer })
     }
 
     public readonly root: HTMLElement
@@ -64,8 +66,8 @@ export class Button extends SubscriptionManager {
         return this.button.style
     }
 
-    constructor(root: HTMLElement, onClick?: (button: Button) => void) {
-        super()
+    constructor(root: HTMLElement, options?: { onClick?: (button: Button) => void, synchronizer?: Synchronizer }) {
+        super(options?.synchronizer)
 
         this.root = root
         this.button = document.createElement("button")
@@ -80,7 +82,7 @@ export class Button extends SubscriptionManager {
         this.style.cursor = "pointer"
 
         this.button.onclick = () => { this.onClickCallbacks.forEach(callback => callback(this)) }
-        if (onClick) { this.onClick(onClick) }
+        if (options?.onClick) { this.onClick(options.onClick) }
 
         this.root.appendChild(this.button)
     }
@@ -116,7 +118,7 @@ export class TextButton extends Button {
     }
 
     constructor(root: HTMLElement, text: string, onClick?: (button: Button) => void) {
-        super(root, onClick)
+        super(root, { onClick })
         this.text = text
     }
 }
@@ -152,8 +154,8 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPrevie
 
     private readonly namePadding = 5
 
-    constructor(container: Container, version: VCSVersion, onClick?: (button: Button) => void) {
-        super(container.container, onClick)
+    constructor(container: Container, version: VCSVersion, provider: CodeProvider, options?: { onClick?: (button: Button) => void, synchronizer?: Synchronizer }) {
+        super(container.container, options)
         this.version = version
 
         this.style.display = "inline-flex"
@@ -188,7 +190,7 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<P5JSPrevie
         previewContainer.style.margin = "0 0"
         this.button.appendChild(previewContainer)
 
-        this.preview = new P5JSPreview(previewContainer, { code: version.text, padding: 5, errorMessageColor: "white" })
+        this.preview = new P5JSPreview(previewContainer, { provider, padding: 5, errorMessageColor: "white" })
     }
 
     public override remove(): void {
@@ -218,11 +220,15 @@ export class P5JSPreviewToggleButton<Container extends VersionViewContainer<P5JS
     }
 
     constructor(container: Container, 
-                version: VCSVersion, 
+                version: VCSVersion,
+                provider: CodeProvider,
                 colors?: {selected?: string, default?: string}, 
-                onSelect?: (version: VCSVersion, selected: boolean) => void) {
+                options?: {
+                    onSelect?: (version: VCSVersion, selected: boolean) => void,
+                    synchronizer?: Synchronizer
+                }) {
 
-        super(container, version)
+        super(container, version, provider, options)
         this.colors = colors
 
         this.button.onclick = () => {
@@ -231,7 +237,7 @@ export class P5JSPreviewToggleButton<Container extends VersionViewContainer<P5JS
         }
 
         this.selected = false
-        if (onSelect) { this.onSelect(onSelect) }
+        if (options?.onSelect) { this.onSelect(options.onSelect) }
     }
 
     public onSelect(callback: (version: VCSVersion, selected: boolean) => void): Disposable {

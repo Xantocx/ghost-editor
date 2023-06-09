@@ -9,7 +9,8 @@
 		"types": [],
 		"baseUrl": "./node_modules",
 		"jsx": "preserve",
-		"typeRoots": ["node_modules/@types"]
+		"typeRoots": ["node_modules/@types"],
+		"downlevelIteration": true
 	},
 	"include": ["**/*"],
 	"exclude": ["node_modules", "**/*.spec.ts", "src/editor/**/*", "src/app/preload.ts"],
