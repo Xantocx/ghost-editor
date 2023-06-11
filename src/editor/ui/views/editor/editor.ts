@@ -501,12 +501,11 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
                 }
             })
 
-            // TODO: showing/hiding mechanic still kinda buggy with iFrame...
             const p5jsPreview = this.sideView.addView("p5js", root => {
                 return new P5JSPreview(root, { padding: 5, synchronizer: this.synchronizer })
             }, {
                 showCallback(view: P5JSPreview) {
-                    //view.showIFrame()
+                    view.forceRender()
                 },
                 updateCallback: (view: P5JSPreview, provider: CodeProvider) => {
                     view.update(provider)

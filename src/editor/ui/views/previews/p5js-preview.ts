@@ -341,20 +341,31 @@ export class P5JSPreview extends CodeProviderPreview {
         await this.renderThrottled()
     }
 
-    public override async render(): Promise<void> {
-        if (!this.provider) { return }
+    private async updateIFrame(code: string): Promise<void> {
+        this.iframe.src = await this.getHtmlUrl(code)
+        this.currentCode = code
 
+        if (this.hasErrorMessage) {
+            this.errorMessage.remove()
+            this.hasErrorMessage = false
+        }
+
+        this.showIFrame()
+    }
+
+    public async forceRender(): Promise<void> {
+        if (this.provider === undefined) { return }
         const code = await this.getCode()
-        if (code && this.currentCode !== code) {
-            this.iframe.src = await this.getHtmlUrl(code)
-            this.currentCode = code
+        if (code !== undefined) {
+            this.updateIFrame(code)
+        }
+    }
 
-            if (this.hasErrorMessage) {
-                this.errorMessage.remove()
-                this.hasErrorMessage = false
-            }
-
-            this.showIFrame()
+    public override async render(): Promise<void> {
+        if (this.provider === undefined) { return }
+        const code = await this.getCode()
+        if (code !== undefined && this.currentCode !== code) {
+            this.updateIFrame(code)
         }
     }
 
