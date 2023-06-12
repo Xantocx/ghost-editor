@@ -84,6 +84,7 @@ export class LineHistory {
     public  getTrackedTimestamps():       Timestamp[] { return this.node.getTrackedTimestamps() }
     private updateHeadTrackingForBlock(): void        { this.block.updateHeadTracking() }           // will perform head tracking for the whole block, which is necessary to perform an edit
 
+    // TODO: can probably be removed after introducing new, much more efficient head tracking!
     public updateHead(version: LineNodeVersion): void {
         // checking for LineNode (first part of check), as this may be called during initialization, and the line does not exist in LineNode yet
         if (this.node.has(this.block) && version.isHeadOf(this.block)) { return }
@@ -120,7 +121,7 @@ export class LineHistory {
         }
     }
 
-    public cloneHeadToEnd(): LineNodeVersion {
+    private cloneHeadToEnd(): LineNodeVersion {
         this.updateHeadTrackingForBlock()
         this.lastVersion = this.head.clone(this.getNewTimestamp(), { previous: this.lastVersion })
         this.head        = this.lastVersion

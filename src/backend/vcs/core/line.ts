@@ -194,10 +194,6 @@ export class Line extends LinkedListNode<Line>  {
         return this.history.loadTimestamp(timestamp)
     }
 
-    public cloneCurrentVersion(): LineNodeVersion {
-        return this.history.cloneHeadToEnd()
-    }
-
     public update(content: LineContent): LineNodeVersion {
         if (content === this.currentContent) { return this.history.head }
 
