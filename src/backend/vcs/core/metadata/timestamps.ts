@@ -8,6 +8,10 @@ export class TimestampProvider {
         this.nextTimestamp = timestamp
     }
 
+    public static getLastTimestamp(): Timestamp {
+        return this.nextTimestamp - 1
+    }
+
     public static getTimestamp(): Timestamp {
         const timestamp = this.nextTimestamp
         this.nextTimestamp++

@@ -75,6 +75,7 @@ export class LineHistory {
         this.head = this.lastVersion
     }
 
+    private getLastTimestamp():     Timestamp   { return TimestampProvider.getLastTimestamp() }
     private getNewTimestamp():      Timestamp   { return TimestampProvider.getTimestamp() }
     public  getTrackedTimestamps(): Timestamp[] { return Array.from(this.headTracking.keys()) }
 
