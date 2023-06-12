@@ -1,6 +1,6 @@
 import { LinkedListNode } from "../utils/linked-list"
 import { BlockId } from "./metadata/ids"
-import { Timestamp } from "./metadata/timestamps"
+import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { LineContent, LineNodeVersion } from "./version"
 import { LineNodeHistory, LineHistory } from "./history"
 import { LinePosition, LineNumber, Block, InlineBlock, ForkBlock } from "./block"
@@ -24,7 +24,8 @@ export class LineNode extends LinkedListNode<LineNode> {
     public readonly lineType:    LineType
     public readonly versions:    LineNodeHistory
 
-    public readonly lines = new Map<Block, Line>()
+    public readonly lines        = new Map<Block, Line>()
+    public readonly headTracking = new Map<Timestamp, LineNodeVersion>()
 
     public get isOriginal(): boolean { return this.lineType === LineType.Original }
     public get isInserted(): boolean { return this.lineType === LineType.Inserted }
@@ -58,6 +59,9 @@ export class LineNode extends LinkedListNode<LineNode> {
         relations?.knownBlocks?.forEach(block => this.addBlock(block, this.firstVersion))
     }
 
+    public getLastTimestamp(): Timestamp { return TimestampProvider.getLastTimestamp() }
+    public getNewTimestamp():  Timestamp { return TimestampProvider.getTimestamp() }
+
     public getPosition():               LinePosition           { return this.getAbsoluteIndex() }
     public getLineNumber(block: Block): LineNumber | undefined { return this.getLine(block)?.getLineNumber() }
 
@@ -69,6 +73,20 @@ export class LineNode extends LinkedListNode<LineNode> {
     public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
 
     public getVersions(): LineNodeVersion[] { return this.versions.getVersions() }
+
+    public getTrackedTimestamps(): Timestamp[] { return Array.from(this.headTracking.keys()) }
+
+    public getLatestTracking(): { timestamp: Timestamp, version: LineNodeVersion } | undefined           {
+        const lastTimestamp = this.getTrackedTimestamps().pop()
+        return { timestamp: lastTimestamp, version: this.headTracking.get(lastTimestamp) }
+    }
+
+    public updateHeadTracking(head: LineNodeVersion): void {
+        const latestTracking = this.getLatestTracking()
+        if (latestTracking.timestamp > head.timestamp || latestTracking.version !== head) {
+            this.headTracking.set(this.getNewTimestamp(), head)
+        }
+    }
 
     public addBlock(block: Block, head?: LineNodeVersion): Line {
         const currentLine = this.getLine(block)
@@ -165,6 +183,11 @@ export class Line extends LinkedListNode<Line>  {
         if (!this.isActive) { return null }
         const previous = this.getPreviousActiveLine()
         return previous ? previous.getLineNumber() + 1 : 1
+    }
+
+    // Will only update head tracking for this one specific line
+    public updateHeadTracking(): void {
+        this.node.updateHeadTracking(this.history.head)
     }
 
     public loadTimestamp(timestamp: Timestamp): LineNodeVersion {

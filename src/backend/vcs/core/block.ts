@@ -190,6 +190,10 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         this.lastLine  = lastLine
     }
 
+    public updateHeadTracking(): void {
+        this.forEach(line => line.updateHeadTracking())
+    }
+
 
     // --------------------------------- Edit Mechanics ----------------------------------------
 

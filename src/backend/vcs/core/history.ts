@@ -1,6 +1,6 @@
 import { LinkedListNode, LinkedList } from "../utils/linked-list"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
-import { LineNodeVersion, LineContent } from "./version"
+import { LineNodeVersion, LineContent, LineVersion } from "./version"
 import { Block } from "./block"
 import { LineNode, Line } from "./line"
 
@@ -23,10 +23,11 @@ export class LineHistory {
     public readonly versions: LineNodeHistory
 
     private _head: LineNodeVersion
-    private headTracking = new Map<Timestamp, LineNodeVersion>()
 
     public  get head(): LineNodeVersion { return this._head }
     private set head(version: LineNodeVersion) { this._head = version } 
+
+    private get headTracking(): Map<Timestamp, LineNodeVersion> { return this.node.headTracking }
 
     public get node():  LineNode { return this.line.node }
     public get block(): Block    { return this.line.block }
@@ -75,37 +76,20 @@ export class LineHistory {
         this.head = this.lastVersion
     }
 
-    private getLastTimestamp():     Timestamp   { return TimestampProvider.getLastTimestamp() }
-    private getNewTimestamp():      Timestamp   { return TimestampProvider.getTimestamp() }
-    public  getTrackedTimestamps(): Timestamp[] { return Array.from(this.headTracking.keys()) }
+    private getNewTimestamp(): Timestamp { return this.node.getNewTimestamp() }
 
     public getVersions():     LineNodeVersion[] { return this.versions.getVersions() }
-    public getVersionCount(): number        { return this.versions.getLength() }
+    public getVersionCount(): number            { return this.versions.getLength() }
+
+    public  getTrackedTimestamps():       Timestamp[] { return this.node.getTrackedTimestamps() }
+    private updateHeadTrackingForBlock(): void        { this.block.updateHeadTracking() }           // will perform head tracking for the whole block, which is necessary to perform an edit
 
     public updateHead(version: LineNodeVersion): void {
         // checking for LineNode (first part of check), as this may be called during initialization, and the line does not exist in LineNode yet
         if (this.node.has(this.block) && version.isHeadOf(this.block)) { return }
         this.head = version
-        this.headTracking.set(this.getNewTimestamp(), version)
+        //this.headTracking.set(this.getNewTimestamp(), version)
     }
-
-    /*
-    // debug wrapper for getVersion
-    public getVersion(timestamp: Timestamp): LineVersion {
-
-        console.log("----------------")
-        console.log("Searched Timestamp: " + timestamp)
-
-        const version = this.getVersionDebug(timestamp)
-
-        console.log("Found Timestamp: " + version?.timestamp)
-        console.log("Position: " + version?.line?.getIndex())
-        console.log("Line Content: " + version?.content)
-        console.log("----------------")
-
-        return version
-    }
-    */
 
     public getVersion(timestamp: Timestamp): LineNodeVersion {
         if (this.line.isInserted && this.firstVersion.timestamp > timestamp) {
@@ -137,6 +121,7 @@ export class LineHistory {
     }
 
     public cloneHeadToEnd(): LineNodeVersion {
+        this.updateHeadTrackingForBlock()
         this.lastVersion = this.head.clone(this.getNewTimestamp(), { previous: this.lastVersion })
         this.head        = this.lastVersion
         return this.head
@@ -144,6 +129,7 @@ export class LineHistory {
 
     public createNewVersion(isActive: boolean, content: LineContent): LineNodeVersion {
         if (this.head !== this.lastVersion) { this.cloneHeadToEnd() }
+        else                                { this.updateHeadTrackingForBlock() }
 
         this.lastVersion = new LineNodeVersion(this.node, this.getNewTimestamp(), isActive, content, { previous: this.lastVersion })
         this.head        = this.lastVersion
@@ -152,6 +138,7 @@ export class LineHistory {
     }
 
     public updateCurrentVersion(content: LineContent): LineNodeVersion {
+        this.updateHeadTrackingForBlock()
         this.head.update(content)
         return this.head
     }
