@@ -342,6 +342,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     public  readonly editorContainer:    HTMLDivElement
     public  readonly sideViewContainer?: HTMLDivElement
     private readonly containers:         HTMLDivElement[] = []
+    private readonly hostedSessions:     VCSSession[]     = []
 
     // main editor
     public readonly core:               MonacoEditor
@@ -435,7 +436,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         this.core.setModel(textModel)
 
         if (this.sideViewEnabled) {
-            this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
+            //this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
             this.sideView!.update(this.sideViewIdentifiers!.p5js, session)
             this.sideView!.update(this.sideViewIdentifiers!.versionManager, { languageId: textModel.getLanguageId() })
         }
@@ -493,6 +494,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         if (this.sideViewEnabled) {
             this.sideView = new MetaView(this.sideViewContainer!)
 
+            /*
             const vcsPreview = this.sideView.addView("vcs", root => {
                 return new VCSPreview(root, this.editorModel)
             }, {
@@ -500,6 +502,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
                     view.updateEditor(args.editorModel, args.vcsContent)
                 }
             })
+            */
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
                 return new P5JSPreview(root, { padding: 5, synchronizer: this.synchronizer })
@@ -549,9 +552,10 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     }
 
     public override async sync(trigger: Synchronizable): Promise<void> {
-        console.log("SYNCING: " + this.getSession().blockId)
+        //console.log("SYNCING: " + this.getSession().blockId)
         const snapshotData = await this.getSession().reloadData()
-        this.update(snapshotData.content, snapshotData.snapshots)
+        this.update(snapshotData.content)
+        this.snapshotManager.replaceSnapshots(snapshotData.snapshots)
     }
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
@@ -564,8 +568,10 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     }
 
     public async createSession(options: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
-        const info = await this.vcs.startSession(options)
-        return { session: new VCSSession(info, this.vcs), sessionData: info.sessionData }
+        const info    = await this.vcs.startSession(options)
+        const session = new VCSSession(info, this.vcs)
+        this.hostedSessions.push(session)
+        return { session: session, sessionData: info.sessionData }
     }
 
     public async load(options?: { uri?: URI, filePath?: string, blockId?: string, tagId?: TagId, content?: string, session?: VCSSession }): Promise<void> {
@@ -624,15 +630,18 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         }
     }
 
-    public update(text: string, snapshots?: VCSSnapshotData[]): void {
-        this.interactionManager.withDisabledVcsSync(() => this.core.setValue(text) )
+    private update(code: string): void {
+        this.interactionManager.withDisabledVcsSync(() => this.core.setValue(code) )
+    }
 
-        if (snapshots) { this.snapshotManager.replaceSnapshots(snapshots) }
-        else           { this.snapshotManager.forEach(snapshot => snapshot.manualUpdate()) }
+    public reload(code: string): void {
+        this.update(code)
+        this.snapshotManager.forEach(snapshot => snapshot.manualUpdate())
+        this.triggerSync()
     }
 
     public override remove(): void {
-        this.getSession()?.close()
+        this.hostedSessions.forEach(session => session.close())
         super.remove()
     }
 }

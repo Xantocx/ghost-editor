@@ -372,6 +372,7 @@ export class P5JSPreview extends CodeProviderPreview {
     public override remove(): void {
         this.hideIFrame()
         this.errorMessage.remove()
+        this.container.remove()
         super.remove()
     }
 }

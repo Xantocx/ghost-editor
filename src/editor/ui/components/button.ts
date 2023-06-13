@@ -16,8 +16,19 @@ export class Button extends SubscriptionManager {
         const button = this.defaultButton(root, text, onClick)
 
         button.style.backgroundColor = "blue"
-        button.style.color = "white"
-        button.style.padding = '7px 20px'
+        button.style.color           = "white"
+        button.style.padding         = '7px 20px'
+
+        return button
+    }
+
+    public static copyButton(root: HTMLElement, onClick?: (button: Button) => void): Button {
+        const button = this.defaultButton(root, "+", onClick)
+
+        button.style.backgroundColor = "yellow"
+        button.style.color           = "white"
+        button.style.padding         = "5px 10px"
+        button.style.margin          = "5px"
 
         return button
     }
@@ -26,9 +37,9 @@ export class Button extends SubscriptionManager {
         const button = this.defaultButton(root, "+", onClick)
 
         button.style.backgroundColor = "green"
-        button.style.color = "white"
-        button.style.padding = "5px 10px"
-        button.style.margin = "5px"
+        button.style.color           = "white"
+        button.style.padding         = "5px 10px"
+        button.style.margin          = "5px"
 
         return button
     }
@@ -73,13 +84,13 @@ export class Button extends SubscriptionManager {
         this.button = document.createElement("button")
 
         // default config
-        this.style.display = "inline-block"
-        this.style.border = "none"
-        this.style.borderRadius = "8px"
-        this.style.textAlign = "center"
+        this.style.display        = "inline-block"
+        this.style.border         = "none"
+        this.style.borderRadius   = "8px"
+        this.style.textAlign      = "center"
         this.style.textDecoration = "none"
-        this.style.fontSize = '14px'
-        this.style.cursor = "pointer"
+        this.style.fontSize       = '14px'
+        this.style.cursor         = "pointer"
 
         this.button.onclick = () => { this.onClickCallbacks.forEach(callback => callback(this)) }
         if (options?.onClick) { this.onClick(options.onClick) }
@@ -106,7 +117,6 @@ export class Button extends SubscriptionManager {
     }
 }
 
-
 export class TextButton extends Button {
 
     public get text(): string {
@@ -123,13 +133,45 @@ export class TextButton extends Button {
     }
 }
 
+export class IconButton extends Button {
+    
+    private readonly icon: HTMLElement
+
+    public get iconClass(): string         { return this.icon.getAttribute("class")! }
+    public set iconClass(iconClass: string) { this.icon.setAttribute("class", iconClass) }
+
+    public static override defaultButton(root: HTMLElement, iconClass: string, onClick?: ((button: Button) => void)): IconButton {
+        const button = new IconButton(root, iconClass, onClick)
+        button.style.padding = "5px 7.09px"
+        button.style.margin  = "5px"
+        return button
+    }
+
+    public static copyButton(root: HTMLElement, onClick?: (button: Button) => void): IconButton {
+        const button = this.defaultButton(root, "fas fa-arrow-right-to-bracket", onClick)
+        button.style.backgroundColor = "orange"
+        button.icon.style.color      = "white"
+        button.icon.style.transform  = "scaleX(-1)"
+        return button
+    }
+
+    public constructor(root: HTMLElement, iconClass: string, onClick?: (button: Button) => void) {
+        super(root, { onClick })    
+
+        this.icon      = document.createElement("i");
+        this.iconClass = iconClass
+
+        this.button.appendChild(this.icon)
+    }
+}
+
 export class VersionButton extends TextButton {
 
     constructor(root: HTMLElement, version: VCSTag, onClick?: (button: Button) => void) {
         super(root, version.name, onClick)
 
         this.style.display = "inline-block"
-        this.style.margin = "0 0"
+        this.style.margin = "0"
 
         this.style.backgroundColor = version.automaticSuggestion ? "gray" : "blue"
         this.style.border = "none"
@@ -158,36 +200,36 @@ export class P5JSPreviewButton<Version extends VCSTag, Container extends Version
         super(container.container, { onClick: options?.onClick })
         this.version = version
 
-        this.style.display = "inline-flex"
-        this.style.overflow = "hidden"
-        this.style.padding = "0 0"
-        this.style.margin = "0 0"
+        this.style.display         = "inline-flex"
+        this.style.overflow        = "hidden"
+        this.style.padding         = "0"
+        this.style.margin          = "0"
         this.style.backgroundColor = version.automaticSuggestion ? "gray" : "blue"
-        this.style.border = "none"
-        this.style.borderRadius = "8px"
-        this.style.cursor = "pointer"
+        this.style.border          = "none"
+        this.style.borderRadius    = "8px"
+        this.style.cursor          = "pointer"
 
         const name = document.createElement("div")
         name.textContent = version.name
-        name.style.display = "block"
-        name.style.alignSelf = "center"
-        name.style.flex = "1"
-        name.style.boxSizing = "border-box"
-        name.style.padding = `${this.namePadding}px ${this.namePadding}px`
-        name.style.margin = "0 0"
-        name.style.color = "white"
-        name.style.textAlign = "center"
+        name.style.display        = "block"
+        name.style.alignSelf      = "center"
+        name.style.flex           = "1"
+        name.style.boxSizing      = "border-box"
+        name.style.padding        = `${this.namePadding}px ${this.namePadding}px`
+        name.style.margin         = "0"
+        name.style.color          = "white"
+        name.style.textAlign      = "center"
         name.style.textDecoration = "none"
-        name.style.wordWrap = "break-word"
-        name.style.overflowWrap = "break-word"
-        name.style.fontSize = '14px'
+        name.style.wordWrap       = "break-word"
+        name.style.overflowWrap   = "break-word"
+        name.style.fontSize       = '14px'
         this.button.appendChild(name)
 
         const previewContainer = document.createElement("div")
-        previewContainer.style.flex = "3"
-        previewContainer.style.height = "100%"
-        previewContainer.style.padding = "0 0"
-        previewContainer.style.margin = "0 0"
+        previewContainer.style.flex    = "3"
+        previewContainer.style.height  = "100%"
+        previewContainer.style.padding = "0"
+        previewContainer.style.margin  = "0"
         this.button.appendChild(previewContainer)
 
         this.preview = new P5JSPreview(previewContainer, { provider, padding: 5, errorMessageColor: "white", synchronizer: options?.synchronizer })

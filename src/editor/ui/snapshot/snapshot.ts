@@ -224,7 +224,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         // value updating
         this.addSubscription(this.footer.onChange(async value => {
             const newText = await this.session.applySnapshotVersionIndex(this.uuid, value)
-            this.editor.update(newText)
+            this.editor.reload(newText)
         }))
 
         // footer hiding
