@@ -16,7 +16,7 @@ import { VersionManagerView } from "../version/version-manager";
 import { VCSSnapshot, VCSSnapshotData, VCSTag } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
-import { extractEOLSymbol } from "../../../utils/helpers";
+import { extractEOLSymbol, sleep } from "../../../utils/helpers";
 
 class GhostEditorSnapshotManager {
 
@@ -576,7 +576,6 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     }
 
     public override async sync(trigger: Synchronizable): Promise<void> {
-        //console.log("SYNCING: " + this.getSession().blockId)
         const snapshotData = await this.getSession().reloadData()
         this.update(snapshotData.content)
         this.snapshotManager.updateFrom(snapshotData.snapshots)
@@ -628,7 +627,12 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         }
 
         this.createEditorModel(textModel, session!, sessionData.content)
-        this.snapshotManager.replaceSnapshots(sessionData.snapshots)
+
+        // NOTE: Creating snapshots will create view zones. This cannot happen immediately, and should only be done after the editor finished rendering the first frame. Waiting for this event will allow me to do so.
+        const setupDisposable = this.core.onDidContentSizeChange(() => {
+            setupDisposable.dispose()
+            this.snapshotManager.replaceSnapshots(sessionData.snapshots)
+        })
     }
 
     public async loadFile(filePath: string, content: string): Promise<void> {
@@ -665,6 +669,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     }
 
     public override remove(): void {
+        this.snapshotManager.removeSnapshots()
         this.hostedSessions.forEach(session => session.close())
         super.remove()
     }

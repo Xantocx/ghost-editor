@@ -38,8 +38,8 @@ export class Session implements Resource {
         this.tag     = tag
         this.id      = this.manager.registerSession(this)
 
-        //this.tag?.applyTo(block)
-        //if (this.tag) { block.onHeadChanged(timestamp => this.tag.timestamp = timestamp) }
+        this.tag?.applyTo(block)
+        if (this.tag) { block.onHeadChanged(timestamp => this.tag.timestamp = timestamp) }
     }
 
     public getInfo(): SessionInfo {

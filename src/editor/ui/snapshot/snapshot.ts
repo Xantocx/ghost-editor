@@ -261,13 +261,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public updateVersionManager(): void {
-        console.log(this.versions.length)
-        console.log(this.snapshot.uuid)
         this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
     }
 
     public addVersion(tag: VCSTag): void {
-        console.log("ADD")
         this.versions.push(new VCSVersion(this, tag))
     }
 

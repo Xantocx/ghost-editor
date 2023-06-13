@@ -33,6 +33,6 @@ export function saveFile(filePath, content) {
     if (filePath) {
         return fs.promises.writeFile(filePath, content)
     } else {
-        console.log('NO FILE PATH! PATH SELECTOR MISSING!')
+        console.warn('NO FILE PATH! PATH SELECTOR MISSING!')
     }
 }

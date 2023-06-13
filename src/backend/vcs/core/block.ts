@@ -251,8 +251,6 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             const lineNumber   = createdLine.getLineNumber()
             if (snapshotData._endLine < lineNumber) {
                 snapshotData._endLine = lineNumber
-                console.log("EXPAND CHILD")
-                console.log(snapshotData)
                 child.updateInParent(snapshotData)
             }
         })
@@ -463,14 +461,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         if (!this.parent.containsLineNumber(range._startLine)) { throw new Error("Start line is not in range of parent!") }
         if (!this.parent.containsLineNumber(range._endLine))   { throw new Error("End line is not in range of parent!") }
 
-        console.log("\n--- START UPDATE IN PARENT ---")
-
-        console.log(range)
-
         const oldFirstLineNumber = this.getFirstLineNumber()
         const oldLastLineNumber  = this.getLastLineNumber()
-
-        console.log(oldLastLineNumber)
 
         this.removeFromLines()
         const newFirstLine = this.parent.getLineByLineNumber(range._startLine)
@@ -479,8 +471,6 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
         const newFirstLineNumber = this.getFirstLineNumber()
         const newLastLineNumber  = this.getLastLineNumber()
-
-        console.log(newLastLineNumber)
 
         const updatedBlocks = this.getChildren().flatMap(child => {
 
@@ -502,8 +492,6 @@ export abstract class Block extends LinkedList<Line> implements Resource {
                 return []
             }
         })
-
-        console.log("--- END UPDATE IN PARENT ---\n")
 
         updatedBlocks.push(this)
         return updatedBlocks

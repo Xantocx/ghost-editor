@@ -80,12 +80,12 @@ export class GhostVCSServer extends BasicVCSServer {
     }
 
     public async updatePath(sessionId: SessionId, filePath: string): Promise<void> {
-        console.log("UPDATING FILE PATH IS NOT IMPLEMNETED")
+        console.warn("UPDATING FILE PATH IS NOT IMPLEMNETED")
         //this.file.filePath = filePath
     }
 
     public async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
-        console.log("CLONE TO PATH NOT IMPLEMENTED")
+        console.warn("CLONE TO PATH NOT IMPLEMENTED")
     }
 
     public async reloadSessionData(sessionId: string): Promise<SessionData> {

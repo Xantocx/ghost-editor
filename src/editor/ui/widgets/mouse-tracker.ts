@@ -20,9 +20,9 @@ export abstract class SubscriptionManager extends Synchronizable {
     }
 
     public override remove() {
-        super.remove()
         this.subscriptions.forEach(subscription => { subscription.dispose() })
         this.subscriptions = []
+        super.remove()
     }
 }
 
