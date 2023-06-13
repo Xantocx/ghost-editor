@@ -25,6 +25,7 @@ export interface SessionData {
 export interface SessionInfo { 
     sessionId:   SessionId
     blockId:     string
+    tagId?:      string,
     filePath?:   string
     sessionData: SessionData
 }

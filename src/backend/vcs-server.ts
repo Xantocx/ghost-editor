@@ -45,29 +45,34 @@ export class GhostVCSServer extends BasicVCSServer {
         const tag = tagId ? this.resources.getTag(tagId) : undefined
         if (tagId && !tag)   { throw new Error(`Could not find a Tag for the selected Tag ID "${tagId}"!`) }
 
-        // TODO: currently, I will always choose the TagId with highest prio -> in the future, the BlockId might be higher, when the TagId is compatiple 
+        // TODO: currently, I will always choose the TagId with highest prio -> in the future, the BlockId might be higher, when the Tags can be applied to different blocks 
         const selectedBlockId = tag ? tag.blockId : (blockId ? blockId : (filePath ? filePathId : undefined))
-        const block = this.resources.getBlock(selectedBlockId)
 
-        // parameter validation
+        // parameter validation (TODO: eventually, the first check might not be needed anymore, if we can apply tags to other blocks)
         if      (tag        && tag.blockId !== selectedBlockId) { throw new Error(`Tag with Block ID "${tag.blockId}" was provided, but was not selected for this session! If you wanted to apply the Tag to another child/parent Block, then this is currently not supported.`) }
         else if (blockId    && blockId     !== selectedBlockId) { throw new Error(`Block ID "${blockId}" incompatible with Tag ID! If you try to apply a Tag to a different parent/child Block, then this is unfortunately currently not supported.`) }
         else if (filePathId && filePathId  !== selectedBlockId) { throw new Error(`ID "${filePathId}" exists for the provided file path, but it is incompatiple withe either the Tag or Block ID provided!`) }
         else if (filePath   && !filePathId  && selectedBlockId) { throw new Error("A file path without existing ID was provided alonside a Tag or Block ID! This cannot be resolved!") }
-        else if (selectedBlockId && !block)                     { throw new Error(`Could not find a Block for the selected Block ID "${selectedBlockId}"!`) }
-        else if (!block && tag)                                 { throw new Error("Could not find Block to apply the provided Tag to!") }
+
+        // TODO: might be used later when tag is applied on block
+        const block = this.resources.getBlock(selectedBlockId)
+        if (selectedBlockId && !block) { throw new Error(`Could not find a Block for the selected Block ID "${selectedBlockId}"!`) }
 
         let session: Session
-        if (block) {
+        if (tag && tag.blockId === block.id) {
+            if (content) { console.warn("Right now, we do not support updating the content of an existing tag based on provided content. This will be ignored.") }
+            session = Session.createFromTag(tag)
+        } else if (block) {
             if (content) { console.warn("Right now, we do not support updating the content of an existing block based on provided content. This will be ignored.") }
             session = Session.createFromBlock(block)
             if (tag) { tag.applyTo(block) }
         } else {
             if (!eol) { throw new Error("The provided options do not allow for the retrieval of an existing Block. To create a new Block, please also provide the EOL sequence!") }
-            session = Session.createWithNewBlock(this.resources, eol, { filePath, content })
+            if (tag)  { console.warn("A Tag cannot be applied on a newly created block, as they are likely unrelated. As such, the Tag will be ignored.") }
+            session = Session.createFromOptions({ manager: this.resources, eol, filePath, content })
         }
 
-        return { sessionId: session.id, blockId: session.blockId, filePath: session.filePath, sessionData: session.getData() }
+        return session.getInfo()
     }
 
     public async closeSession(sessionId: SessionId): Promise<void> {

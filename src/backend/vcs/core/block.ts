@@ -584,7 +584,7 @@ export class InlineBlock extends Block {
     }
 }
 
-interface ForkBlockOptions {
+export interface ForkBlockOptions {
     manager:               ResourceManager 
     eol:                   EOLSymbol
     filePath?:             string
