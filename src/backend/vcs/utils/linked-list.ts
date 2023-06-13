@@ -1,3 +1,5 @@
+import { SubscriptionManager } from "../../../editor/ui/widgets/mouse-tracker"
+
 export abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
 
     private _previous?: Node = undefined
@@ -52,7 +54,7 @@ export abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
     }
 }
 
-export abstract class LinkedList<Node extends LinkedListNode<Node>> {
+export abstract class LinkedList<Node extends LinkedListNode<Node>> extends SubscriptionManager {
 
     public first?: Node
     public last?:  Node

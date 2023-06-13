@@ -13,7 +13,7 @@ import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionManagerView } from "../version/version-manager";
-import { VCSSnapshotData, VCSTag } from "../../../../app/components/data/snapshot";
+import { VCSSnapshot, VCSSnapshotData, VCSTag } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
 import { extractEOLSymbol } from "../../../utils/helpers";
@@ -74,6 +74,30 @@ class GhostEditorSnapshotManager {
 
     public forEach(callback: (snaphot: GhostSnapshot, index: number, snapshots: GhostSnapshot[]) => void): void {
         this.snapshots.forEach(callback)
+    }
+
+    public find(check: (snaphot: GhostSnapshot, index: number, snapshots: GhostSnapshot[]) => void): GhostSnapshot | undefined {
+        return this.snapshots.find(check)
+    }
+
+    public update(): void {
+        this.forEach(snapshot => snapshot.manualUpdate())
+    }
+
+    public updateFrom(snapshots: VCSSnapshotData[]): void {
+        snapshots.forEach(updatedSnapshot => {
+            const currentSnapshot = this.find(currentSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            if (currentSnapshot !== undefined) { currentSnapshot.manualUpdateFrom(updatedSnapshot) }
+            else                               { this.snapshots.push(new GhostSnapshot(this.editor, updatedSnapshot)) }
+        })
+
+        this.snapshots.reverse().forEach((currentSnapshot, index) => {
+            const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            if (updatedSnapshot === undefined) {
+                currentSnapshot.remove()
+                this.snapshots.splice(index, 1)
+            }
+        })
     }
 
     public deleteSnapshot(uuid: SnapshotUUID): GhostSnapshot | undefined {
@@ -555,7 +579,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         //console.log("SYNCING: " + this.getSession().blockId)
         const snapshotData = await this.getSession().reloadData()
         this.update(snapshotData.content)
-        this.snapshotManager.replaceSnapshots(snapshotData.snapshots)
+        this.snapshotManager.updateFrom(snapshotData.snapshots)
     }
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
@@ -636,7 +660,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
     public reload(code: string): void {
         this.update(code)
-        this.snapshotManager.forEach(snapshot => snapshot.manualUpdate())
+        this.snapshotManager.update()
         this.triggerSync()
     }
 

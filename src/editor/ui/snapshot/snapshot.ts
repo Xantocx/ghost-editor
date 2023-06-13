@@ -51,10 +51,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     public snapshot: VCSSnapshot
     private readonly locator: LineLocator
 
-    public versions: VCSVersion[] = []
+    private readonly versions: VCSVersion[]
 
     public readonly viewZonesOnly: boolean
-    public readonly toggleMode: boolean
+    public readonly toggleMode:    boolean
 
     private header: GhostSnapshotHeader
     private highlight: GhostSnapshotHighlight
@@ -155,6 +155,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return this.header?.mouseOn || this.footer?.mouseOn
     }
 
+    public get session(): VCSSession { return this.editor.getSession() }
+
     public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
         const snapshot = await editor.getSession().createSnapshot(range)
 
@@ -166,8 +168,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return new GhostSnapshot(editor, snapshot)
     }
 
-    public get session(): VCSSession { return this.editor.getSession() }
-
     constructor(editor: GhostEditor, snapshot: VCSSnapshotData, viewZonesOnly?: boolean, toggleMode?: boolean) {
         super()
 
@@ -176,7 +176,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.toggleMode    = toggleMode    ? toggleMode    : true
 
         this.snapshot = VCSSnapshot.create(this.session, snapshot)
-        this.locator = new LineLocator(this.editor, this.snapshot)
+        this.locator  = new LineLocator(this.editor, this.snapshot)
+        this.versions = snapshot.tags.map(tag => new VCSVersion(this, tag))
 
         this.display()
     }
@@ -260,17 +261,22 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public updateVersionManager(): void {
+        console.log(this.versions.length)
+        console.log(this.snapshot.uuid)
         this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
     }
 
     public addVersion(tag: VCSTag): void {
+        console.log("ADD")
         this.versions.push(new VCSVersion(this, tag))
     }
 
+    /*
     public updateVersions(tags: VCSTag[]): void {
         this.versions = tags.map(tag => new VCSVersion(this, tag))
         this.updateVersionManager()
     }
+    */
 
     /*
     public protectedRemove(callback?: () => void): void {
@@ -299,9 +305,18 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public async update(manualUpdate?: boolean): Promise<void> {
-        const snapshot = await this.session.getSnapshot(this.uuid)
-        
-        this.snapshot = VCSSnapshot.create(this.session, snapshot)
+        const snapshotData = await this.session.getSnapshot(this.uuid)
+        this.updateFrom(snapshotData, manualUpdate)
+    }
+
+    public manualUpdateFrom(snapshotData: VCSSnapshotData): void {
+        this.updateFrom(snapshotData, true)
+    }
+
+    public updateFrom(snapshotData: VCSSnapshotData, manualUpdate?: boolean): void {
+        if (this.snapshot.uuid !== snapshotData.uuid) { throw new Error("You cannot update this Snapshot with an incompatiple Snapshot!") }
+
+        this.snapshot = VCSSnapshot.create(this.session, snapshotData)
         this.locator.rangeProvider = this.snapshot
 
         this.header?.update()

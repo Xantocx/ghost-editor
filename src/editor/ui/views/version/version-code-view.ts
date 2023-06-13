@@ -27,7 +27,6 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
 
         this.listElement = document.createElement("li")
         this.style.boxSizing = "border-box"
-        this.style.display   = "flex"
         this.style.width     = "100%"
         this.style.height    = `${this.editorHeight}px`
         this.style.padding   = "5px 5px"
@@ -59,6 +58,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         }
 
         this.menuContainer.style.boxSizing   = "border-box"
+        this.menuContainer.style.float       = "left"
         this.menuContainer.style.width       = `${this.menuSpacing}px`
         this.menuContainer.style.height      = "100%"
         this.menuContainer.style.padding     = "0"
@@ -78,7 +78,8 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
 
     private setupEditor(): void {
         this.editorContainer.style.boxSizing = "border-box"
-        this.editorContainer.style.flex      = "1"
+        this.editorContainer.style.float     = "left"
+        this.editorContainer.style.width     = `calc(100% - ${this.menuSpacing}px)`
         this.editorContainer.style.height    = "100%"
         this.editorContainer.style.padding   = "0"
         this.editorContainer.style.margin    = "0"

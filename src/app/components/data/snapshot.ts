@@ -3,11 +3,12 @@ import { SnapshotUUID, Text, VCSProvider, VCSSession, TagId } from "../vcs/vcs-p
 import { RangeProvider } from "../../../editor/utils/line-locator"
 
 export interface VCSSnapshotData {
-    uuid: SnapshotUUID
-    _startLine: number
-    _endLine: number
+    uuid:         SnapshotUUID
+    _startLine:   number
+    _endLine:     number
     versionCount: number
     versionIndex: number
+    tags:         VCSTag[]
 }
 
 export interface VCSTag {
@@ -28,6 +29,8 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
     public versionCount: number
     public versionIndex: number
+
+    public readonly tags: VCSTag[]
 
     public get startLine(): number {
         return this._startLine
@@ -66,10 +69,10 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
     public static create(session: VCSSession, snapshot: VCSSnapshotData): VCSSnapshot {
         const range = new Range(snapshot._startLine, 1, snapshot._endLine, Number.MAX_SAFE_INTEGER)
-        return new VCSSnapshot(snapshot.uuid, session, range, snapshot.versionCount, snapshot.versionIndex)
+        return new VCSSnapshot(snapshot.uuid, session, range, snapshot.versionCount, snapshot.versionIndex, snapshot.tags)
     }
 
-    constructor(uuid: string, session: VCSSession, range: IRange, versionCount: number, versionIndex: number) {
+    constructor(uuid: string, session: VCSSession, range: IRange, versionCount: number, versionIndex: number, tags: VCSTag[]) {
         this.uuid = uuid
         this.session = session
         
@@ -78,6 +81,8 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
 
         this.versionCount = versionCount
         this.versionIndex = versionIndex
+
+        this.tags = tags
     }
 
     private update(range: IRange): boolean {
@@ -103,11 +108,12 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
         const parent = this
 
         return {
-            uuid: parent.uuid,
-            _startLine: parent.startLine,
-            _endLine: parent.endLine,
+            uuid:         parent.uuid,
+            _startLine:   parent.startLine,
+            _endLine:     parent.endLine,
             versionCount: parent.versionCount,
-            versionIndex: parent.versionIndex
+            versionIndex: parent.versionIndex,
+            tags:         parent.tags
         }
     }
 

@@ -7,6 +7,8 @@ import { BlockId, TagId } from "./metadata/ids"
 import { LineType, LineNode, Line } from "./line"
 import { InsertionState, LineContent, LineNodeVersion } from "./version"
 import { Tag } from "./tag"
+import { Disposable } from "../../../editor/utils/types"
+import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -109,6 +111,9 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public getVersions():     LineNodeVersion[] { return this.flatMap(line => line.history.getVersions()) }
     public getVersionCount(): number            { return this.getVersions().length }
 
+
+    public getTags():    Tag[]    { return Array.from(this.tags.values()) }
+    public getTagData(): VCSTag[] { return this.getTags().map(tag => tag.asTagData()) }
 
 
     public addToLines():                        Line[]  { return this.map(line => line.addBlock(this)) }
@@ -404,6 +409,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     }
 
     // THIS is the actual latest version in the timeline that is currently active. Unfortunately, there is no other easy way to calculate that...
+    // WARNING: This may be the latest Version, but not the latest active version!!! This can only be calculated through head tracking!
     public getLatestVersion(): LineNodeVersion {
         return this.getTimeline()[this.getCurrentVersionIndex()]
     }
@@ -510,7 +516,8 @@ export abstract class Block extends LinkedList<Line> implements Resource {
             _startLine:   parent.getFirstLineNumberInParent(),
             _endLine:     parent.getLastLineNumberInParent(),
             versionCount: parent.getUserVersionCount(),
-            versionIndex: parent.getCurrentVersionIndex()
+            versionIndex: parent.getCurrentVersionIndex(),
+            tags:         parent.getTagData()
         }
     }
 
@@ -523,9 +530,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     // ---------------------- TAG FUNCTIONALITY ------------------------
 
     protected createCurrentTag(): Tag {
-        const heads = new Map<Line, LineNodeVersion>()
-        this.forEach(line => heads.set(line, line.currentVersion))
-        return new Tag(this, heads)
+        return new Tag(this, TimestampProvider.getLastTimestamp())
     }
 
     public createTag(): VCSTag {
@@ -533,13 +538,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         const tag = this.createCurrentTag()
         this.tags.set(tag.id, tag)
 
-        return {
-            blockId:             this.id,
-            id:                tag.id,
-            name:                `Version ${this.tags.size}`,
-            text:                this.getFullText(),
-            automaticSuggestion: false
-        }
+        return tag.asTagData()
     }
 
     public loadTag(id: TagId): string {
@@ -563,6 +562,26 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         const clone = new ForkBlock(this)
         //this.addChild(clone)
         return clone
+    }
+
+    // ------------------------- SUBSCRIPTION HANDLER ------------------------------------
+    private readonly latestHeadSubscriptions: { (timestamp: Timestamp): void }[] = []
+
+    public headChanged(): void {
+        const lastTimestamp = TimestampProvider.getLastTimestamp()
+        this.latestHeadSubscriptions.forEach(callback => callback(lastTimestamp))
+    }
+
+    public onHeadChanged(onChange: (timestamp: Timestamp) => void): Disposable {
+        this.latestHeadSubscriptions.push(onChange)
+
+        const parent = this
+        return this.addSubscription({
+            dispose() {
+                const index = parent.latestHeadSubscriptions.indexOf(onChange, 0)
+                if (index >= 0) { parent.latestHeadSubscriptions.splice(index, 1) }
+            }
+        })
     }
 }
 

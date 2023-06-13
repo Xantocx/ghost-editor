@@ -24,8 +24,11 @@ export class LineHistory {
 
     private _head: LineNodeVersion
 
-    public  get head(): LineNodeVersion { return this._head }
-    private set head(version: LineNodeVersion) { this._head = version } 
+    public  get head(): LineNodeVersion        { return this._head }
+    private set head(version: LineNodeVersion) { 
+        this._head = version
+        //this.block.headChanged()
+    } 
 
     private get headTracking(): Map<Timestamp, LineNodeVersion> { return this.node.headTracking }
 
