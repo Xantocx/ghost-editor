@@ -59,10 +59,10 @@ export abstract class VersionViewContainer<Version, CustomView extends VersionVi
 
     public async showVersions(versions: Version[]): Promise<void> {
         this.removeVersions()
-        await Promise.all(versions.map(async version => {
+        for (const version of versions) {
             const codeView = await this.createCustomView(version)
             this.versions.set(version, codeView)
-        }))
+        }
         this.versionsChanged()
     }
 
@@ -75,7 +75,7 @@ export abstract class VersionViewContainer<Version, CustomView extends VersionVi
     }
 
     // returns removed versions
-    public applyDiff(versions: Version[]): Version[] {
+    public async applyDiff(versions: Version[]): Promise<Version[]> {
         const currentVersions = this.getVersions()
 
         const removedVersions = currentVersions.filter(version => {
@@ -84,7 +84,11 @@ export abstract class VersionViewContainer<Version, CustomView extends VersionVi
             return remove
         })
 
-        versions.reverse().forEach(version => { if (!this.versions.has(version)) { this.addVersion(version) } })
+        for (const version of versions) {
+            if (!this.versions.has(version)) {
+                await this.addVersion(version)
+            }
+        }
         
         this.versionsChanged()
         return removedVersions

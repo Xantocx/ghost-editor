@@ -40,8 +40,8 @@ export class GhostApp {
 
     private static createWindow(): void {
         this.window = new this.BrowserWindow({
-            width: 800,
-            height: 600,
+            width: 1920,
+            height: 1080,
             webPreferences: {
                 preload: path.join(__dirname, 'preload.bundle.js')
             }

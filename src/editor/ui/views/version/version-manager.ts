@@ -71,17 +71,17 @@ export class VersionManagerView extends View implements IVersionViewContainer<VC
     public setLanguageId(languageId: string): void { this.code.setLanguageId(languageId) }
 
     public async showVersions(versions: VCSVersion[]): Promise<void> {
-        this.preview.showVersions(versions)
-        //this.code.showVersions(versions)
+        await this.preview.showVersions(versions)
+        //await this.code.showVersions(versions)
     }
 
     public async addVersion(version: VCSVersion): Promise<void> {
-        this.preview.addVersion(version)
-        //this.code.addVersion(viewVersion)
+        await this.preview.addVersion(version)
+        //await this.code.addVersion(viewVersion)
     }
 
-    public applyDiff(versions: VCSVersion[]): void {
-        const removedVersions = this.preview.applyDiff(versions)
+    public async applyDiff(versions: VCSVersion[]): Promise<void> {
+        const removedVersions = await this.preview.applyDiff(versions)
         removedVersions.forEach(version => this.code.removeVersion(version))
     }
 
