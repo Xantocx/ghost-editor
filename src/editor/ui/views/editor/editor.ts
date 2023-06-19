@@ -81,10 +81,30 @@ class GhostEditorSnapshotManager {
     }
 
     public update(): void {
+        this.forEach(snapshot => snapshot.update())
+    }
+
+    public manualUpdate(): void {
         this.forEach(snapshot => snapshot.manualUpdate())
     }
 
     public updateFrom(snapshots: VCSSnapshotData[]): void {
+        snapshots.forEach(updatedSnapshot => {
+            const currentSnapshot = this.find(currentSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            if (currentSnapshot !== undefined) { currentSnapshot.updateFrom(updatedSnapshot) }
+            else                               { this.snapshots.push(new GhostSnapshot(this.editor, updatedSnapshot)) }
+        })
+
+        this.snapshots.reverse().forEach((currentSnapshot, index) => {
+            const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            if (updatedSnapshot === undefined) {
+                currentSnapshot.remove()
+                this.snapshots.splice(index, 1)
+            }
+        })
+    }
+
+    public manualUpdateFrom(snapshots: VCSSnapshotData[]): void {
         snapshots.forEach(updatedSnapshot => {
             const currentSnapshot = this.find(currentSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
             if (currentSnapshot !== undefined) { currentSnapshot.manualUpdateFrom(updatedSnapshot) }
@@ -316,7 +336,9 @@ class GhostEditorInteractionManager extends SubscriptionManager {
 
         if (options?.updateActiveSnapshot) {
             this.editor.snapshotManager.forEach(snapshot => {
-                if (lineNumber && snapshot.containsLine(lineNumber)) {
+                // TODO:    The line number and column check work for now, but are a dirty workaround to avoid mistakes when timetraveling from a lower snapshot when there is a snapshot in line 1
+                // PROBLEM: Clicking on a ViewZone will set position to 1:1
+                if (lineNumber !== undefined && (lineNumber !== 1 || position?.column !== 1) && snapshot.containsLine(lineNumber)) {
                     snapshot.showMenu()
                 } else if (!snapshot.menuActive) {
                     snapshot.hideMenu()
@@ -664,7 +686,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
     public reload(code: string): void {
         this.update(code)
-        this.snapshotManager.update()
+        this.snapshotManager.manualUpdate()
         this.triggerSync()
     }
 
