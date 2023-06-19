@@ -5,6 +5,7 @@
   "main": "./dist/electron/main.bundle.js",
   "scripts": {
     "build": "node ./node_modules/webpack/bin/webpack.js --progress",
+    "typeorm": "typeorm-ts-node-commonjs",
     "start": "node ./node_modules/electron/cli.js .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -26,11 +27,15 @@
     "ts-node": "^10.9.1",
     "typescript": "^5.0.4",
     "webpack": "^5.79.0",
-    "webpack-cli": "^5.0.1"
+    "webpack-cli": "^5.0.1",
+    "webpack-node-externals": "^3.0.0"
   },
   "dependencies": {
     "@prisma/client": "^4.13.0",
     "diff": "^5.1.0",
-    "iframe-resizer": "^4.3.6"
+    "iframe-resizer": "^4.3.6",
+    "pg": "^8.11.0",
+    "reflect-metadata": "^0.1.13",
+    "typeorm": "0.3.16"
   }
 }

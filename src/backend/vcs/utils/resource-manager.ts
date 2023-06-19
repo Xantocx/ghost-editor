@@ -43,7 +43,7 @@ class ResourceValidation {
 
 export class ResourceManager {
 
-    private readonly sessions = new Map<SessionId, Session>
+    private readonly sessions = new Map<SessionId, Session>()
     private readonly blocks   = new Map<BlockId, Block>()
     private readonly tags     = new Map<TagId, Tag>()
 

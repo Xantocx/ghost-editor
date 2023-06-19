@@ -8,7 +8,7 @@ const mainConfig = {
 	mode: 'development',
     target: 'electron-main',
 	entry: {
-		main: './main.ts',
+		main: './src/main.ts',
 	},
 	resolve: {
 		extensions: ['.ts', '.js'],
@@ -27,6 +27,9 @@ const mainConfig = {
 			}
 		]
 	},
+	externals: {
+		typeorm: "commonjs typeorm",
+	}
 }
 
 const preloadConfig = {
@@ -96,7 +99,7 @@ const rendererConfig = {
         // https://webpack.js.org/plugins/copy-webpack-plugin/
         new CopyPlugin({
             patterns: [
-              	{ from: "src/style/index.css", to: "style" },
+              	{ from: "src/app/style/index.css", to: "style" },
               	{ from: "src/editor/style/editor.css", to: "style" },
 				{ from: "src/libs/p5js/p5.min.js", to: "libs/p5js" },
 				{ from: "node_modules/iframe-resizer/js/iframeResizer.contentWindow.min.js", to: "libs/iframe-resizer" },
@@ -105,7 +108,7 @@ const rendererConfig = {
         }),
 		new HtmlWebPackPlugin({
 			title: 'Ghost Editor',
-            template: 'src/index.html'
+            template: 'src/app/index.html'
 		}),
         // https://github.com/jharris4/html-webpack-tags-plugin
         new HtmlWebpackTagsPlugin({ 

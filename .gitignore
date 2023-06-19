@@ -1,8 +1,14 @@
 # Custom
-.vscode
 test.txt
 test.js
 backup.txt
+
+# TypeORM
+.idea/
+.vscode/
+build/
+tmp/
+temp/
 
 # Logs
 logs
