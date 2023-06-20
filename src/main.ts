@@ -8,6 +8,7 @@ import { GhostApp } from "./app/app"
 
 AppDataSource.initialize().then(async () => {
 
+    /*
     const userRepository = AppDataSource.getRepository(User)
 
     const user = new User()
@@ -32,6 +33,7 @@ AppDataSource.initialize().then(async () => {
     console.log(timber)
 
     //await userRepository.remove(timber)
+    */
 
     GhostApp.start(app, BrowserWindow)
 }).catch(error => { throw error })

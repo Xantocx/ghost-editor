@@ -1,17 +1,23 @@
-import { SessionId, BlockId, TagId } from "../core/metadata/ids"
-import { Resource, ResourceManager } from "./resource-manager"
+import { SessionId, BlockId, TagId, GhostResource } from "../core/metadata/ids"
+import { ResourceManager } from "./resource-manager"
 import { Block, ForkBlock, ForkBlockOptions } from "../core/block"
 import { SessionInfo, SessionData } from "../../../app/components/vcs/vcs-provider"
 import { Tag } from "../core/tag"
+import { Entity, JoinColumn, OneToOne } from "typeorm"
 
 export { SessionInfo, SessionData }
 
-export class Session implements Resource {
+@Entity()
+export class Session extends GhostResource {
 
     public readonly manager: ResourceManager
-    public readonly id:      SessionId
 
+    @OneToOne(() => Block)
+    @JoinColumn()
     public readonly block: Block
+
+    @OneToOne(() => Tag, { nullable: true })
+    @JoinColumn()
     public readonly tag?:  Tag
 
     public get blockId():  BlockId            { return this.block.id }
@@ -32,6 +38,8 @@ export class Session implements Resource {
     }
 
     public constructor(block: Block, tag?: Tag) {
+        super()
+
         this.manager = block.manager
         // TODO: there might be a cleverer way for this decision, if a free copy of an InlineBlock is still available, for example (content check is required in this case!)
         this.block   = block instanceof ForkBlock && !this.manager.hasSessionForBlockId(block.id) ? block : block.clone()
@@ -45,9 +53,9 @@ export class Session implements Resource {
     public getInfo(): SessionInfo {
         const session = this
         return {
-            sessionId:   session.id,
-            blockId:     session.blockId,
-            tagId:       session.tagId,
+            sessionId:   session.id.string,
+            blockId:     session.blockId.string,
+            tagId:       session.tagId.string,
             filePath:    session.filePath,
             sessionData: session.getData()
         }

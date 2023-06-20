@@ -1,8 +1,10 @@
+import { Column, Entity, JoinColumn, OneToOne, ManyToOne, OneToMany, Relation } from "typeorm"
+
 import { IRange } from "../../../app/components/utils/range"
 import { VCSTag, VCSSnapshotData } from "../../../app/components/data/snapshot"
 
 import { LinkedList } from "../utils/linked-list"
-import { Resource, ResourceManager } from "../utils/resource-manager"
+import { ResourceManager } from "../utils/resource-manager"
 import { BlockId, TagId } from "./metadata/ids"
 import { LineType, LineNode, Line } from "./line"
 import { InsertionState, LineContent, LineNodeVersion } from "./version"
@@ -22,23 +24,36 @@ interface LineRange {
     endLine: number
 }
 
-export abstract class Block extends LinkedList<Line> implements Resource {
+@Entity()
+export abstract class Block extends LinkedList<Line> {
 
-    public     manager:    ResourceManager
-    public     id:         BlockId
+    public manager: ResourceManager
     public get filePath(): string | undefined { return this.manager.getFilePathForBlock(this) }
 
-    public isDeleted: boolean = false
+    @OneToOne(() => Block, { nullable: true })
+    @JoinColumn()
+    public origin?: Block  // block this was cloned from
 
+    @ManyToOne(() => Block, (parent: Block) => parent.children, { nullable: true, cascade: true })
+    public parent?: Relation<Block>  // block containing this block
+
+    @OneToMany(() => Block, (child: ChildBlock) => child.parent, { cascade: true })
+    public children: Relation<ChildBlock[]>
+
+    @OneToMany(() => Tag, (tag: Tag) => tag.block, { cascade: true })
+    public tags: Relation<Tag[]>
+
+    @Column()
     public eol: EOLSymbol
 
-    public origin?: Block  // block this was cloned from
-    public parent?: Block  // block containing this block
-    public children = new Map<BlockId, ChildBlock>()
-    public tags     = new Map<TagId, Tag>()
+    @Column()
+    public isDeleted: boolean = false
 
-    public    enableVersionMerging: boolean     = false
-    protected lastModifiedLine:     Line | null = null
+    @Column()
+    public enableVersionMerging: boolean     = false
+
+    @Column({ nullable: true })
+    protected lastModifiedLine: Line | null = null
 
     public get firstLine(): Line | undefined { return this.first }
     public get lastLine():  Line | undefined { return this.last }
@@ -297,6 +312,10 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
     // -------------------------- Children Mechanics ---------------------------
 
+    public findChild(id: string): ChildBlock | null {
+        return this.children.find(child => child.id.string === id)
+    }
+
     public createChild(range: IRange): ChildBlock | null {
 
         const lineRange = { startLine: range.startLineNumber, endLine: range.endLineNumber }
@@ -317,12 +336,13 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     }
 
     public addChild(block: ChildBlock): void {
-        this.children.set(block.id, block)
+        this.children.push(block)
     }
 
-    public getChild(blockId: BlockId): ChildBlock {
-        if (!this.children.has(blockId)) { throw new Error(`Child Block with ID ${blockId} does not exist!`) }
-        return this.children.get(blockId)
+    public getChild(id: string): ChildBlock {
+        const child = this.findChild(id)
+        if (child === null) { throw new Error(`Child Block with ID ${id} does not exist!`) }
+        return child
     }
 
     public getChildren(): ChildBlock[] { 
@@ -344,23 +364,27 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         return child
     }
 
-    public deleteChild(blockId: BlockId): void {
-        this.getChild(blockId).delete()
-        this.children.delete(blockId)
+    public deleteChild(id: string): void {
+        const index = this.children.findIndex(child => child.id.string === id)
+        if (index > -1) {
+            const child = this.children[index]
+            if (!child.isDeleted) { child.delete() }
+            this.children.splice(index, 1)
+        }
     }
 
     public delete(): Block[] {
 
+        this.isDeleted = true
+
         this.removeFromLines(true)
-        this.parent?.children.delete(this.id)
+        this.parent?.deleteChild(this.id.string)
 
         this.firstLine = undefined
         this.lastLine  = undefined
 
         const deletedBlocks = this.getChildren().flatMap(child => child.delete())
         deletedBlocks.push(this)
-
-        this.isDeleted = true
 
         return deletedBlocks
     }
@@ -500,7 +524,7 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public compressForParent(): VCSSnapshotData {
         const parent = this
         return {
-            uuid:         parent.id,
+            uuid:         parent.id.string,
             _startLine:   parent.getFirstLineNumberInParent(),
             _endLine:     parent.getLastLineNumberInParent(),
             versionCount: parent.getUserVersionCount(),
@@ -517,6 +541,10 @@ export abstract class Block extends LinkedList<Line> implements Resource {
 
     // ---------------------- TAG FUNCTIONALITY ------------------------
 
+    private findTag(id: string): Tag | null {
+        return this.tags.find(tag => tag.id.string === id)
+    }
+
     protected createCurrentTag(): Tag {
         return new Tag(this, TimestampProvider.getLastTimestamp())
     }
@@ -524,18 +552,18 @@ export abstract class Block extends LinkedList<Line> implements Resource {
     public createTag(): VCSTag {
 
         const tag = this.createCurrentTag()
-        this.tags.set(tag.id, tag)
+        this.tags.push(tag)
 
         return tag.asTagData()
     }
 
-    public loadTag(id: TagId): string {
-        const tag = this.tags.get(id)
+    public loadTag(id: string): string {
+        const tag = this.findTag(id)
         tag.applyTo(this)
         return this.getFullText()
     }
 
-    public getTextForVersion(id: TagId): string {
+    public getTextForVersion(id: string): string {
         const recoveryPoint = this.createCurrentTag()
         const text          = this.loadTag(id)
 

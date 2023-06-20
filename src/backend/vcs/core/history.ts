@@ -1,3 +1,4 @@
+import { Entity, JoinColumn, OneToOne } from "typeorm"
 import { LinkedListNode, LinkedList } from "../utils/linked-list"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { LineNodeVersion, LineContent, LineVersion } from "./version"
@@ -15,13 +16,21 @@ class VersionHistory<Version extends LinkedListNode<Version>> extends LinkedList
     public getVersions(): Version[] { return this.toArray() }
 }
 
+@Entity()
 export class LineNodeHistory extends VersionHistory<LineNodeVersion> {}
 
+@Entity()
 export class LineHistory {
 
+    @OneToOne(() => LineHistory, (history: LineHistory) => history.line)
     public readonly line: Line
+
+    @OneToOne(() => LineNodeHistory, { cascade: true })
+    @JoinColumn()
     public readonly versions: LineNodeHistory
 
+    @OneToOne(() => LineNodeVersion)
+    @JoinColumn()
     private _head: LineNodeVersion
 
     public  get head(): LineNodeVersion        { return this._head }

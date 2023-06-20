@@ -1,9 +1,14 @@
-import { SubscriptionManager } from "../../../editor/ui/widgets/mouse-tracker"
+import { OneToOne, JoinColumn, Relation } from "typeorm"
+import { GhostResource } from "../core/metadata/ids"
 
-export abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
+export abstract class LinkedListNode<Node extends LinkedListNode<Node>> extends GhostResource {
 
-    private _previous?: Node = undefined
-    private _next?:     Node = undefined
+    @OneToOne(() => LinkedListNode<Node>, (previous: LinkedListNode<Node>) => previous.next, { nullable: true, cascade: true })
+    @JoinColumn()
+    private _previous?: Relation<Node> = undefined
+
+    @OneToOne(() => LinkedListNode<Node>, (next: LinkedListNode<Node>) => next.previous, { nullable: true, cascade: true })
+    private _next?: Relation<Node> = undefined
 
     public get previous(): Node { return this._previous }
     public get next():     Node { return this._next }
@@ -54,9 +59,14 @@ export abstract class LinkedListNode<Node extends LinkedListNode<Node>> {
     }
 }
 
-export abstract class LinkedList<Node extends LinkedListNode<Node>> extends SubscriptionManager {
+export abstract class LinkedList<Node extends LinkedListNode<Node>> extends GhostResource {
 
+    @OneToOne(() => Node, { nullable: true })
+    @JoinColumn()
     public first?: Node
+
+    @OneToOne(() => Node, { nullable: true })
+    @JoinColumn()
     public last?:  Node
 
     public get hasFirst():      boolean { return this.first ? true : false }

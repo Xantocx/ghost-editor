@@ -3,6 +3,7 @@ import { Timestamp } from "./metadata/timestamps"
 import { Block } from "./block"
 import { LineNode, Line } from "./line"
 import { LineHistory, LineNodeHistory } from "./history"
+import { Column, Entity, JoinColumn, OneToOne, Relation, OneToMany, ManyToOne } from "typeorm"
 
 export type LineContent = string
 
@@ -20,16 +21,27 @@ interface LineNodeVersionRelations {
     next?:     LineNodeVersion | undefined
 }
 
+@Entity()
 export class LineNodeVersion extends LinkedListNode<LineNodeVersion> {
 
+    @OneToOne(() => LineNode)
+    @JoinColumn()
     public readonly node: LineNode
 
+    @Column()
     public readonly timestamp: Timestamp
-    public readonly isActive:  boolean
-    public          content:   LineContent
 
-    public  readonly origin?: LineNodeVersion   = undefined
-    private readonly clones:  LineNodeVersion[] = []
+    @Column()
+    public readonly isActive: boolean
+
+    @Column()
+    public content: LineContent
+
+    @ManyToOne(() => LineNodeVersion, (version: LineNodeVersion) => version.clones, { nullable: true })
+    public readonly origin?: Relation<LineNodeVersion>
+
+    @OneToMany(() => LineNodeVersion, (version: LineNodeVersion) => version.origin)
+    private readonly clones: Relation<LineNodeVersion[]>
 
     public get versions(): LineNodeHistory { return this.node.versions }
 

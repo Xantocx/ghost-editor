@@ -1,9 +1,9 @@
-import { SessionId, BlockId, TagId, SessionIdManager, BlockIdManager, TagIdManager, Identifiable } from "../core/metadata/ids"
+import { AppDataSource } from "../../db/data-source"
+import { SessionId, BlockId, TagId, SessionIdManager, BlockIdManager, TagIdManager, GhostId } from "../core/metadata/ids"
 import { Session } from "./session"
 import { Block } from "../core/block"
 import { Tag } from "../core/tag"
-
-export interface Resource extends Identifiable {}
+import { Repository } from "typeorm"
 
 enum ResourceState { Missing, Exists, Conflict }
 
@@ -43,39 +43,58 @@ class ResourceValidation {
 
 export class ResourceManager {
 
+    /*
     private readonly sessions = new Map<SessionId, Session>()
     private readonly blocks   = new Map<BlockId, Block>()
     private readonly tags     = new Map<TagId, Tag>()
+    */
 
-    private readonly sessionIdManager = new SessionIdManager()
-    private readonly blockIdManager   = new BlockIdManager()
+    private readonly sessionRepository: Repository<Session>
+    private readonly blockRepository:   Repository<Block>
+    private readonly tagRepository:     Repository<Tag>
+
+    private readonly sessionIdManager: SessionIdManager
+    private readonly blockIdManager:   BlockIdManager
     private readonly tagIdManagers    = new Map<Block, TagIdManager>()
 
-    public get blockIds(): BlockId[] { return Array.from(this.blocks.keys()) }
-    public get tagIds():   TagId[]   { return Array.from(this.tags.keys()) }
+    //public get blockIds(): BlockId[] { return Array.from(this.blocks.keys()) }
+    //public get tagIds():   TagId[]   { return Array.from(this.tags.keys()) }
 
-    public constructor(options?: { blocks?: Block[], tags?: Tag[] }) {
-        options?.blocks?.forEach(block => this.registerBlock(block))
-        options?.tags?.forEach(  tag   => this.registerTag(tag))
+    public constructor() {
+        this.sessionRepository = AppDataSource.getRepository(Session)
+        this.blockRepository   = AppDataSource.getRepository(Block)
+        this.tagRepository     = AppDataSource.getRepository(Tag)
+
+        const idRepository = AppDataSource.getRepository(GhostId)
+
+        this.sessionIdManager = new SessionIdManager(idRepository)
+        this.blockIdManager   = new BlockIdManager(idRepository)
+        this.tagRepository.find().then(tags => 
+            tags.forEach(tag => 
+                this.tagIdManagers.set(tag.block, new TagIdManager(idRepository, tag.block))
+            )
+        )
     }
 
     private validateSession(session: Session): boolean { return ResourceValidation.create("Session", session.id !== undefined, this.hasSession(session.id), this.getSession(session.id) === session).evaluate() }
     private validateBlock(block: Block):       boolean { return ResourceValidation.create("Block", block.id !== undefined, this.hasBlock(block.id), this.getBlock(block.id) === block).evaluate() }
     private validateTag(tag: Tag):             boolean { return ResourceValidation.create("Tag", tag.id !== undefined, this.hasTag(tag.id), this.getTag(tag.id) === tag).evaluate() }
 
-    private newSessionId():                       SessionId { return this.sessionIdManager.newId() }
-    private newBlockId():                         BlockId   { return this.blockIdManager.newId() }
-    private newFilePathBlockId(filePath: string): BlockId   { return this.blockIdManager.newIdFromFilePath(filePath) }
-    private newTagId(block: Block):               TagId     {
-        if (this.hasBlock(block.id)) { return this.tagIdManagers.get(block)!.newId() }
+    private async newSessionId(session: Session):                     Promise<SessionId> { return await this.sessionIdManager.newId(session) }
+    private async newBlockId(block: Block):                           Promise<BlockId>   { return await this.blockIdManager.newId(block) }
+    private async newFilePathBlockId(filePath: string, block: Block): Promise<BlockId>   { return await this.blockIdManager.newIdFromFilePath(filePath, block) }
+    private async newTagId(block: Block, tag: Tag):                   Promise<TagId>     {
+        if (this.hasBlock(block.id)) { return await this.tagIdManagers.get(block)!.newId(tag) }
         else                         { throw new Error("This ResourceManager does not contain the Block required for this Tag!") }
     }
 
+    /*
     public hasSession(sessionId: SessionId): boolean { return this.sessions.has(sessionId) }
     public hasBlock(blockId: BlockId):       boolean { return this.blocks.has(blockId) }
     public hasTag(tagId: BlockId):           boolean { return this.tags.has(tagId) }
+    */
 
-    public getSession(sessionId: SessionId): Session | undefined { return this.sessions.get(sessionId) }
+    public async getSession(sessionId: SessionId): Promise<Session | undefined> { return await this.sessionRepository.get(sessionId) }
     public getBlock(blockId: BlockId):       Block   | undefined { return this.blocks.get(blockId) }
     public getTag(tagId: TagId):             Tag     | undefined { return this.tags.get(tagId) }
 

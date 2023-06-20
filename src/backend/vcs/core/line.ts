@@ -4,6 +4,7 @@ import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { LineContent, LineNodeVersion } from "./version"
 import { LineNodeHistory, LineHistory } from "./history"
 import { LinePosition, LineNumber, Block, InlineBlock, ForkBlock } from "./block"
+import { Column, Entity, JoinColumn, ManyToOne, OneToMany, OneToOne, Relation } from "typeorm"
 
 export enum LineType { 
     Original,
@@ -18,13 +19,24 @@ interface LineNodeRelations {
 
 // TODO: FIND WAY TO ALLOW FOR INDIVIDUAL TIMETRAVEL + EDITS WITH WORKING FUNCTIONALITY
 // This most likely requires merging the headTracking property somehow across all Lines of a LineNode, or reapplying old changes if they do not match the head anymore
+@Entity()
 export class LineNode extends LinkedListNode<LineNode> {
 
-    public          originBlock: Block
-    public readonly lineType:    LineType
-    public readonly versions:    LineNodeHistory
+    @OneToOne(() => Block)
+    @JoinColumn()
+    public originBlock: Block
 
-    public readonly lines        = new Map<Block, Line>()
+    @Column({ type: "enum", enum: LineType })
+    public readonly lineType: LineType
+
+    @OneToOne(() => LineNodeHistory)
+    @JoinColumn()
+    public readonly versions: LineNodeHistory
+
+    @OneToMany(() => Line, (line: Line) => line.block, { cascade: true })
+    public readonly lines: Line[]
+
+    // BIG TODO!!!!
     public readonly headTracking = new Map<Timestamp, LineNodeVersion>()
 
     public get isOriginal(): boolean { return this.lineType === LineType.Original }
@@ -53,7 +65,7 @@ export class LineNode extends LinkedListNode<LineNode> {
 
         // This makes sure the line exists and caries the necessary versions
         const originLine = new Line(this, originBlock, { content })
-        this.lines.set(originBlock, originLine)
+        this.lines.push(originLine)
 
         // TODO: I really don't like the use of a head input in this function as it might lead another programmer to the assumption that you can set the head using this function, but I couldn't think of any better way yet...
         relations?.knownBlocks?.forEach(block => this.addBlock(block, this.firstVersion))
@@ -65,11 +77,11 @@ export class LineNode extends LinkedListNode<LineNode> {
     public getPosition():               LinePosition           { return this.getAbsoluteIndex() }
     public getLineNumber(block: Block): LineNumber | undefined { return this.getLine(block)?.getLineNumber() }
 
-    public has(block: Block):        boolean                 { return this.lines.has(block) }
-    public getLine(block: Block):    Line | undefined        { return this.lines.get(block) }
+    public has(block: Block):        boolean                 { return this.lines.find(line => line.block === block) !== undefined }
+    public getLine(block: Block):    Line | undefined        { return this.lines.find(line => line.block === block) }
     public getHistory(block: Block): LineHistory | undefined { return this.getLine(block)?.history }
 
-    public getBlocks():   Block[]   { return Array.from(this.lines.keys()) }
+    public getBlocks():   Block[]   { return this.lines.map(line => line.block) }
     public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
 
     public getVersions(): LineNodeVersion[] { return this.versions.getVersions() }
@@ -94,13 +106,13 @@ export class LineNode extends LinkedListNode<LineNode> {
 
         if (block instanceof InlineBlock) {
             const parentLine = this.addBlock(block.parent!, head)
-            this.lines.set(block, parentLine)
+            this.lines.push(parentLine)
             return parentLine
         } else if (block instanceof ForkBlock) {
             const headLine = block.origin ? this.getLine(block.origin) : (block.parent ? this.getLine(block.parent) : this.originLine)
             head           = head ? head : headLine.currentVersion
             const line     = new Line(this, block, { head })
-            this.lines.set(block, line)
+            this.lines.push(line)
             return line
         } else {
             throw new Error("The provided Block has an unknown subclass and cannot be added!")
@@ -118,7 +130,13 @@ export class LineNode extends LinkedListNode<LineNode> {
                 this.delete()
             }
         } else if (deleting) {
-            return this.lines.delete(block) ? [block] : []
+            const index = this.lines.findIndex(line => line.block === block)
+            if (index > 0) {
+                this.lines.splice(index, 1)
+                return [block]
+            } else {
+                return []
+            }
         }
     }
 
@@ -135,10 +153,18 @@ interface LineRelations {
     knownBlocks?: Block[]
 }
 
+@Entity()
 export class Line extends LinkedListNode<Line>  {
 
-    public readonly node:    LineNode
+    @ManyToOne(() => LineNode, (node: LineNode) => node.lines)
+    public readonly node: LineNode
+
+    @OneToOne(() => Block)
+    @JoinColumn()
     public readonly block:   Block
+
+    @OneToOne(() => LineHistory, history => history.line, { cascade: true })
+    @JoinColumn()
     public readonly history: LineHistory
 
     public get previous(): Line | undefined { return this.node.previous?.getLine(this.block) }
