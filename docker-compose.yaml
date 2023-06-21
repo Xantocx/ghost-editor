@@ -11,15 +11,17 @@ services:
     expose:
       - 27017
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ghost
-      MONGO_INITDB_ROOT_PASSWORD: ghost
+      MONGO_INITDB_ROOT_USERNAME: ghost-admin
+      MONGO_INITDB_ROOT_PASSWORD: ghost-admin-password
       MONGO_INITDB_DATABASE: ghostdb
     #env_file:
     #  - mongo.env
     networks:
       - ghost
     volumes:
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
       - mongo_data:/data/db
+      - mongo_config:/data/configdb
 
 #  mongo-express:
 #    image: mongo-express
@@ -36,4 +38,4 @@ networks:
 
 volumes:
   mongo_data:
-#    external: true
+  mongo_config:
