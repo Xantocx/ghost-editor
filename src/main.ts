@@ -7,18 +7,48 @@ import { app, BrowserWindow } from "electron"
 import { GhostApp } from "./app/app"
 
 import mongoose from "mongoose"
+import { File, VersionHistory, Head, PopulatedFile, PopulatedHead, PopulatedLine } from "../mongo-test"
 
 async function main() {
-    await mongoose.connect("mongodb://ghost:ghost@127.0.0.1:27017/ghostdb")
+    await mongoose.connect("mongodb://ghost-server:ghost-server-password@127.0.0.1:27017/ghostdb")
 
-    const kittySchema = new mongoose.Schema({
-        name: String
-    });
+    async function createVersionHistory(): Promise<any> {
+        const versionHistory = new VersionHistory()
+        versionHistory.versions.push({ timestamp: 0, isActive: true, content: "This is some content!" })
+        await versionHistory.save()
+        return versionHistory
+    }
 
-    const Kitten = mongoose.model('Kitten', kittySchema);
+    const file = new File()
+    const versionHistory = await createVersionHistory()
+    file.lines.push({ versionHistory: versionHistory._id })
+    await file.save()
 
-    const silence = new Kitten({ name: 'Silence' });
-    console.log(silence.name);
+    const head = new Head({ file: file._id, line: file.lines[0]._id, version: versionHistory.versions[0]._id })
+    await head.save()
+
+    const heads = await Head.find().populate<Pick<PopulatedHead, "file">>("file.lines")
+
+    heads.forEach(head => {
+        const file           = head.file as PopulatedFile
+        const lines          = file.lines
+        const line           = lines.id(head.lineId).populate<PopulatedLine, >
+        const versionHistory = line.versionHistory
+        const version        = file.versionHistory as 
+
+        console.log(lines)
+        console.log()
+    })
+
+    /*
+    const files = await File.find().populate<Pick<PopulatedFile, "lines">>("lines.versionHistory").exec();
+    
+    files.forEach(file => {
+        console.log(file.lines[0].versionHistory?.versions[0].content)
+        //console.log(file.lines[0].ownerDocument())
+        console.log()
+    })
+    */
 
     GhostApp.start(app, BrowserWindow)
 }
