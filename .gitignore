@@ -2,6 +2,7 @@
 test.txt
 test.js
 backup.txt
+*.env
 
 # TypeORM
 .idea/

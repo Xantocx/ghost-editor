@@ -1,11 +1,32 @@
 // conditional import for database system
-import "reflect-metadata"
+//import "reflect-metadata"
 
 import { app, BrowserWindow } from "electron"
-import { AppDataSource } from "./backend/db/data-source"
-import { User } from "./backend/db/entity/User"
+//import { AppDataSource } from "./backend/db/data-source"
+//import { User } from "./backend/db/entity/User"
 import { GhostApp } from "./app/app"
 
+import mongoose from "mongoose"
+
+async function main() {
+    await mongoose.connect("mongodb://ghost:ghost@127.0.0.1:27017/ghostdb")
+
+    const kittySchema = new mongoose.Schema({
+        name: String
+    });
+
+    const Kitten = mongoose.model('Kitten', kittySchema);
+
+    const silence = new Kitten({ name: 'Silence' });
+    console.log(silence.name);
+
+    GhostApp.start(app, BrowserWindow)
+}
+
+main().catch(error => { throw error })
+
+
+/*
 AppDataSource.initialize().then(async () => {
 
     const userRepository = AppDataSource.getRepository(User)
@@ -35,3 +56,4 @@ AppDataSource.initialize().then(async () => {
 
     GhostApp.start(app, BrowserWindow)
 }).catch(error => { throw error })
+*/
