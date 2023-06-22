@@ -1,4 +1,4 @@
-import mongoose, { Schema, Model, Types, Document, PopulatedDoc, ObjectId } from "mongoose";
+import mongoose, { Schema, Model, Types, Document } from "mongoose";
 
 interface IVersion {
     _id:       Types.ObjectId
@@ -7,55 +7,60 @@ interface IVersion {
     content:   string
 }
 
-type VersionType = IVersion | PopulatedVersion
-type VersionModelType = Model<VersionType>
+interface IVersionProps {}
 
-const versionSchema = new Schema({
+type VersionModelType = Model<IVersion, {}, IVersionProps>
+
+const versionSchema = new Schema<IVersion, VersionModelType, IVersionProps>({
     timestamp: { type: Number,  required: true },
     isActive:  { type: Boolean, required: true },
     content:   { type: String,  required: true }
 }, { _id: true });
 
-export interface PopulatedVersion {
-    _id:       Types.ObjectId
-    timestamp: number
-    isActive:  boolean
-    content:   string
-}
+export type  Version      = IVersion & IVersionProps
+       const VersionModel = mongoose.model<IVersion, VersionModelType>("Version", versionSchema)
+
+
 
 
 
 
 interface IVersionHistory {
-    _id:      Types.ObjectId;
-    versions: Types.DocumentArray<PopulatedDoc<Document<ObjectId> & IVersion>>
+    _id:      Types.ObjectId
+    versions: Version[]
 }
 
-type VersionHistoryType = IVersionHistory | PopulatedVersionHistory
-type VersionHistoryModelType = Model<VersionHistoryType>
+interface IVersionHistoryProps {
+    versions: Types.DocumentArray<Version>
+}
 
-const versionHistorySchema = new Schema({
+type VersionHistoryModelType = Model<IVersionHistory, {}, IVersionHistoryProps>
+
+const versionHistorySchema = new Schema<IVersionHistory, VersionHistoryModelType, IVersionHistoryProps>({
     versions: [versionSchema]
 }, { _id: true });
 
-export interface PopulatedVersionHistory {
-    _id:      Types.ObjectId
-    versions: Types.DocumentArray<VersionType>
-}
+export type  VerisonHistory      = IVersionHistory & IVersionHistoryProps
+export const VersionHistoryModel = mongoose.model<IVersionHistory, VersionHistoryModelType>("VersionHistory", versionHistorySchema)
+
+
+
+
 
 
 
 
 
 interface ILine {
-    _id:            Types.ObjectId;
+    _id:            Types.ObjectId
     versionHistory: Types.ObjectId
 }
 
-type LineType = ILine | PopulatedLine
-type LineModelType = Model<LineType>
+interface ILineProps {}
 
-const lineSchema = new Schema({
+type LineModelType = Model<ILine, {}, ILineProps>
+
+const lineSchema = new Schema<ILine, LineModelType, ILineProps>({
     versionHistory: {
         type: Schema.Types.ObjectId,
         ref: "VersionHistory",
@@ -63,10 +68,9 @@ const lineSchema = new Schema({
     }
 }, { _id: true })
 
-export interface PopulatedLine {
-    _id:            Types.ObjectId
-    versionHistory: VersionHistoryType
-}
+export type  Line      = ILine & ILineProps
+export const LineModel = mongoose.model<ILine, LineModelType>("Line", lineSchema)
+
 
 
 
@@ -74,115 +78,140 @@ export interface PopulatedLine {
 
 
 interface IFile {
-    _id:   Types.ObjectId;
-    lines: Types.DocumentArray<LineType>
+    _id:   Types.ObjectId
+    lines: Types.ObjectId[]
 }
 
-type FileType = IFile | PopulatedFile
-type FileModelType = Model<FileType>
+interface IFileProps {}
 
-const fileSchema = new Schema({
-    lines: [lineSchema]
+type FileModelType = Model<IFile, {}, IFileProps>
+
+const fileSchema = new Schema<IFile, FileModelType, IFileProps>({
+    lines: [{
+        type: Schema.Types.ObjectId,
+        ref: "Line"
+    }]
 }, { _id: true })
 
-export interface PopulatedFile {
-    _id:   Types.ObjectId
-    lines: Types.DocumentArray<LineType>
+export type  File      = IFile & IFileProps
+export const FileModel = mongoose.model<IFile, FileModelType>("File", fileSchema)
+
+
+
+
+
+
+
+interface IVersionReference {
+    _id:            Types.ObjectId
+    versionHistory: Types.ObjectId
+    versionId:      Types.ObjectId
 }
+
+export interface IVersionReferenceProps {
+    getVersion(): Promise<Types.Subdocument<Types.ObjectId> & IVersion>
+}
+
+type VersionReferenceModelType = Model<IVersionReference, {}, IVersionReferenceProps>
+
+const versionReferenceSchema = new Schema<IVersionReference, VersionReferenceModelType/*, IVersionReferenceProps*/>({
+    versionHistory: {
+        type: Schema.Types.ObjectId,
+        ref: "VersionHistory",
+        required: true
+    },
+    versionId: {
+        type: Schema.Types.ObjectId,
+        required: true
+    }
+}, {
+    _id: true,
+    methods: {
+        getVersion: async function(): Promise<Types.Subdocument<Types.ObjectId> & IVersion> {
+            const reference = await this.populate<{ versionHistory: IVersionHistory & IVersionHistoryProps }>("versionHistory")
+            return reference.versionHistory.versions.id(this.versionId)
+        }
+    }
+})
+
+export type  VersionReference      = IVersionReference & IVersionReferenceProps
+       const VersionReferenceModel = mongoose.model<IVersionReference, VersionHistoryModelType>("VersionReference", versionReferenceSchema)
+
+
 
 
 
 
 
 interface IHead {
-    _id:       Types.ObjectId
-    file:      Types.ObjectId
-    lineId:    Types.ObjectId
-    versionId: Types.ObjectId
+    _id:        Types.ObjectId
+    line:       Types.ObjectId
+    versionRef: VersionReference
 }
 
-type HeadType = IHead | PopulatedHead
-type HeadModelType = Model<HeadType>
+interface IHeadProps {
+    getVersion(): Promise<Types.Subdocument<Types.ObjectId> & IVersion>
+}
 
-const headSchema = new Schema({
-    file: {
+type HeadModelType = Model<IHead, {}, IHeadProps>
+const headSchema = new Schema<IHead, HeadModelType/*, IHeadProps*/>({
+    line: {
         type: Schema.Types.ObjectId,
-        ref: "File",
+        ref: "Line",
         required: true
     },
-    lineId:    { type: Schema.Types.ObjectId, required: true },
-    versionId: { type: Schema.Types.ObjectId, required: true },
+    versionRef: {
+        type: versionReferenceSchema,
+        required: true
+    }
 }, {
     _id: true,
     methods: {
-        getLine: async function(): Promise<Types.Subdocument<Types.ObjectId> & LineType> {
-            if (!this.populated("file")) {
-                const head = await this.populate<Pick<PopulatedHead, "file">>("file")
-                return head.file.lines.id(this.lineId)
-            } else {
-                return (this.file as unknown as PopulatedFile).lines.id(this.lineId)
-            }
-        },
-        getVersion: async function(): Promise<Types.Subdocument<Types.ObjectId> & VersionType> {
-            let line = await this.getLine()
-            if (!line.populated("versionHistory")) {
-                line = await this.populate("versionHistory")
-            }
-            return line.versionHistory.versions.id(this.versionId)
+        getVersion: async function(): Promise<Types.Subdocument<Types.ObjectId> & IVersion> {
+            return await this.versionRef.getVersion()
         }
     }
 })
 
-export interface PopulatedHead {
-    _id:       Types.ObjectId
-    file:      FileType
-    lineId:    Types.ObjectId
-    versionId: Types.ObjectId
-}
+export type  Head      = IHead & IHeadProps
+export const HeadModel = mongoose.model<IHead, HeadModelType>("Head", headSchema)
 
 
 
 
 
 interface IBlock {
-    _id:          Types.ObjectId
-    file:         Types.ObjectId
-    firstLineId?: Types.ObjectId
-    lastLineId?:  Types.ObjectId
-    heads:        Types.DocumentArray<HeadType>
+    _id:        Types.ObjectId
+    file:       Types.ObjectId
+    firstLine?: Types.ObjectId
+    lastLine?:  Types.ObjectId
+    heads:      Head[]
 }
 
-type BlockType = IBlock | PopulatedBlock
-type BlockModelType = Model<BlockType>
+interface IBlockProps {
+    heads: Types.DocumentArray<Head>
+}
 
-const blockSchema = new Schema({
+type BlockModelType = Model<IBlock, {}, IBlockProps>
+
+const blockSchema = new Schema<IBlock, BlockModelType, IBlockProps>({
     file: {
         type: Schema.Types.ObjectId,
         ref: "File",
         required: true
     },
-    firstLineId: Schema.Types.ObjectId,
-    lastLineId:  Schema.Types.ObjectId,
+    firstLine: {
+        type: Schema.Types.ObjectId,
+        ref: "Line",
+        required: false
+    },
+    lastLine: {
+        type: Schema.Types.ObjectId,
+        ref: "Line",
+        required: false
+    },
     heads: [headSchema]
 }, { _id: true })
 
-export interface PopulatedBlock {
-    _id:          Types.ObjectId
-    file:         FileType
-    firstLineId?: Types.ObjectId
-    lastLineId?:  Types.ObjectId
-    heads:        Types.DocumentArray<HeadType>
-}
-
-
-
-
-
-
-
-const Version = mongoose.model("Version", versionSchema)
-const Line    = mongoose.model("Line", fileSchema)
-
-export const VersionHistory = mongoose.model("VersionHistory", versionHistorySchema)
-export const Head           = mongoose.model("Head", headSchema)
-export const File           = mongoose.model("File", fileSchema)
+export type  Block      = IBlock & IBlockProps
+export const BlockModel = mongoose.model<IBlock, BlockModelType>("Block", blockSchema)
