@@ -51,6 +51,9 @@ export class Version extends DatabaseEntity {
     @ManyToOne(() => Line, line => line.versions)
     public line: Line
 
+    @OneToMany(() => Head, head => head.version)
+    public heads: Head[]
+
     @Column({ unique: true })
     @Index()
     public timestamp: number
@@ -82,6 +85,9 @@ export class Line extends DatabaseEntity {
 
     @ManyToMany(() => Block, block => block.lines)
     public blocks: Block[]
+
+    @OneToMany(() => Head, head => head.line)
+    public heads: Head[]
 
     public async getVersions(): Promise<Version[]> {
         return await Version.repository.find({ where: { line: { id: this.id } }, order: { timestamp: "ASC" } })
@@ -175,11 +181,10 @@ export class Head extends DatabaseEntity {
     @ManyToOne(() => Block, block => block.heads)
     public block: Block
 
-    @ManyToOne(() => Line)
+    @ManyToOne(() => Line, line => line.heads)
     public line: Line
 
-    @OneToOne(() => Version)
-    @JoinColumn()
+    @ManyToOne(() => Version, version => version.heads)
     public version: Version
 }
 

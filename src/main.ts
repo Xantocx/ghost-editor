@@ -104,7 +104,7 @@ AppDataSource.initialize().then(async () => {
         await block.save()
 
         for (const line of lines) {
-            await createHead(block, line, line.getVersions()[0])
+            await createHead(block, line, (await line.getVersions())[0])
         }
         
         return block
@@ -117,12 +117,10 @@ AppDataSource.initialize().then(async () => {
     const searchedFile = await File.repository.findOne({ where: { id: file.id }, relations: { lines: true, blocks: true } })
     console.log(searchedFile)
 
-    /*
     console.log("---")
-    searchedFile.blocks.forEach(block => console.log(block.getVersions()))
+    await Promise.all(searchedFile.blocks.map(async block => console.log(await block.getVersions())))
     console.log("---")
-    searchedFile.blocks.forEach(block => console.log(block.getHeads()))
-    */
+    await Promise.all(searchedFile.blocks.map(async block => console.log(await block.getHeads())))
 
     GhostApp.start(app, BrowserWindow)
 }).catch(error => { throw error })
