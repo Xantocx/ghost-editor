@@ -19,7 +19,7 @@ async function main() {
     
     await file.appendLine("I APPENDED A LINE!")
     await file.prependLine("I PREPRENDED A LINE!")
-    const insertedLine = await file.insertLine("REGULAR INSERTION AS WELL??????", { previous: line1, next: line2 })
+    await file.insertLine("REGULAR INSERTION AS WELL??????", { previous: line1, next: line2 })
     await file.appendLine("AND ANOTHER ONEEEE!")
     await file.prependLine("LITERAL MAGIC!")
 

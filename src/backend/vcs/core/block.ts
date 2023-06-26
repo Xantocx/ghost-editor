@@ -9,6 +9,8 @@ import { InsertionState, LineContent, LineNodeVersion } from "./version"
 import { Tag } from "./tag"
 import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
+import { BlockProxy, FileProxy, LineProxy } from "../db/types"
+import { prismaClient } from "../db/client"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -21,6 +23,93 @@ interface LineRange {
     startLine: number,
     endLine: number
 }
+
+
+export abstract class DBBlock {
+
+    private readonly data: BlockProxy
+    private get id(): number { return this.data.id }
+    private get file(): FileProxy { return this.data.file }
+
+    public async insertLine(lineNumber: LineNumber, content: LineContent): Promise<LineProxy> {
+        //this.resetVersionMerging()
+
+        const block = await prismaClient.block.findUniqueOrThrow({
+            where:   { id: this.id },
+            include: {
+                heads: {
+                    orderBy: { line: { order: "asc" } },
+                    include: {
+                        line:    {
+                            include: {
+                                blocks: true
+                            }
+                        },
+                        version: true
+                    }
+                }
+            }
+        })
+
+        const heads       = block.heads
+        const activeHeads = heads.filter(head => head.version.isActive)
+        const activeLines = activeHeads.map(head => head.line)
+
+        const lastLineNumber     = activeLines.length
+        const newLastLine        = lastLineNumber + 1
+        const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
+
+        /*
+        const expandedLine     = activeLines[Math.min(adjustedLineNumber - 1, lastLineNumber) - 1]
+        const expandedChildren = expandedLine.blocks
+        */
+
+        let createdLine: LineProxy
+
+        if (adjustedLineNumber === 1) {
+            const { line, v0, v1 } = await this.data.prependLine(content)
+            const firstLine = activeLines[0]
+            const headMap = new Map(firstLine.blocks.map(block => [new BlockProxy(block.id, this.file), block.id === this.id ? v1 : v0]))
+            line.addBlocks(headMap)
+
+            createdLine = line
+        } else if (adjustedLineNumber === newLastLine) {
+            const { line, v0, v1 } = await this.data.appendLine(content)
+            const lastLine = activeLines[lastLineNumber - 1]
+            const headMap = new Map(lastLine.blocks.map(block => [new BlockProxy(block.id, this.file), block.id === this.id ? v1 : v0]))
+            line.addBlocks(headMap)
+
+            createdLine = line
+        } else {
+            const currentLine = activeLines[adjustedLineNumber - 1]
+            const currentLineProxy = new LineProxy(currentLine.id)
+            const { line, v0, v1 } = await this.data.insertLine(content, { previous: await currentLineProxy.getPreviousLine(), next: currentLineProxy })
+            const headMap = new Map(currentLine.blocks.map(block => [new BlockProxy(block.id, this.file), block.id === this.id ? v1 : v0]))
+            line.addBlocks(headMap)
+
+            createdLine = line
+        }
+
+        /*
+        expandedChildren.forEach(child => {
+            const snapshotData = child.compressForParent()
+            const lineNumber   = createdLine.getLineNumber()
+            if (snapshotData._endLine < lineNumber) {
+                snapshotData._endLine = lineNumber
+                child.updateInParent(snapshotData)
+            }
+        })
+        */
+
+        return createdLine
+    }    
+}
+
+
+
+
+
+
 
 export abstract class Block extends LinkedList<Line> implements Resource {
 
@@ -209,9 +298,9 @@ export abstract class Block extends LinkedList<Line> implements Resource {
         const newLastLine        = lastLineNumber + 1
         const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
 
-        const includedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber,     lastLineNumber))
+        //const includedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber,     lastLineNumber))
         const expandedChildren = this.getChildrenByLineNumber(Math.min(adjustedLineNumber - 1, lastLineNumber))
-        const affectedChildren = Array.from(new Set(includedChildren.concat(expandedChildren)))
+        //const affectedChildren = Array.from(new Set(includedChildren.concat(expandedChildren)))
 
         let createdLine: Line
 

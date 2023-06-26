@@ -1,6 +1,7 @@
 import { DatabaseProxy } from "../database-proxy"
 import { LineType, BlockProxy, LineProxy, VersionProxy } from "../../types"
 import { randomUUID } from "crypto"
+import { Prisma } from "@prisma/client"
 
 export class FileProxy extends DatabaseProxy {
 
@@ -96,9 +97,9 @@ export class FileProxy extends DatabaseProxy {
         return insertionIndex ? insertionIndex + 1 : null
     }
 
-    public async insertLine(content: string, location?: { previous?: LineProxy, next?: LineProxy }): Promise<LineProxy> {
-        const previous = location?.previous
-        const next     = location?.next
+    public async insertLine(content: string, relations?: { previous?: LineProxy, next?: LineProxy, sourceBlock?: BlockProxy }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+        const previous = relations?.previous
+        const next     = relations?.next
 
         let order: number
         if (previous && next) {
@@ -118,6 +119,13 @@ export class FileProxy extends DatabaseProxy {
             order = 1
         }
 
+        const versionData: Prisma.Enumerable<Prisma.VersionCreateManyLineInput> = [
+            { timestamp: timestamp++, isActive: false, content: "" },
+            { timestamp: timestamp++, isActive: false, content     }
+        ]
+
+        if (relations?.sourceBlock) { versionData.forEach(version => version.sourceBlockId = relations.sourceBlock.id) }
+
         const line = await this.client.line.create({
             data: {
                 file: { connect: { id: this.id } },
@@ -125,24 +133,26 @@ export class FileProxy extends DatabaseProxy {
                 lineType: LineType.INSERTED,
                 versions: {
                     createMany: {
-                        data: [
-                            { timestamp: timestamp++, isActive: false, content: "" },
-                            { timestamp: timestamp++, isActive: false, content }
-                        ]
+                        data: versionData
                     }
+                }
+            },
+            include: {
+                versions: {
+                    orderBy: { timestamp: "asc" }
                 }
             }
         })
 
-        return new LineProxy(line.id)
+        return { line: new LineProxy(line.id), v0: new VersionProxy(line.versions[0].id), v1: new VersionProxy(line.versions[1].id) }
     }
 
-    public async prependLine(content: string): Promise<LineProxy> {
+    public async prependLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const firstLine = await this.client.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "asc" }, select: { id: true } })
         return await this.insertLine(content, { next: firstLine ? new LineProxy(firstLine.id) : undefined })
     }
 
-    public async appendLine(content: string): Promise<LineProxy> {
+    public async appendLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const lastLine = await this.client.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" }, select: { id: true } })
         return await this.insertLine(content, { previous: lastLine ? new LineProxy(lastLine.id) : undefined })
     }

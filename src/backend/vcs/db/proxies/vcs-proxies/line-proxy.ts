@@ -3,6 +3,26 @@ import { BlockProxy, VersionProxy } from "../../types"
 
 export class LineProxy extends DatabaseProxy {
 
+    public async getPreviousLine(): Promise<LineProxy | undefined> {
+        const line     = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
+        const previous = await this.client.line.findFirst({
+            where:   { fileId: line.fileId, order: { lt: line.order } },
+            orderBy: { order: "desc" }
+        })
+
+        return previous ? new LineProxy(previous.id) : undefined
+    }
+
+    public async getNextLine(): Promise<LineProxy | undefined> {
+        const line     = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
+        const next = await this.client.line.findFirst({
+            where:   { fileId: line.fileId, order: { gt: line.order } },
+            orderBy: { order: "asc" }
+        })
+
+        return next ? new LineProxy(next.id) : undefined
+    }
+
     public async addBlock(block: BlockProxy, headVersion: VersionProxy): Promise<void> {
         await this.client.line.update({
             where: { id: this.id },
