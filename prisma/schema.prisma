@@ -13,7 +13,7 @@ datasource db {
 model File {
   id Int @id @default(autoincrement())
 
-  filePath String?
+  filePath String @unique
   eol      String
 
   lines  Line[]  @relation("LinesInFile")
@@ -74,8 +74,10 @@ model Block {
 
   blockId String @unique
 
-  fileId Int?
-  file   File? @relation("BlocksInFile", fields: [fileId], references: [id])
+  fileId Int
+  file   File @relation("BlocksInFile", fields: [fileId], references: [id])
+
+  isRoot Boolean
 
   lines Line[] @relation("LinesInBlocks")
 

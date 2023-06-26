@@ -2,6 +2,9 @@ import { SessionId, BlockId, TagId, SessionIdManager, BlockIdManager, TagIdManag
 import { Session } from "./session"
 import { Block } from "../core/block"
 import { Tag } from "../core/tag"
+import { SessionCreationOptions, SessionInfo, SessionLoadingOptions, SessionOptions } from "../../../app/components/vcs/vcs-provider"
+import { BlockProxy, FileProxy, TagProxy } from "../db/types"
+import { prismaClient } from "../db/client"
 
 export interface Resource extends Identifiable {}
 
@@ -146,5 +149,69 @@ export class ResourceManager {
 
     public closeSession(sessionId: SessionId): void {
         this.sessions.delete(sessionId)
+    }
+}
+
+
+
+class DBResourceManager {
+
+    private async createSessionFromBlock(block: BlockProxy): Promise<SessionInfo> {
+
+    }
+
+    private async createSessionFromTag(tag: TagProxy): Promise<SessionInfo> {
+        
+    }
+
+    private async createSession(options: SessionCreationOptions): Promise<SessionInfo> {
+        const { file, rootBlock } = await FileProxy.create(options.filePath, options.eol, options.content)
+        // Session.create
+    }
+
+    
+    private async loadSession(options: SessionLoadingOptions): Promise<SessionInfo> {
+        const filePath = options.filePath
+        const blockId  = options.blockId
+        const tagId    = options.tagId
+
+        if (tagId) {
+            const tag = await prismaClient.tag.findFirstOrThrow({ 
+                where:   { tagId: tagId },
+                include: { 
+                    block: { 
+                        include: {
+                            file: true
+                        }
+                    } 
+                }
+            })
+
+            const block = tag.block
+            const file  = block.file
+
+            if (filePath && file.filePath !== filePath) { throw new Error("The provided file path and the file the provided tag id belongs to do not match.") }
+            if (blockId  && block.blockId !== blockId)  { throw new Error("Currently, we do not support the application of tags to blocks other than the ones they were created in.") }
+
+            // TODO: Session.create
+        } else if (blockId) {
+            const block = await prismaClient.block.findFirstOrThrow({
+                where:   { blockId: blockId },
+                include: { file: true }
+            })
+
+            if (filePath && block.file.filePath !== filePath) { throw new Error("The provided file path and the file the provided tag id belongs to do not match.") }
+
+            // TODO: Session.create
+        } else if (filePath) {
+            const block = await prismaClient.block.findFirstOrThrow({ where:   { file: { filePath }, isRoot: true } })
+            // TODO: Session.create
+        }
+    }
+
+    public async startSession(options: SessionOptions): Promise<SessionInfo> {
+        if      (options as SessionCreationOptions) { return await this.createSession(options as SessionCreationOptions) }
+        else if (options as SessionLoadingOptions)  { return await this.loadSession(options as SessionLoadingOptions) }
+        else                                        { throw new Error("Options do not have correct format!") }
     }
 }

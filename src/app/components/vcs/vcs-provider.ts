@@ -8,13 +8,21 @@ export type SnapshotUUID = string
 export type SessionId    = string
 export type TagId        = string
 
-export interface SessionOptions { 
+export interface SessionCreationOptions {
+    filePath?: string
+    eol:       string
+    content?:  string
+}
+
+export interface SessionLoadingOptions {
     filePath?: string
     blockId?:  string
     tagId?:    string
-    eol?:      string
-    content?:  string 
 }
+
+export type SessionOptions = SessionCreationOptions | SessionLoadingOptions
+
+
 
 export interface SessionData {
     content:     string,
@@ -24,11 +32,13 @@ export interface SessionData {
 
 export interface SessionInfo { 
     sessionId:   SessionId
+    filePath:    string
     blockId:     string
-    tagId?:      string,
-    filePath?:   string
+    tagId?:      string
     sessionData: SessionData
 }
+
+
 
 // functionality that the VCS needs to provide
 export interface VCSProvider {

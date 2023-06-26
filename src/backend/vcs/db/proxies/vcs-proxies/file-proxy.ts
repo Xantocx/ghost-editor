@@ -1,0 +1,149 @@
+import { DatabaseProxy } from "../database-proxy"
+import { LineType, BlockProxy, LineProxy, VersionProxy } from "../../types"
+import { randomUUID } from "crypto"
+
+export class FileProxy extends DatabaseProxy {
+
+    public static async create(filePath: string | undefined, eol: string, content: string | undefined): Promise<{ file: FileProxy, rootBlock: BlockProxy }> {
+        
+        filePath = filePath ? filePath : "TemporaryFile-" +  randomUUID()
+        content  = content  ? content  : ""
+        
+        const lineContents = content.split(eol)
+
+        const file = await this.client.file.create({
+            data: {
+                filePath,
+                eol,
+                lines: {
+                    createMany: {
+                        data: lineContents.map((_, index) => {
+                            return { 
+                                order: index + 1,
+                                lineType: LineType.ORIGINAL,
+                            }
+                        })
+                    }
+                }
+            },
+            include: {
+                lines: {
+                    orderBy: {
+                        order: "asc"
+                    }
+                }
+            }
+        })
+
+        await this.client.version.createMany({
+            data: lineContents.flatMap((content, index) => {
+                return [
+                    { lineId: file.lines[index].id, timestamp: timestamp++, isActive: false, content: "" },
+                    { lineId: file.lines[index].id, timestamp: timestamp++, isActive: true, content }
+                ]
+            }),
+        })
+
+        const lines = await this.client.line.findMany({
+            where: {
+                file: {
+                    id: file.id
+                }
+            },
+            include: {
+                versions: {
+                    orderBy: {
+                        timestamp: "asc"
+                    }
+                }
+            },
+            orderBy: {
+                order: "asc"
+            }
+        })
+
+        const fileProxy = new FileProxy(file.id)
+        const headInfo  = new Map<LineProxy, VersionProxy>(lines.map(line => [new LineProxy(line.id), new VersionProxy(line.versions[1].id)]))
+        const block     = await BlockProxy.create(filePath + ":root", fileProxy, { headInfo })
+
+        const versions = lines.flatMap(line => line.versions)
+        await this.client.version.updateMany({
+            where: { id: { in: versions.map(version => version.id) } },
+            data:  { sourceBlockId: block.id }
+        })
+
+        return { file: fileProxy, rootBlock: block }
+    }
+
+    private async normalizeLineOrder(insertPosition?: LineProxy): Promise<number | null> {
+        const lines = await this.client.line.findMany({
+            where:   { fileId: this.id },
+            orderBy: { order: "asc" },
+            select:  { id: true }
+        })
+
+        let insertionIndex: number | null = null
+        const updates = lines.map((line, index) => {
+            if (insertPosition !== undefined && line.id === insertPosition.id) { insertionIndex = index }
+            return this.client.line.update({
+                where: { id: line.id },
+                data:  { order: insertionIndex ? index + 2 : index + 1 },
+            });
+        });
+
+        await this.client.$transaction(updates)
+
+        return insertionIndex ? insertionIndex + 1 : null
+    }
+
+    public async insertLine(content: string, location?: { previous?: LineProxy, next?: LineProxy }): Promise<LineProxy> {
+        const previous = location?.previous
+        const next     = location?.next
+
+        let order: number
+        if (previous && next) {
+            const lines        = await this.client.line.findMany({ where: { id: { in: [previous.id, next.id] } }, select: { id: true, order: true } })
+            const previousLine = lines.find(line => line.id === previous.id)!
+            const nextLine     = lines.find(line => line.id === next.id)!
+            order = (previousLine.order + nextLine.order) / 2
+            if (order === previousLine.order || order === nextLine.order) { order = (await this.normalizeLineOrder(next))! }
+        } else if (previous) { 
+            const previousLine = (await this.client.line.findUniqueOrThrow({ where: { id: previous.id }, select: { order: true } }))
+            order = previousLine.order + 1
+        } else if (next) {
+            const nextLine = (await this.client.line.findUniqueOrThrow({ where: { id: next.id }, select: { id: true, order: true } }))
+            order = nextLine.order / 2
+            if (order === nextLine.order) { order = (await this.normalizeLineOrder(next))! }
+        } else {
+            order = 1
+        }
+
+        const line = await this.client.line.create({
+            data: {
+                file: { connect: { id: this.id } },
+                order: order,
+                lineType: LineType.INSERTED,
+                versions: {
+                    createMany: {
+                        data: [
+                            { timestamp: timestamp++, isActive: false, content: "" },
+                            { timestamp: timestamp++, isActive: false, content }
+                        ]
+                    }
+                }
+            }
+        })
+
+        return new LineProxy(line.id)
+    }
+
+    public async prependLine(content: string): Promise<LineProxy> {
+        const firstLine = await this.client.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "asc" }, select: { id: true } })
+        return await this.insertLine(content, { next: firstLine ? new LineProxy(firstLine.id) : undefined })
+    }
+
+    public async appendLine(content: string): Promise<LineProxy> {
+        const lastLine = await this.client.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" }, select: { id: true } })
+        return await this.insertLine(content, { previous: lastLine ? new LineProxy(lastLine.id) : undefined })
+    }
+}

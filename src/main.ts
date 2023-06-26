@@ -1,11 +1,12 @@
 import { app, BrowserWindow } from "electron"
 import { GhostApp } from "./app/app"
 
-import { prisma, FileProxy, BlockProxy, LineProxy } from "./backend/vcs/db/db-queries"
+import { prismaClient } from "./backend/vcs/db/client"
+import { FileProxy, BlockProxy, LineProxy, VersionProxy } from "./backend/vcs/db/types"
 
 async function main() {
-    const file  = await FileProxy.create(undefined, "\n", "This is an amazing test string!\nI will use it to create a file in my database!\nBelieve it or not!")
-    const lines = await prisma.line.findMany({
+    const { file, rootBlock }  = await FileProxy.create(undefined, "\n", "This is an amazing test string!\nI will use it to create a file in my database!\nBelieve it or not!")
+    const lines = await prismaClient.line.findMany({
         where:   { fileId: file.id },
         orderBy: { order: "asc" },
         include: { versions: true }
@@ -22,11 +23,11 @@ async function main() {
     await file.appendLine("AND ANOTHER ONEEEE!")
     await file.prependLine("LITERAL MAGIC!")
 
-    const headInfo = new Map([[block, lines[1].versions[1]]])
+    const headInfo = new Map([[block, new VersionProxy(lines[1].versions[1].id)]])
     //line1.addBlock(block, lines[1].versions[1])
     line1.addBlocks(headInfo)
 
-    let fullFile = await prisma.file.findFirst({
+    let fullFile = await prismaClient.file.findUniqueOrThrow({
         where: {
             id: file.id
         },
@@ -68,10 +69,10 @@ async function main() {
 
 main()
     .then(async () => {
-        await prisma.$disconnect()
+        await prismaClient.$disconnect()
     })
     .catch(async (e) => {
         console.error(e)
-        await prisma.$disconnect()
+        await prismaClient.$disconnect()
         process.exit(1)
     })
