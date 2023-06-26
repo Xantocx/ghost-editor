@@ -11,8 +11,8 @@
 		"jsx": "preserve",
 		"typeRoots": ["node_modules/@types"],
 		"downlevelIteration": true,
-		"emitDecoratorMetadata": true,
-      	"experimentalDecorators": true
+		//"emitDecoratorMetadata": true,
+      	//"experimentalDecorators": true
 	},
 	"include": ["**/*"],
 	"exclude": ["node_modules", "**/*.spec.ts", "src/editor/**/*", "src/app/preload.ts"],

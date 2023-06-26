@@ -26,9 +26,6 @@ const mainConfig = {
 				exclude: /node_modules/
 			}
 		]
-	},
-	externals: {
-		typeorm: "commonjs typeorm",
 	}
 }
 

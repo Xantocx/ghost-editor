@@ -1,37 +1,77 @@
-// conditional import for database system
-import "reflect-metadata"
-
 import { app, BrowserWindow } from "electron"
-import { AppDataSource } from "./backend/db/data-source"
-import { User } from "./backend/db/entity/User"
 import { GhostApp } from "./app/app"
 
-AppDataSource.initialize().then(async () => {
+import { prisma, FileProxy, BlockProxy, LineProxy } from "./backend/vcs/db/db-queries"
 
-    const userRepository = AppDataSource.getRepository(User)
+async function main() {
+    const file  = await FileProxy.create(undefined, "\n", "This is an amazing test string!\nI will use it to create a file in my database!\nBelieve it or not!")
+    const lines = await prisma.line.findMany({
+        where:   { fileId: file.id },
+        orderBy: { order: "asc" },
+        include: { versions: true }
+    })
 
-    const user = new User()
-    user.firstName = "Timber"
-    user.lastName = "Saw"
-    user.age = 25
-    await userRepository.save(user)
+    const block = await BlockProxy.create("INSERTED " + Math.floor(Math.random() * 10000000), file)
+    
+    const line1 = new LineProxy(lines[1].id)
+    const line2 = new LineProxy(lines[2].id)
+    
+    await file.appendLine("I APPENDED A LINE!")
+    await file.prependLine("I PREPRENDED A LINE!")
+    const insertedLine = await file.insertLine("REGULAR INSERTION AS WELL??????", { previous: line1, next: line2 })
+    await file.appendLine("AND ANOTHER ONEEEE!")
+    await file.prependLine("LITERAL MAGIC!")
 
-    console.log(user)
+    const headInfo = new Map([[block, lines[1].versions[1]]])
+    //line1.addBlock(block, lines[1].versions[1])
+    line1.addBlocks(headInfo)
 
-    const allUsers = await userRepository.find()
-    const firstUser = await userRepository.findOneBy({
-        id: 1,
-    }) // find by id
-    const timber = await userRepository.findOneBy({
-        firstName: "Timber",
-        lastName: "Saw",
-    }) // find by firstName and lastName
+    let fullFile = await prisma.file.findFirst({
+        where: {
+            id: file.id
+        },
+        include: {
+            lines: {
+                include: {
+                    blocks: true,
+                    versions: {
+                        orderBy: {
+                            timestamp: "asc"
+                        }
+                    }
+                },
+                orderBy: {
+                    order: "asc"
+                }
+            },
+            blocks: {
+                include: {
+                    lines: true,
+                    heads: true,
+                }
+            }
+        }
+    })
 
-    console.log(allUsers)
-    console.log(firstUser)
-    console.log(timber)
-
-    //await userRepository.remove(timber)
+    console.log(fullFile)
+    console.log("------------------------------")
+    console.log(fullFile!.lines)
+    console.log("------------------------------")
+    fullFile!.lines.forEach(line => console.log(line.versions))
+    console.log("------------------------------")
+    console.log(fullFile!.blocks[0])
+    console.log("------------------------------")
+    console.log(fullFile!.blocks[1])
 
     GhostApp.start(app, BrowserWindow)
-}).catch(error => { throw error })
+}
+
+main()
+    .then(async () => {
+        await prisma.$disconnect()
+    })
+    .catch(async (e) => {
+        console.error(e)
+        await prisma.$disconnect()
+        process.exit(1)
+    })

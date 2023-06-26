@@ -10,61 +10,112 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model DBTrackedFile {
+model File {
   id Int @id @default(autoincrement())
 
   filePath String?
+  eol      String
 
-  lines     DBTrackedLine[]
-  snapshots DBSnapshot[]
+  lines  Line[]  @relation("LinesInFile")
+  blocks Block[] @relation("BlocksInFile")
 }
 
-model DBTrackedLine {
+enum LineType {
+  ORIGINAL
+  INSERTED
+}
+
+model Line {
   id Int @id @default(autoincrement())
 
   fileId Int
-  file   DBTrackedFile @relation(fields: [fileId], references: [id])
+  file   File @relation("LinesInFile", fields: [fileId], references: [id])
 
-  lineNumber Int
-  history    DBLineHistory?
+  order Float
+
+  lineType LineType
+
+  versions Version[] @relation("VersionsInLine")
+
+  blocks Block[] @relation("LinesInBlocks")
+
+  heads Head[] @relation("HeadsForLine")
+
+  @@index([order(sort: Asc)])
 }
 
-model DBLineHistory {
+model Version {
   id Int @id @default(autoincrement())
 
-  lineId Int           @unique
-  line   DBTrackedLine @relation(fields: [lineId], references: [id])
+  lineId Int
+  line   Line @relation("VersionsInLine", fields: [lineId], references: [id])
 
-  versions DBLineVersion[] @relation("VersionsRelation")
-}
+  timestamp         Int   @unique
+  trackedTimestamps Int[]
 
-model DBLineVersion {
-  id Int @id @default(autoincrement())
+  isActive Boolean
 
-  isHead  Boolean
-  
-  timestamp Int
   content String
 
-  previousId Int?           @unique
-  previous   DBLineVersion? @relation("LineHistory", fields: [previousId], references: [id])
-  next       DBLineVersion? @relation("LineHistory")
+  originId Int?
+  origin   Version?  @relation("ClonedVersionsOfOrigin", fields: [originId], references: [id])
+  clones   Version[] @relation("ClonedVersionsOfOrigin")
 
-  originId Int?            @unique
-  origin   DBLineVersion?  @relation("OriginRelation", fields: [originId], references: [id])
-  clones   DBLineVersion[] @relation("OriginRelation")
+  sourceBlockId Int?
+  sourceBlock   Block? @relation("VersionsFromSourceBlock", fields: [sourceBlockId], references: [id])
 
-  historyId Int           @unique
-  history   DBLineHistory @relation("VersionsRelation", fields: [historyId], references: [id])
+  heads Head[] @relation("HeadsFromVersion")
+
+  @@index([timestamp(sort: Asc)])
 }
 
-model DBSnapshot {
-  id   Int    @id @default(autoincrement())
-  uuid String
+model Block {
+  id Int @id @default(autoincrement())
 
-  fileId Int
-  file   DBTrackedFile @relation(fields: [fileId], references: [id])
+  blockId String @unique
 
-  startLine Int
-  endLine   Int
+  fileId Int?
+  file   File? @relation("BlocksInFile", fields: [fileId], references: [id])
+
+  lines Line[] @relation("LinesInBlocks")
+
+  heads Head[] @relation("HeadsForBlock")
+
+  tags Tag[] @relation("TagsForBlock")
+
+  parentId Int?
+  parent   Block?  @relation("ChildrenInParent", fields: [parentId], references: [id])
+  children Block[] @relation("ChildrenInParent")
+
+  originId Int?
+  origin   Block?  @relation("ClonedBlocksOfOrigin", fields: [originId], references: [id])
+  clones   Block[] @relation("ClonedBlocksOfOrigin")
+
+  createdVersions Version[] @relation("VersionsFromSourceBlock")
+}
+
+model Head {
+  id Int @id @default(autoincrement())
+
+  blockId Int
+  block   Block @relation("HeadsForBlock", fields: [blockId], references: [id])
+
+  lineId Int
+  line   Line @relation("HeadsForLine", fields: [lineId], references: [id])
+
+  versionId Int
+  version   Version @relation("HeadsFromVersion", fields: [versionId], references: [id])
+}
+
+model Tag {
+  id Int @id @default(autoincrement())
+
+  tagId String @unique
+
+  blockId Int
+  block   Block @relation("TagsForBlock", fields: [blockId], references: [id])
+
+  name      String
+  timestamp Int    @unique
+  code      String
 }
