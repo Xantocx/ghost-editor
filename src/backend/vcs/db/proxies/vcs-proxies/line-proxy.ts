@@ -1,7 +1,11 @@
-import { DatabaseProxy } from "../database-proxy"
+import { FileDatabaseProxy } from "../database-proxy"
 import { BlockProxy, VersionProxy } from "../../types"
+import { VersionType } from "@prisma/client"
 
-export class LineProxy extends DatabaseProxy {
+export class LineProxy extends FileDatabaseProxy {
+
+    /*
+    // Nice in theory, but under the current circumstances unnecessary and slow
 
     public async getPreviousLine(): Promise<LineProxy | undefined> {
         const line     = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
@@ -22,6 +26,7 @@ export class LineProxy extends DatabaseProxy {
 
         return next ? new LineProxy(next.id) : undefined
     }
+    */
 
     public async addBlock(block: BlockProxy, headVersion: VersionProxy): Promise<void> {
         await this.client.line.update({
@@ -72,5 +77,29 @@ export class LineProxy extends DatabaseProxy {
 
         return heads.map(head => new HeadProxy(head.id))
         */
+    }
+
+    //{ timestamp: timestamp++, versionType: VersionType.INSERTION,     isActive: false, content     }
+
+    public async updateContent(content: string, sourceBlock: BlockProxy): Promise<VersionProxy> {
+        const version = await this.client.version.create({
+            data: {
+                lineId: this.id,
+                timestamp: timestamp++,
+                versionType: VersionType.CHANGE,
+                isActive: true,
+                content,
+                sourceBlockId: sourceBlock?.id
+            }
+        })
+
+        if (sourceBlock) {
+            await this.client.head.update({
+                where: { blockId_lineId: { blockId: sourceBlock.id, lineId: this.id } },
+                data:  { versionId: version.id }
+            })
+        }
+
+        return new VersionProxy(version.id)
     }
 }

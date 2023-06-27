@@ -26,11 +26,15 @@ interface LineRange {
 }
 
 
-export abstract class DBBlock {
+export class DBBlock {
 
     private readonly data: BlockProxy
     private get id(): number { return this.data.id }
     private get file(): FileProxy { return this.data.file }
+
+    public constructor(block: BlockProxy) {
+        this.data = block
+    }
 
     /*
     private readonly populate = async () => {
@@ -124,8 +128,8 @@ export abstract class DBBlock {
             const previousLine = activeLines[adjustedLineNumber - 2]
             const currentLine  = activeLines[adjustedLineNumber - 1]
 
-            const previousLineProxy = new LineProxy(previousLine.id)
-            const currentLineProxy  = new LineProxy(currentLine.id)
+            const previousLineProxy = new LineProxy(previousLine.id, this.file)
+            const currentLineProxy  = new LineProxy(currentLine.id, this.file)
 
             const { line, v0, v1 } = await this.data.insertLine(content, { previous: previousLineProxy, next: currentLineProxy })
 
@@ -154,7 +158,7 @@ export abstract class DBBlock {
 
         const [block, childrenCount, activeHeads] = await prismaClient.$transaction([
             prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }),
-            prismaClient.block.count({ where: { fileId: this.file.id, parentId: this.id } }),
+            prismaClient.block.count({ where: { parentId: this.id } }),
             prismaClient.head.findMany({
                 where:   { blockId: this.id, version: { isActive: true } },
                 orderBy: { line: { order: "asc" } },
@@ -166,7 +170,6 @@ export abstract class DBBlock {
                                     .map(head => head.lineId)
         const overlappingChild = await prismaClient.block.findFirst({
             where: {
-                fileId:   this.file.id,
                 parentId: this.id,
                 lines: { some: { id: { in: lineIdsInRange } } }
             }
@@ -177,7 +180,7 @@ export abstract class DBBlock {
             return null
         }
 
-        const headInfo = new Map(activeHeads.map(head => [new LineProxy(head.lineId), new VersionProxy(head.versionId)]))
+        const headInfo = new Map(activeHeads.map(head => [new LineProxy(head.lineId, this.file), new VersionProxy(head.versionId)]))
         const child    = await BlockProxy.create(block.blockId + ":child" + childrenCount, this.file, { parent: this.data, headInfo: headInfo })
 
         return child
@@ -207,14 +210,26 @@ export abstract class DBBlock {
 
     public async asSnapshotData(): Promise<VCSSnapshotData> {
 
-        const [block, lineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
+        const [block, lineCount, activeLineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
 
             prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }),
 
             prismaClient.line.count({
                 where: {
                     fileId: this.file.id,
-                    blocks: { some: { id: this.id } } 
+                    blocks: { some: { id: this.id } }
+                }
+            }),
+
+            prismaClient.line.count({
+                where: {
+                    fileId: this.file.id,
+                    heads: {
+                        some: {
+                            blockId: this.id,
+                            version: { isActive: true }
+                        }
+                    } 
                 }
             }),
 
@@ -240,28 +255,29 @@ export abstract class DBBlock {
             prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } })
         ])
 
-        if (lineCount === 0) { throw new Error("Block has no lines, and can thus not be positioned in parent!") }
+        if (activeLineCount === 0) { throw new Error("Block has no active lines, and can thus not be positioned in parent!") }
 
         let   firstLineNumberInParent = 1
-        let   lastLineNumberInParent  = lineCount
+        let   lastLineNumberInParent  = activeLineCount
         const userVersionCount        = versionCount - lineCount + 1
 
         if (block.parentId) {
-            const linesBeforeBlock = await prismaClient.line.count({
+            const activeLinesBeforeBlock = await prismaClient.line.count({
                 where: {
                     fileId: this.file.id,
-                    blocks: {
-                        none: { id: this.id },             // line is not part of this block,
-                        some: { parentId: block.parentId } // but part of the parent block
+                    blocks: { none: { id: this.id } },     // line is not part of this block,
+                    heads: {
+                        some: {
+                            blockId: block.parentId,
+                            version: { isActive: true }
+                        }
                     },
-                    order: {
-                        lt: firstLine.order                // only lines before the block
-                    }
+                    order: { lt: firstLine.order },        // only lines before the block
                 }
             })
     
-            firstLineNumberInParent = linesBeforeBlock + 1
-            lastLineNumberInParent  = linesBeforeBlock + lineCount
+            firstLineNumberInParent = activeLinesBeforeBlock + 1
+            lastLineNumberInParent  = activeLinesBeforeBlock + activeLineCount
         }
 
         const numberVersionsUpToIncludingCurrent = await prismaClient.version.count({
@@ -290,9 +306,137 @@ export abstract class DBBlock {
         }
     }
 
-    // TODO
-    public getSnapshotData(): VCSSnapshotData[] {
-        return this.getChildren().map(child => child.compressForParent())
+    public async getSnapshotData(): Promise<VCSSnapshotData[]> {
+        const children = await prismaClient.block.findMany({ where: { parentId: this.id } })
+        const blocks = children.map(child => new DBBlock(new BlockProxy(child.id, this.file)))
+        return await Promise.all(blocks.map(block => block.asSnapshotData()))
+    }
+
+    public async updateLine(lineNumber: LineNumber, content: LineContent): Promise<LineProxy> {
+        const lines = await prismaClient.line.findMany({
+            where: {
+                fileId: this.file.id,
+                blocks: { some: { id: this.id } }
+            },
+            orderBy: { 
+                order: "asc"
+            }
+        })
+
+        const line = new LineProxy(lines[lineNumber - 1].id, this.file)
+        line.updateContent(content, this.data)
+
+        //this.setupVersionMerging(line)
+
+        return line
+    }
+
+    // TODO: used for updateChild, which is probably not actually used (lol)
+    public async updateInParent(range: VCSSnapshotData): Promise<Block[]> {
+        throw new Error("This method is currently not finished because it is probably not even used lol.")
+
+        const block  = await prismaClient.block.findUniqueOrThrow({
+            where:   { id: this.id }, 
+            include: { 
+                parent: { 
+                    include: { lines: true } 
+                } 
+            } 
+        })
+
+        const parent = block.parent
+        if (!parent) { throw new Error("Cannot update a block without parent relative to its parent.") }
+
+        const [parentLineCount, oldFirstLine, oldLastLine] = await prismaClient.$transaction([
+
+            prismaClient.line.count({ where: { blocks: { some: { id: parent.id } } } }),
+
+            prismaClient.line.findFirstOrThrow({
+                where: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } } 
+                },
+                orderBy: { order: "asc"  },
+                select: { id: true, order: true }
+            }),
+
+            prismaClient.line.findFirstOrThrow({
+                where: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } } 
+                },
+                orderBy: { order: "desc"  },
+                select: { id: true, order: true }
+            }),
+        ])
+
+
+        if (parentLineCount < range._startLine) { throw new Error("Start line is not in range of parent!") }
+        if (parentLineCount < range._endLine)   { throw new Error("End line is not in range of parent!") }
+
+        const newFirstLine = parent.lines[range._startLine - 1]
+        const newLastLine  = parent.lines[range._endLine   - 1]
+
+        if (oldFirstLine.order < newFirstLine.order) {
+            const childrenToModify = await prismaClient.block.findMany({
+                where: {
+                    fileId:   this.file.id,
+                    parentId: this.id,
+                    lines:    { some: { order: { lte: newFirstLine.order } } }
+                }
+            })
+
+            const affectedLines  = parent.lines.filter(line => line.order >= oldFirstLine.order && line.order < newFirstLine.order)
+            const affectedBlocks = childrenToModify.concat(block)
+
+            if (affectedLines.length < affectedBlocks.length) {
+                const updates = affectedLines.map(line => {
+                    return prismaClient.line.update({
+                        where: { id: line.id },
+                        data:  {
+                            blocks: { disconnect: affectedBlocks.map(block => { return { id: block.id } }) },
+                            heads:  { deleteMany: { id: { in: affectedBlocks.map(block => block.id) } } }
+                        }
+                    })
+                })
+
+                await prismaClient.$transaction(updates)
+            } else {
+                const updates = affectedBlocks.map(block => {
+                    return prismaClient.block.update({
+                        where: { id: block.id },
+                        data:  {
+                            lines: { disconnect: affectedLines.map(line => { return { id: line.id } }) },
+                            heads: { deleteMany: { id: { in: affectedLines.map(line => line.id) } } }
+                        }
+                    })
+                })
+
+                await prismaClient.$transaction(updates)
+            }
+        } else if (oldFirstLine.order > newFirstLine.order) {
+            const childrenToModify = await prismaClient.block.findMany({
+                where: {
+                    fileId:   this.file.id,
+                    parentId: this.id,
+                    lines:    { some: { order: { lte: newFirstLine.order } } }
+                }
+            })
+
+
+            // TODO: add new lines to block
+            // DESIGN: SHOULD THIS EVEN EXPAND?
+        }
+
+        if (oldLastLine.order > newLastLine.order) {
+            // TODO: remove lines from block
+            // NODE: BASICALLY COPY IMPLEMENTATON FROM ABOVE
+        } else if (oldFirstLine.order < newLastLine.order) {
+            // TODO: add new lines to block
+            // DESIGN: SHOULD THIS EVEN EXPAND?
+        }
+
+        // TODO: return updatedBlocks
     }
 }
 

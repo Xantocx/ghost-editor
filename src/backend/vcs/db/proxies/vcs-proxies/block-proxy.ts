@@ -1,16 +1,9 @@
 import { Prisma } from "@prisma/client"
-import { DatabaseProxy } from "../database-proxy"
+import { FileDatabaseProxy } from "../database-proxy"
 import { FileProxy, LineProxy, VersionProxy } from "../../types"
 import { prismaClient } from "../../client"
 
-export class BlockProxy extends DatabaseProxy {
-
-    public readonly file: FileProxy
-
-    public constructor(id: number, file: FileProxy) {
-        super(id)
-        this.file = file
-    }
+export class BlockProxy extends FileDatabaseProxy {
 
     public static async create(blockId: string, file: FileProxy, relations?: { headInfo?: Map<LineProxy, VersionProxy>, parent?: BlockProxy, origin?: BlockProxy }): Promise<BlockProxy> {
         const blockData: Prisma.BlockCreateInput = {
@@ -48,12 +41,12 @@ export class BlockProxy extends DatabaseProxy {
     }
 
     // TODO: TEST!!!
-    public async prependLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+    public async prependLine(content: string): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const nextLine     = await this.client.line.findFirst({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  }, select: { id: true, order: true } })
         const previousLine = await this.client.line.findFirst({ where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" }, select: { id: true              } })
         
-        return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id) : undefined,
-                                                next:     nextLine     ? new LineProxy(nextLine.id)     : undefined })
+        return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
+                                                next:     nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined })
     }
 
     // TODO: TEST!!!
@@ -61,8 +54,8 @@ export class BlockProxy extends DatabaseProxy {
         const previousLine = await this.client.line.findFirst({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" }, select: { id: true, order: true } })
         const nextLine     = await this.client.line.findFirst({ where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  }, select: { id: true              } })
         
-        return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id) : undefined,
-                                                next:     nextLine     ? new LineProxy(nextLine.id)     : undefined })
+        return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
+                                                next:     nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined })
     }
 
     public async addLines(lineVersions: Map<LineProxy, VersionProxy>): Promise<void> {

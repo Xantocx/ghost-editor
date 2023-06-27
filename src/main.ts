@@ -14,8 +14,8 @@ async function main() {
 
     const block = await BlockProxy.create("INSERTED " + Math.floor(Math.random() * 10000000), file)
     
-    const line1 = new LineProxy(lines[1].id)
-    const line2 = new LineProxy(lines[2].id)
+    const line1 = new LineProxy(lines[1].id, file)
+    const line2 = new LineProxy(lines[2].id, file)
     
     await file.appendLine("I APPENDED A LINE!")
     await file.prependLine("I PREPRENDED A LINE!")

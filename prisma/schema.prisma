@@ -41,7 +41,7 @@ model Line {
 
   heads Head[] @relation("HeadsForLine")
 
-  @@index([order(sort: Asc)])
+  @@index([order(sort: Asc), fileId])
 }
 
 enum VersionType {
@@ -105,6 +105,8 @@ model Block {
   clones   Block[] @relation("ClonedBlocksOfOrigin")
 
   createdVersions Version[] @relation("VersionsFromSourceBlock")
+
+  @@index([fileId])
 }
 
 model Head {
@@ -118,6 +120,9 @@ model Head {
 
   versionId Int
   version   Version @relation("HeadsFromVersion", fields: [versionId], references: [id])
+
+  @@unique([blockId, lineId])
+  @@index([blockId, lineId])
 }
 
 model Tag {
@@ -131,4 +136,6 @@ model Tag {
   name      String
   timestamp Int    @unique
   code      String
+
+  @@index([blockId])
 }

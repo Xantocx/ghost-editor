@@ -50,7 +50,7 @@ export class FileProxy extends DatabaseProxy {
         })
 
         const fileProxy = new FileProxy(file.id)
-        const headInfo  = new Map<LineProxy, VersionProxy>(lines.map(line => [new LineProxy(line.id), new VersionProxy(line.versions[0].id)]))
+        const headInfo  = new Map<LineProxy, VersionProxy>(lines.map(line => [new LineProxy(line.id, fileProxy), new VersionProxy(line.versions[0].id)]))
         const block     = await BlockProxy.create(filePath + ":root", fileProxy, { headInfo })
 
         const versions = lines.flatMap(line => line.versions)
@@ -130,16 +130,16 @@ export class FileProxy extends DatabaseProxy {
             }
         })
 
-        return { line: new LineProxy(line.id), v0: new VersionProxy(line.versions[0].id), v1: new VersionProxy(line.versions[1].id) }
+        return { line: new LineProxy(line.id, this), v0: new VersionProxy(line.versions[0].id), v1: new VersionProxy(line.versions[1].id) }
     }
 
     public async prependLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const firstLine = await this.client.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "asc" }, select: { id: true } })
-        return await this.insertLine(content, { next: firstLine ? new LineProxy(firstLine.id) : undefined })
+        return await this.insertLine(content, { next: firstLine ? new LineProxy(firstLine.id, this) : undefined })
     }
 
     public async appendLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const lastLine = await this.client.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" }, select: { id: true } })
-        return await this.insertLine(content, { previous: lastLine ? new LineProxy(lastLine.id) : undefined })
+        return await this.insertLine(content, { previous: lastLine ? new LineProxy(lastLine.id, this) : undefined })
     }
 }
