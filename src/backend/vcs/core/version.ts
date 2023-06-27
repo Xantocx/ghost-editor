@@ -78,14 +78,14 @@ export class LineNodeVersion extends LinkedListNode<LineNodeVersion> {
         const isHead         = this.isHeadOf(block)
         const nextIsHead     = this.next?.isHeadOf(block)
 
-        if      (!isPreInsertion && !isDeletion)   { return InsertionState.Normal }
-        else if (!isPreInsertion &&  isDeletion)   { return InsertionState.Deletion }
-        else if ( isPreInsertion && !isDeletion)   {
+        if      (!isPreInsertion && !isDeletion) { return InsertionState.Normal }
+        else if (!isPreInsertion &&  isDeletion) { return InsertionState.Deletion }
+        else if ( isPreInsertion && !isDeletion) {
             if  (!isHead         && !nextIsHead) { return InsertionState.PreInsertion }
             if  ( isHead         && !nextIsHead) { return InsertionState.PreInsertionEngaged }
             if  (!isHead         &&  nextIsHead) { return InsertionState.PreInsertionReleased }
-            else                                             { throw new Error("Unexpected behaviour: Only one LineNodeVersion should be head at any given time!") }
-        } else                                               { throw new Error("Unexpected behaviour: A LineNodeVersion should not be able to be pre-insertion and deletion at the same time!") }
+            else                                 { throw new Error("Unexpected behaviour: Only one LineNodeVersion should be head at any given time!") }
+        } else                                   { throw new Error("Unexpected behaviour: A LineNodeVersion should not be able to be pre-insertion and deletion at the same time!") }
     }
 
     public apply(block: Block):          void { this.getHistory(block).updateHead(this) }

@@ -11,7 +11,7 @@ import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { BlockProxy, FileProxy, LineProxy, VersionProxy } from "../db/types"
 import { prismaClient } from "../db/client"
-import { VersionType } from "@prisma/client"
+import { Version, VersionType } from "@prisma/client"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -186,28 +186,6 @@ export class DBBlock {
         return child
     }
 
-    /*
-        const timeline = await prismaClient.version.findMany({
-            where: {
-                line:        { blocks: { some: { id: this.id } } },
-                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
-            },
-            orderBy: {
-                timestamp: "asc"
-            }
-        })
-
-        const currentVersion = await prismaClient.version.findFirstOrThrow({
-            where: {
-                heads:       { some: { block: { id: this.id } } },
-                versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
-            },
-            orderBy: {
-                timestamp: "asc"
-            }
-        })
-        */
-
     public async asSnapshotData(): Promise<VCSSnapshotData> {
 
         const [block, lineCount, activeLineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
@@ -266,7 +244,7 @@ export class DBBlock {
                 where: {
                     fileId: this.file.id,
                     blocks: { none: { id: this.id } },     // line is not part of this block,
-                    heads: {
+                    heads: {                               // but has a head (aka is part of) the parent block
                         some: {
                             blockId: block.parentId,
                             version: { isActive: true }
@@ -331,7 +309,38 @@ export class DBBlock {
         return line
     }
 
-    public applyIndex(targetIndex: number): void {
+    public async applyIndex(targetIndex: number): Promise<void> {
+
+        const timeline = await prismaClient.version.findMany({
+            where: {
+                line:        { blocks: { some: { id: this.id } } },
+                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
+            },
+            orderBy: {
+                timestamp: "asc"
+            }
+        })
+
+        const currentVersion = await prismaClient.version.findFirstOrThrow({
+            where: {
+                heads:       { some: { block: { id: this.id } } },
+                versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
+            },
+            orderBy: {
+                timestamp: "asc"
+            }
+        })
+
+        const numberVersionsUpToIncludingCurrent = await prismaClient.version.count({
+            where: {
+                line:        { blocks: { some: { id: this.id } } },
+                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
+                timestamp:   { lte: currentVersion.timestamp }
+            }
+        })
+
+        const latestVersionIndex = numberVersionsUpToIncludingCurrent - 1
+
         // The concept works as follow: I create a timeline from all versions, sorted by timestamp. Then I limit the selecteable versions to all versions past the original file creation
         // (meaning versions that were in the file when loading it into the versioning are ignored), except for the last one (to recover the original state of a snapshot). This means the
         // index provided by the interface will be increased by the amount of such native lines - 1. This index will then select the version, which will be applied on all lines directly.
@@ -346,14 +355,14 @@ export class DBBlock {
         // The great thing about this method is, that, if the user jumps to the insertion version, it will be handled logically, even if the jump came from non-adjacent versions.
 
         //this.resetVersionMerging()
-        const timeline = this.getTimeline()
+        //const timeline = this.getTimeline()
 
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
         let   selectedVersion = timeline[targetIndex] // actually targeted version
         let   previousVersion = targetIndex - 1 >= 0              ? timeline[targetIndex - 1] : undefined
         let   nextVersion     = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
-        const latestVersion   = timeline[this.getCurrentVersionIndex()]
+        const latestVersion   = timeline[latestVersionIndex]
 
         // TO CONSIDER:
         // If I edit a bunch of lines not all in a snapshot, and then rewind the changes, only changing the previously untouched lines, then the order will remain intakt (thanks to head tracking)
@@ -362,17 +371,56 @@ export class DBBlock {
         // that involves clones. I should think what the best course of action would be here...
 
         // Default case
-        let version: LineNodeVersion = selectedVersion
+        let version: Version = selectedVersion
 
         // If the previous version is selected and still on pre-insertion, disable pre-insertion
         // I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
-        if (previousVersion === latestVersion && previousVersion.insertionState(this) === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
+        if (previousVersion.id === latestVersion.id && previousVersion.insertionState(this) === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
         // If the next version is selected and still on post-insertion, then set it to pre-insertion
-        else if (nextVersion === latestVersion && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
+        else if (nextVersion.id === latestVersion.id && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
-        else if (selectedVersion.isPreInsertion && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))     { version = selectedVersion.next }
+        else if (selectedVersion.versionType === VersionType.PRE_INSERTION && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))           { version = selectedVersion.next }
 
-        version.applyTo(this)
+        this.applyTimestamp(version.timestamp)
+    }
+
+    public async applyTimestamp(timestamp: number): Promise<void> {
+        const heads = await prismaClient.head.findMany({ where: { blockId: this.id }, include: { line: true } })
+        const lines = heads.map(head => head.line)
+        
+        const versions = await prismaClient.$transaction(lines.map(line => {
+            return prismaClient.version.findFirst({
+                where: {
+                    lineId: line.id,
+                    timestamp: { lte: timestamp }
+                },
+                orderBy: {
+                    timestamp: "desc"
+                }
+            })
+        }))
+
+        const trackedVersions = await prismaClient.$transaction(lines.map(line => {
+            return prismaClient.trackedVersion.findFirst({
+                where: {
+                    lineId: line.id,
+                    timestamp: { lte: timestamp }
+                },
+                orderBy: { timestamp: "desc" },
+                include: { version: true }
+            })
+        }))
+
+        await prismaClient.$transaction(heads.map((head, index) => {
+            const version  = versions[index]
+            const tracked  = trackedVersions[index]
+            const selected = version.timestamp >= tracked.timestamp ? version : tracked
+
+            return prismaClient.head.update({
+                where: { id: head.id },
+                data:  { versionId: selected.id }
+            })
+        }))
     }
 
 

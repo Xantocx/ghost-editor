@@ -35,7 +35,8 @@ model Line {
 
   lineType LineType
 
-  versions Version[] @relation("VersionsInLine")
+  versions        Version[]        @relation("VersionsInLine")
+  trackedVersions TrackedVersion[] @relation("TrackedVersionsOfLine")
 
   blocks Block[] @relation("LinesInBlocks")
 
@@ -61,8 +62,8 @@ model Version {
 
   versionType VersionType
 
-  timestamp         Int   @unique
-  trackedTimestamps Int[]
+  timestamp Int              @unique
+  tracking  TrackedVersion[] @relation("TrackingOfVersion")
 
   isActive Boolean
 
@@ -76,6 +77,20 @@ model Version {
   sourceBlock   Block? @relation("VersionsFromSourceBlock", fields: [sourceBlockId], references: [id])
 
   heads Head[] @relation("HeadsFromVersion")
+
+  @@index([timestamp(sort: Asc)])
+}
+
+model TrackedVersion {
+  id Int @id @default(autoincrement())
+
+  timestamp Int @unique
+
+  lineId Int
+  line   Line @relation("TrackedVersionsOfLine", fields: [lineId], references: [id], onDelete: Cascade)
+
+  versionId Int
+  version   Version @relation("TrackingOfVersion", fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([timestamp(sort: Asc)])
 }
