@@ -37,34 +37,19 @@ export class FileProxy extends DatabaseProxy {
         })
 
         await this.client.version.createMany({
-            data: lineContents.flatMap((content, index) => {
-                return [
-                    { lineId: file.lines[index].id, timestamp: timestamp++, isActive: false, content: "" },
-                    { lineId: file.lines[index].id, timestamp: timestamp++, isActive: true, content }
-                ]
+            data: lineContents.map((content, index) => {
+                return { lineId: file.lines[index].id, timestamp: timestamp++, isActive: true, content }
             }),
         })
 
         const lines = await this.client.line.findMany({
-            where: {
-                file: {
-                    id: file.id
-                }
-            },
-            include: {
-                versions: {
-                    orderBy: {
-                        timestamp: "asc"
-                    }
-                }
-            },
-            orderBy: {
-                order: "asc"
-            }
+            where:   { fileId: file.id },
+            include: { versions: true },
+            orderBy: { order: "asc" }
         })
 
         const fileProxy = new FileProxy(file.id)
-        const headInfo  = new Map<LineProxy, VersionProxy>(lines.map(line => [new LineProxy(line.id), new VersionProxy(line.versions[1].id)]))
+        const headInfo  = new Map<LineProxy, VersionProxy>(lines.map(line => [new LineProxy(line.id), new VersionProxy(line.versions[0].id)]))
         const block     = await BlockProxy.create(filePath + ":root", fileProxy, { headInfo })
 
         const versions = lines.flatMap(line => line.versions)
@@ -109,10 +94,10 @@ export class FileProxy extends DatabaseProxy {
             order = (previousLine.order + nextLine.order) / 2
             if (order === previousLine.order || order === nextLine.order) { order = (await this.normalizeLineOrder(next))! }
         } else if (previous) { 
-            const previousLine = (await this.client.line.findUniqueOrThrow({ where: { id: previous.id }, select: { order: true } }))
+            const previousLine = await this.client.line.findUniqueOrThrow({ where: { id: previous.id }, select: { order: true } })
             order = previousLine.order + 1
         } else if (next) {
-            const nextLine = (await this.client.line.findUniqueOrThrow({ where: { id: next.id }, select: { id: true, order: true } }))
+            const nextLine = await this.client.line.findUniqueOrThrow({ where: { id: next.id }, select: { order: true } })
             order = nextLine.order / 2
             if (order === nextLine.order) { order = (await this.normalizeLineOrder(next))! }
         } else {

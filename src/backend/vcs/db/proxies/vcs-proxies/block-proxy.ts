@@ -64,4 +64,24 @@ export class BlockProxy extends DatabaseProxy {
         return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id) : undefined,
                                                 next:     nextLine     ? new LineProxy(nextLine.id)     : undefined })
     }
+
+    public async addLines(lineVersions: Map<LineProxy, VersionProxy>): Promise<void> {
+        const lines = Array.from(lineVersions.keys())
+        await this.client.block.update({
+            where: { id: this.id },
+            data:  {
+                lines: { connect: lines.map(line => { return { id: line.id } }) },
+                heads: {
+                    createMany: {
+                        data: lines.map(line => {
+                            return {
+                                lineId:    line.id,
+                                versionId: lineVersions.get(line)!.id
+                            }
+                        })
+                    }
+                }
+            }
+        })
+    }
 }

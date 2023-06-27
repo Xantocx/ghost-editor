@@ -29,7 +29,7 @@ model Line {
   id Int @id @default(autoincrement())
 
   fileId Int
-  file   File @relation("LinesInFile", fields: [fileId], references: [id])
+  file   File @relation("LinesInFile", fields: [fileId], references: [id], onDelete: Cascade)
 
   order Float
 
@@ -48,12 +48,13 @@ model Version {
   id Int @id @default(autoincrement())
 
   lineId Int
-  line   Line @relation("VersionsInLine", fields: [lineId], references: [id])
+  line   Line @relation("VersionsInLine", fields: [lineId], references: [id], onDelete: Cascade)
 
   timestamp         Int   @unique
   trackedTimestamps Int[]
 
   isActive Boolean
+  isPreInsertion Boolean
 
   content String
 
@@ -75,7 +76,7 @@ model Block {
   blockId String @unique
 
   fileId Int
-  file   File @relation("BlocksInFile", fields: [fileId], references: [id])
+  file   File @relation("BlocksInFile", fields: [fileId], references: [id], onDelete: Cascade)
 
   isRoot Boolean
 
@@ -100,7 +101,7 @@ model Head {
   id Int @id @default(autoincrement())
 
   blockId Int
-  block   Block @relation("HeadsForBlock", fields: [blockId], references: [id])
+  block   Block @relation("HeadsForBlock", fields: [blockId], references: [id], onDelete: Cascade)
 
   lineId Int
   line   Line @relation("HeadsForLine", fields: [lineId], references: [id])
@@ -115,7 +116,7 @@ model Tag {
   tagId String @unique
 
   blockId Int
-  block   Block @relation("TagsForBlock", fields: [blockId], references: [id])
+  block   Block @relation("TagsForBlock", fields: [blockId], references: [id], onDelete: Cascade)
 
   name      String
   timestamp Int    @unique

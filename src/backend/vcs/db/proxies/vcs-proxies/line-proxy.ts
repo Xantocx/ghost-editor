@@ -14,7 +14,7 @@ export class LineProxy extends DatabaseProxy {
     }
 
     public async getNextLine(): Promise<LineProxy | undefined> {
-        const line     = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
+        const line = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
         const next = await this.client.line.findFirst({
             where:   { fileId: line.fileId, order: { gt: line.order } },
             orderBy: { order: "asc" }
@@ -46,20 +46,21 @@ export class LineProxy extends DatabaseProxy {
     public async addBlocks(headInfo: Map<BlockProxy, VersionProxy>): Promise<void> {
         const blocks = Array.from(headInfo.keys())
 
-        await this.client.line.update({
-            where: { id: this.id },
-            data:  { blocks: { connect: blocks.map(block => { return { id: block.id } }) } }
-        })
-
-        await this.client.head.createMany({
-            data: blocks.map(block => {
-                return {
-                    blockId:   block.id,
-                    lineId:    this.id,
-                    versionId: headInfo.get(block)!.id
-                }
+        await this.client.$transaction([
+            this.client.line.update({
+                where: { id: this.id },
+                data:  { blocks: { connect: blocks.map(block => { return { id: block.id } }) } }
+            }),
+            this.client.head.createMany({
+                data: blocks.map(block => {
+                    return {
+                        blockId:   block.id,
+                        lineId:    this.id,
+                        versionId: headInfo.get(block)!.id
+                    }
+                })
             })
-        })
+        ])
 
         /*
         const heads = await prisma.head.findMany({ 
