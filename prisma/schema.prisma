@@ -44,17 +44,27 @@ model Line {
   @@index([order(sort: Asc)])
 }
 
+enum VersionType {
+  IMPORTED
+  LAST_IMPORTED
+  PRE_INSERTION
+  INSERTION
+  CHANGE
+  DELETION
+}
+
 model Version {
   id Int @id @default(autoincrement())
 
   lineId Int
   line   Line @relation("VersionsInLine", fields: [lineId], references: [id], onDelete: Cascade)
 
+  versionType VersionType
+
   timestamp         Int   @unique
   trackedTimestamps Int[]
 
   isActive Boolean
-  isPreInsertion Boolean
 
   content String
 

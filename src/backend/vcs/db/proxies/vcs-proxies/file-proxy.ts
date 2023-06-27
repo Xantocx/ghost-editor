@@ -1,7 +1,7 @@
 import { DatabaseProxy } from "../database-proxy"
 import { LineType, BlockProxy, LineProxy, VersionProxy } from "../../types"
 import { randomUUID } from "crypto"
-import { Prisma } from "@prisma/client"
+import { Prisma, VersionType } from "@prisma/client"
 
 export class FileProxy extends DatabaseProxy {
 
@@ -38,7 +38,8 @@ export class FileProxy extends DatabaseProxy {
 
         await this.client.version.createMany({
             data: lineContents.map((content, index) => {
-                return { lineId: file.lines[index].id, timestamp: timestamp++, isActive: true, content }
+                const versionType = index === lineContents.length - 1 ? VersionType.LAST_IMPORTED : VersionType.IMPORTED
+                return { lineId: file.lines[index].id, versionType, timestamp: timestamp++, isActive: true, content }
             }),
         })
 
@@ -105,8 +106,8 @@ export class FileProxy extends DatabaseProxy {
         }
 
         const versionData: Prisma.Enumerable<Prisma.VersionCreateManyLineInput> = [
-            { timestamp: timestamp++, isActive: false, content: "" },
-            { timestamp: timestamp++, isActive: false, content     }
+            { timestamp: timestamp++, versionType: VersionType.PRE_INSERTION, isActive: false, content: "" },
+            { timestamp: timestamp++, versionType: VersionType.INSERTION,     isActive: false, content     }
         ]
 
         if (relations?.sourceBlock) { versionData.forEach(version => version.sourceBlockId = relations.sourceBlock.id) }

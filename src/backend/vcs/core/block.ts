@@ -11,6 +11,7 @@ import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { BlockProxy, FileProxy, LineProxy, VersionProxy } from "../db/types"
 import { prismaClient } from "../db/client"
+import { VersionType } from "@prisma/client"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -182,34 +183,70 @@ export abstract class DBBlock {
         return child
     }
 
+    /*
+        const timeline = await prismaClient.version.findMany({
+            where: {
+                line:        { blocks: { some: { id: this.id } } },
+                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
+            },
+            orderBy: {
+                timestamp: "asc"
+            }
+        })
+
+        const currentVersion = await prismaClient.version.findFirstOrThrow({
+            where: {
+                heads:       { some: { block: { id: this.id } } },
+                versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
+            },
+            orderBy: {
+                timestamp: "asc"
+            }
+        })
+        */
+
     public async asSnapshotData(): Promise<VCSSnapshotData> {
 
-        const [block, lineCount, versionCount] = await prismaClient.$transaction([
+        const [block, lineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
+
             prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }),
+
             prismaClient.line.count({
                 where: {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } } 
                 }
             }),
-            prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } })
-        ])
 
-        if (lineCount === 0) { throw new Error("Block has no lines, and can thus not be positioned in parent!") }
+            prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } }),
 
-        let firstLineNumberInParent = 1
-        let lastLineNumberInParent  = lineCount
-
-        if (block.parentId) {
-            const firstLine = await prismaClient.line.findFirstOrThrow({
+            prismaClient.line.findFirstOrThrow({
                 where: {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } } 
                 },
                 orderBy: { order: "asc"  },
                 select: { id: true, order: true }
-            })
-    
+            }),
+
+            prismaClient.version.findFirstOrThrow({
+                where: {
+                    heads:       { some: { block: { id: this.id } } },
+                    versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
+                },
+                orderBy: { timestamp: "asc" }
+            }),
+
+            prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } })
+        ])
+
+        if (lineCount === 0) { throw new Error("Block has no lines, and can thus not be positioned in parent!") }
+
+        let   firstLineNumberInParent = 1
+        let   lastLineNumberInParent  = lineCount
+        const userVersionCount        = versionCount - lineCount + 1
+
+        if (block.parentId) {
             const linesBeforeBlock = await prismaClient.line.count({
                 where: {
                     fileId: this.file.id,
@@ -227,15 +264,29 @@ export abstract class DBBlock {
             lastLineNumberInParent  = linesBeforeBlock + lineCount
         }
 
-        const userVersionCount = versionCount - lineCount + 1
+        const numberVersionsUpToIncludingCurrent = await prismaClient.version.count({
+            where: {
+                line:        { blocks: { some: { id: this.id } } },
+                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
+                timestamp:   { lte: currentVersion.timestamp }
+            }
+        })
 
         return {
             uuid:         block.blockId,
             _startLine:   firstLineNumberInParent,
             _endLine:     lastLineNumberInParent,
             versionCount: userVersionCount,
-            versionIndex: .getCurrentVersionIndex(),
-            tags:         block.getTagData()
+            versionIndex: numberVersionsUpToIncludingCurrent - 1,
+            tags:         tags.map(tag => {
+                return {
+                    id:                  tag.tagId,
+                    blockId:             tag.block.blockId,
+                    name:                tag.name,
+                    text:                tag.code,
+                    automaticSuggestion: false
+                }
+            })
         }
     }
 
@@ -243,39 +294,6 @@ export abstract class DBBlock {
     public getSnapshotData(): VCSSnapshotData[] {
         return this.getChildren().map(child => child.compressForParent())
     }
-}
-
-
-private getTimeline(): LineNodeVersion[] {
-    const timeline = this.getVersions()
-        .filter(version => { return !version.previous?.isPreInsertion })
-        .sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
-    timeline.splice(0, this.getOriginalLineCount() - 1) // remove the first unused original versions
-    return timeline
-}
-
-// WARNING: This function is a bit wild. It assumes we cannot have any pre-insertion versions as current version, as those are invisible, and thus "not yet existing" (the lines, that is).
-// As a result it filters those. This function should ONLY BE USED WHEN YOU KNOW WHAT YOU DO. One example of that is the getCurrentVersionIndex, where the understanding of this
-// function is used to extract the timeline index that should be visualized by the UI.
-private getCurrentVersion(): LineNodeVersion {
-    return this.getHeads().filter(head          => !head.isPreInsertion)
-                          .sort( (headA, headB) => headB.timestamp - headA.timestamp)[0]
-}
-
-public getCurrentVersionIndex(): number {
-    // establish correct latest hand in the timeline: as we do not include insertion version, but only pre-insertion, those are set to their related pre-insertion versions
-    let currentVersion = this.getCurrentVersion()
-    if (currentVersion.previous?.isPreInsertion) { currentVersion = currentVersion.previous }   // I know, this is wild. The idea is that we cannot have invisible lines as the current
-                                                                                                      // version. At the same time the pre-insertion versions are the only ones present in
-                                                                                                      // the timeline by default, because I can easily distinguished for further manipulation.
-    //if (currentVersion.origin)                   { currentVersion = currentVersion.next }
-
-    const timeline = this.getTimeline()
-    const index    = timeline.indexOf(currentVersion, 0)
-
-    if (index < 0) { throw new Error("Latest head not in timeline!") }
-
-    return index
 }
 
 
