@@ -331,6 +331,51 @@ export class DBBlock {
         return line
     }
 
+    public applyIndex(targetIndex: number): void {
+        // The concept works as follow: I create a timeline from all versions, sorted by timestamp. Then I limit the selecteable versions to all versions past the original file creation
+        // (meaning versions that were in the file when loading it into the versioning are ignored), except for the last one (to recover the original state of a snapshot). This means the
+        // index provided by the interface will be increased by the amount of such native lines - 1. This index will then select the version, which will be applied on all lines directly.
+        // There are no clones anymore for deleted or modified lines (besides when editing past versions, cloning edited versions to the end). The trick to handle inserted lines works as
+        // follows: I still require a deactiveated and an activated version with the actual contet. However, the timeline will only contain the deactivated one, the pre-insertion line.
+        // When this line gets chosen by the user, I can decide how to process it: If it is already the head, the user likely meant to actually see the content of this line and I just apply
+        // the next line with content. If it is currently not the head, the user likely meant to disable it, so it will be applied directly.
+        // the only larger difficulty arises when the user decides to select this line, and then moves the selected index one to the left. This operation will trigger the version prior to
+        // the actual insertion and can be completely unrelated. However, when leaving the insertion version, what the user really wants to do is hide it again. This can be checked by checking
+        // the next version for each index, and it if is a pre-insertion version, then check wether the next version of it (the enabled one with actual content) is currently head. If that's the
+        // case, then just apply the next version, aka the pre-insertion version, to hide it again.
+        // The great thing about this method is, that, if the user jumps to the insertion version, it will be handled logically, even if the jump came from non-adjacent versions.
+
+        //this.resetVersionMerging()
+        const timeline = this.getTimeline()
+
+        if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
+
+        let   selectedVersion = timeline[targetIndex] // actually targeted version
+        let   previousVersion = targetIndex - 1 >= 0              ? timeline[targetIndex - 1] : undefined
+        let   nextVersion     = targetIndex + 1 < timeline.length ? timeline[targetIndex + 1] : undefined
+        const latestVersion   = timeline[this.getCurrentVersionIndex()]
+
+        // TO CONSIDER:
+        // If I edit a bunch of lines not all in a snapshot, and then rewind the changes, only changing the previously untouched lines, then the order will remain intakt (thanks to head tracking)
+        // but it can happen that the order of edits is weird (e.g., when one of these still original lines gets deleted, it immediately disappears instead of first being displayed).
+        // This is because I do not clone these lines that were never edited. Thus, all changes are instant. This can be good, but it feels different from the average editing experience
+        // that involves clones. I should think what the best course of action would be here...
+
+        // Default case
+        let version: LineNodeVersion = selectedVersion
+
+        // If the previous version is selected and still on pre-insertion, disable pre-insertion
+        // I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
+        if (previousVersion === latestVersion && previousVersion.insertionState(this) === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
+        // If the next version is selected and still on post-insertion, then set it to pre-insertion
+        else if (nextVersion === latestVersion && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
+        // If the current version is pre-insertion, skip the pre-insertion phase if necessary
+        else if (selectedVersion.isPreInsertion && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))     { version = selectedVersion.next }
+
+        version.applyTo(this)
+    }
+
+
     // TODO: used for updateChild, which is probably not actually used (lol)
     public async updateInParent(range: VCSSnapshotData): Promise<Block[]> {
         throw new Error("This method is currently not finished because it is probably not even used lol.")

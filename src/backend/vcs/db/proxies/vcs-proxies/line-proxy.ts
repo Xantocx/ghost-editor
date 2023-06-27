@@ -82,6 +82,28 @@ export class LineProxy extends FileDatabaseProxy {
     //{ timestamp: timestamp++, versionType: VersionType.INSERTION,     isActive: false, content     }
 
     public async updateContent(content: string, sourceBlock: BlockProxy): Promise<VersionProxy> {
+
+        // TODO: lacks cloning in case I am not up-to-date, as well as head-tracking
+
+        if (sourceBlock) {
+
+            const [latestVersion, latestTracking, head] = await this.client.$transaction([
+                this.client.version.findFirstOrThrow({
+                    where:   { lineId: this.id },
+                    orderBy: { timestamp: "desc" }
+                }),
+                this.client.version.findFirst({
+                    where:   { lineId: this.id },
+                    orderBy: { trackedTimestamps: "" }
+                }),
+                this.client.head.findUnique({ where: { blockId_lineId: { blockId: sourceBlock.id, lineId: this.id } } })
+            ])
+
+            if (latestVersion.id !== head.versionId) {
+                // clone + head-tracking -> more cases needed as well
+            }
+        }
+
         const version = await this.client.version.create({
             data: {
                 lineId: this.id,
