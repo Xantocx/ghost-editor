@@ -28,6 +28,8 @@ export class LineProxy extends FileDatabaseProxy {
     }
     */
 
+    public readonly getBlocks = () => this.client.block.findMany({ where: { lines: { some: { id: this.id } } } })
+
     public async addBlock(block: BlockProxy, headVersion: VersionProxy): Promise<void> {
         await this.client.line.update({
             where: { id: this.id },

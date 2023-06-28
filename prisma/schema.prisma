@@ -107,7 +107,9 @@ model Block {
 
   lines Line[] @relation("LinesInBlocks")
 
-  heads Head[] @relation("HeadsForBlock")
+  headListId    Int
+  headList      HeadList  @relation("HeadsForBlock", fields: [headListId], references: [id])
+  ownedHeadList HeadList? @relation("HeadListOwner")
 
   tags Tag[] @relation("TagsForBlock")
 
@@ -124,11 +126,22 @@ model Block {
   @@index([fileId])
 }
 
+model HeadList {
+  id Int @id @default(autoincrement())
+
+  ownerId Int   @unique
+  owner   Block @relation("HeadListOwner", fields: [ownerId], references: [id])
+
+  blocks Block[] @relation("HeadsForBlock")
+
+  heads Head[] @relation("HeadsInList")
+}
+
 model Head {
   id Int @id @default(autoincrement())
 
-  blockId Int
-  block   Block @relation("HeadsForBlock", fields: [blockId], references: [id], onDelete: Cascade)
+  listId Int
+  list   HeadList @relation("HeadsInList", fields: [listId], references: [id], onDelete: Cascade)
 
   lineId Int
   line   Line @relation("HeadsForLine", fields: [lineId], references: [id])
@@ -136,8 +149,8 @@ model Head {
   versionId Int
   version   Version @relation("HeadsFromVersion", fields: [versionId], references: [id])
 
-  @@unique([blockId, lineId])
-  @@index([blockId, lineId])
+  @@unique([listId, lineId])
+  @@index([listId, lineId])
 }
 
 model Tag {

@@ -11,7 +11,7 @@ import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { BlockProxy, FileProxy, LineProxy, VersionProxy } from "../db/types"
 import { prismaClient } from "../db/client"
-import { Version, VersionType } from "@prisma/client"
+import { PrismaPromise, Version, VersionType } from "@prisma/client"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -36,64 +36,118 @@ export class DBBlock {
         this.data = block
     }
 
-    /*
-    private readonly populate = async () => {
-        return await prismaClient.block.findUniqueOrThrow({
-            where:   { id: this.id },
-            include: {
-                heads: {
-                    orderBy: { line: { order: "asc" } },
-                    include: {
-                        line:    {
-                            include: {
-                                blocks: true
-                            }
-                        },
-                        version: true
-                    }
+
+
+    public readonly getFile = () => this.file.getFile()
+
+    public readonly getBlock = () => prismaClient.block.findUniqueOrThrow({ where: { id: this.id } })
+
+    public readonly getLineCount = () => prismaClient.line.count({
+        where: {
+            fileId: this.file.id,
+            blocks: { some: { id: this.id } }
+        }
+    })
+
+    public readonly getActiveLineCount = () => prismaClient.line.count({
+        where: {
+            fileId: this.file.id,
+            heads: {
+                some: {
+                    blockId: this.id,
+                    version: { isActive: true }
                 }
-            }
-        })
+            } 
+        }
+    })
+
+    public readonly getVersionCount = () => prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } })
+
+    public readonly getChildrenCount = () => prismaClient.block.count({ where: { parentId: this.id } })
+
+    public readonly getHeadsWithLines = () => prismaClient.head.findMany({ where: { blockId: this.id }, include: { line: true } })
+
+    public readonly getActiveHeads = () => prismaClient.head.findMany({
+        where:   { blockId: this.id, version: { isActive: true } },
+        orderBy: { line: { order: "asc" } },
+    })
+
+    public readonly getActiveLines = () => prismaClient.line.findMany({
+        where:   { heads: { some: { blockId: this.id, version: { isActive: true } } } },
+        orderBy: { order: "asc" }
+    })
+
+    public readonly getActiveVersions = () => prismaClient.version.findMany({
+        where: {
+            isActive: true,
+            heads:    { some: { blockId: this.id } }
+        },
+        orderBy: {
+            line: { order: "asc" }
+        }
+    })
+
+    public readonly getChildren = () => prismaClient.block.findMany({ where: { parentId: this.id } })
+
+    public readonly getTags = () => prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } })
+
+    public readonly getTimeline = () => prismaClient.version.findMany({
+        where: {
+            line:        { blocks: { some: { id: this.id } } },
+            versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
+        },
+        orderBy: {
+            timestamp: "asc"
+        }
+    })
+
+    public readonly getCurrentVersion = () => prismaClient.version.findFirstOrThrow({
+        where: {
+            heads:       { some: { block: { id: this.id } } },
+            versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
+        },
+        orderBy: { timestamp: "desc" }
+    })
+
+    public readonly getTimelineIndexFor = (version: Version) => prismaClient.version.count({
+        where: {
+            line:        { blocks: { some: { id: this.id } } },
+            versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
+            timestamp:   { lte: version.timestamp }
+        }
+    }).then(position => position - 1)
+
+
+
+
+
+    public async getText(): Promise<string> {
+        const [file, versions] = await prismaClient.$transaction([
+            this.getFile(),
+            this.getActiveVersions()
+        ])
+
+        const content = versions.map(version => version.content)
+        return content.join(file.eol)
     }
 
-    private readonly getHeads = async () => {
-        return await prismaClient.head.findMany({
-            where:   { blockId: this.id },
-            orderBy: { line: { order: "asc" } },
-            include: {
-                line:    {
-                    include: {
-                        blocks: true
-                    }
-                },
-                version: true
-            }
-        })
-    }
+    public async getFullText(selectedLines?: Map<LineNode, Line>): Promise<{ blockText: string, fullText: string }> {
+        if (this.isRoot && !selectedLines) { return this.getCurrentText() }
 
-    private readonly getActiveHeads = async () => {
-        return await prismaClient.head.findMany({
-            where:   { blockId: this.id, version: { isActive: true } },
-            orderBy: { line: { order: "asc" } },
-            include: {
-                line:    {
-                    include: {
-                        blocks: true
-                    }
-                },
-                version: true
-            }
-        })
+        selectedLines = selectedLines ? selectedLines : new Map()
+        this.forEach(line => { if (!selectedLines.has(line.node)) { selectedLines.set(line.node, line) } })
+
+        if (this.parent) {
+            return this.parent.getFullText(selectedLines)
+        } else {
+            return this.map(line => selectedLines.get(line.node)!.currentContent).join(this.eol)
+        }
     }
-    */
 
     public async insertLine(lineNumber: LineNumber, content: LineContent): Promise<LineProxy> {
         //this.resetVersionMerging()
 
-        const activeLines = await prismaClient.line.findMany({
-            where:   { blocks: { some: { id: this.id } } },
-            orderBy: { order: "asc" }
-        })
+        const activeLines = await this.getActiveLines()
 
         const lastLineNumber     = activeLines.length
         const newLastLine        = lastLineNumber + 1
@@ -109,19 +163,19 @@ export class DBBlock {
         if (adjustedLineNumber === 1) {
             const { line, v0, v1 } = await this.data.prependLine(content) // TODO: could be optimized by getting previous line from file lines
 
-            const firstLine = activeLines[0]
-            const blocks = await prismaClient.block.findMany({ where: { lines: { some: { id: firstLine.id } } } })
+            const firstLine = new LineProxy(activeLines[0].id, this.file)
+            const blocks = await firstLine.getBlocks()
             const headMap = new Map(blocks.map(block => [new BlockProxy(block.id, this.file), block.id === this.id ? v1 : v0]))
-            line.addBlocks(headMap)
+            await line.addBlocks(headMap)
 
             createdLine = line
         } else if (adjustedLineNumber === newLastLine) {
             const { line, v0, v1 } = await this.data.appendLine(content) // TODO: could be optimized by getting previous line from file lines
 
-            const lastLine = activeLines[lastLineNumber - 1]
-            const blocks   = await prismaClient.block.findMany({ where: { lines: { some: { id: lastLine.id } } } })
+            const lastLine = new LineProxy(activeLines[lastLineNumber - 1].id, this.file)
+            const blocks   = await lastLine.getBlocks()
             const headMap  = new Map(blocks.map(block => [new BlockProxy(block.id, this.file), block.id === this.id ? v1 : v0]))
-            line.addBlocks(headMap)
+            await line.addBlocks(headMap)
 
             createdLine = line
         } else {
@@ -133,9 +187,9 @@ export class DBBlock {
 
             const { line, v0, v1 } = await this.data.insertLine(content, { previous: previousLineProxy, next: currentLineProxy })
 
-            const blocks  = await prismaClient.block.findMany({ where: { lines: { some: { id: currentLine.id } } } })
+            const blocks  = await currentLineProxy.getBlocks()
             const headMap = new Map(blocks.map(block => [new BlockProxy(block.id, this.file), block.id === this.id ? v1 : v0]))
-            line.addBlocks(headMap)
+            await line.addBlocks(headMap)
 
             createdLine = line
         }
@@ -157,12 +211,9 @@ export class DBBlock {
     public async createChild(range: IRange): Promise<BlockProxy | null> {
 
         const [block, childrenCount, activeHeads] = await prismaClient.$transaction([
-            prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }),
-            prismaClient.block.count({ where: { parentId: this.id } }),
-            prismaClient.head.findMany({
-                where:   { blockId: this.id, version: { isActive: true } },
-                orderBy: { line: { order: "asc" } },
-            })
+            this.getBlock(),
+            this.getChildrenCount(),
+            this.getActiveHeads()
         ])
 
         const lineIdsInRange = activeHeads
@@ -189,29 +240,10 @@ export class DBBlock {
     public async asSnapshotData(): Promise<VCSSnapshotData> {
 
         const [block, lineCount, activeLineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
-
-            prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }),
-
-            prismaClient.line.count({
-                where: {
-                    fileId: this.file.id,
-                    blocks: { some: { id: this.id } }
-                }
-            }),
-
-            prismaClient.line.count({
-                where: {
-                    fileId: this.file.id,
-                    heads: {
-                        some: {
-                            blockId: this.id,
-                            version: { isActive: true }
-                        }
-                    } 
-                }
-            }),
-
-            prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } }),
+            this.getBlock(),
+            this.getLineCount(),
+            this.getActiveLineCount(),
+            this.getVersionCount(),
 
             prismaClient.line.findFirstOrThrow({
                 where: {
@@ -222,22 +254,15 @@ export class DBBlock {
                 select: { id: true, order: true }
             }),
 
-            prismaClient.version.findFirstOrThrow({
-                where: {
-                    heads:       { some: { block: { id: this.id } } },
-                    versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
-                },
-                orderBy: { timestamp: "asc" }
-            }),
-
-            prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } })
+            this.getCurrentVersion(),
+            this.getTags()
         ])
 
         if (activeLineCount === 0) { throw new Error("Block has no active lines, and can thus not be positioned in parent!") }
 
         let   firstLineNumberInParent = 1
         let   lastLineNumberInParent  = activeLineCount
-        const userVersionCount        = versionCount - lineCount + 1
+        const userVersionCount        = versionCount - lineCount + 1  // one selectable version per version minus pre-insertion versions (one per inserted line) and imported lines (which, together, is the same as all lines) plus one version for the original state of the file
 
         if (block.parentId) {
             const activeLinesBeforeBlock = await prismaClient.line.count({
@@ -258,20 +283,14 @@ export class DBBlock {
             lastLineNumberInParent  = activeLinesBeforeBlock + activeLineCount
         }
 
-        const numberVersionsUpToIncludingCurrent = await prismaClient.version.count({
-            where: {
-                line:        { blocks: { some: { id: this.id } } },
-                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
-                timestamp:   { lte: currentVersion.timestamp }
-            }
-        })
+        const currentVersionIndex = await this.getTimelineIndexFor(currentVersion)
 
         return {
             uuid:         block.blockId,
             _startLine:   firstLineNumberInParent,
             _endLine:     lastLineNumberInParent,
             versionCount: userVersionCount,
-            versionIndex: numberVersionsUpToIncludingCurrent - 1,
+            versionIndex: currentVersionIndex,
             tags:         tags.map(tag => {
                 return {
                     id:                  tag.tagId,
@@ -285,24 +304,16 @@ export class DBBlock {
     }
 
     public async getSnapshotData(): Promise<VCSSnapshotData[]> {
-        const children = await prismaClient.block.findMany({ where: { parentId: this.id } })
+        const children = await this.getChildren()
         const blocks = children.map(child => new DBBlock(new BlockProxy(child.id, this.file)))
         return await Promise.all(blocks.map(block => block.asSnapshotData()))
     }
 
     public async updateLine(lineNumber: LineNumber, content: LineContent): Promise<LineProxy> {
-        const lines = await prismaClient.line.findMany({
-            where: {
-                fileId: this.file.id,
-                blocks: { some: { id: this.id } }
-            },
-            orderBy: { 
-                order: "asc"
-            }
-        })
+        const lines = await this.getActiveLines()
 
         const line = new LineProxy(lines[lineNumber - 1].id, this.file)
-        line.updateContent(content, this.data)
+        await line.updateContent(content, this.data)
 
         //this.setupVersionMerging(line)
 
@@ -310,36 +321,6 @@ export class DBBlock {
     }
 
     public async applyIndex(targetIndex: number): Promise<void> {
-
-        const timeline = await prismaClient.version.findMany({
-            where: {
-                line:        { blocks: { some: { id: this.id } } },
-                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
-            },
-            orderBy: {
-                timestamp: "asc"
-            }
-        })
-
-        const currentVersion = await prismaClient.version.findFirstOrThrow({
-            where: {
-                heads:       { some: { block: { id: this.id } } },
-                versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
-            },
-            orderBy: {
-                timestamp: "asc"
-            }
-        })
-
-        const numberVersionsUpToIncludingCurrent = await prismaClient.version.count({
-            where: {
-                line:        { blocks: { some: { id: this.id } } },
-                versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
-                timestamp:   { lte: currentVersion.timestamp }
-            }
-        })
-
-        const latestVersionIndex = numberVersionsUpToIncludingCurrent - 1
 
         // The concept works as follow: I create a timeline from all versions, sorted by timestamp. Then I limit the selecteable versions to all versions past the original file creation
         // (meaning versions that were in the file when loading it into the versioning are ignored), except for the last one (to recover the original state of a snapshot). This means the
@@ -355,7 +336,13 @@ export class DBBlock {
         // The great thing about this method is, that, if the user jumps to the insertion version, it will be handled logically, even if the jump came from non-adjacent versions.
 
         //this.resetVersionMerging()
-        //const timeline = this.getTimeline()
+
+        const [timeline, currentVersion] = await prismaClient.$transaction([
+            this.getTimeline(),
+            this.getCurrentVersion()
+        ])
+
+        const latestVersionIndex = await this.getTimelineIndexFor(currentVersion)
 
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
@@ -374,20 +361,21 @@ export class DBBlock {
         let version: Version = selectedVersion
 
         // If the previous version is selected and still on pre-insertion, disable pre-insertion
-        // I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
-        if (previousVersion.id === latestVersion.id && previousVersion.insertionState(this) === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
+        // NOTE: I am not sure if this case will ever occur, or is just transitively solved by the others... maybe I can figure that out at some point...
+        if (previousVersion?.id === latestVersion.id && previousVersion.insertionState(this) === InsertionState.PreInsertionEngaged) { version = previousVersion.next }
         // If the next version is selected and still on post-insertion, then set it to pre-insertion
-        else if (nextVersion.id === latestVersion.id && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
+        else if (nextVersion?.id === latestVersion.id && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
         else if (selectedVersion.versionType === VersionType.PRE_INSERTION && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))           { version = selectedVersion.next }
 
-        this.applyTimestamp(version.timestamp)
+        await this.applyTimestamp(version.timestamp)
     }
 
     public async applyTimestamp(timestamp: number): Promise<void> {
-        const heads = await prismaClient.head.findMany({ where: { blockId: this.id }, include: { line: true } })
+        const heads = await this.getHeadsWithLines()
         const lines = heads.map(head => head.line)
         
+        // latest version for lines before or equal to timestamp
         const versions = await prismaClient.$transaction(lines.map(line => {
             return prismaClient.version.findFirst({
                 where: {
@@ -400,6 +388,7 @@ export class DBBlock {
             })
         }))
 
+        // latest tracked version for lines before or equal to timestamp
         const trackedVersions = await prismaClient.$transaction(lines.map(line => {
             return prismaClient.trackedVersion.findFirst({
                 where: {
@@ -411,6 +400,7 @@ export class DBBlock {
             })
         }))
 
+        // update head for each line with whatever has the latest timestamp, the latest version or the latest tracked version
         await prismaClient.$transaction(heads.map((head, index) => {
             const version  = versions[index]
             const tracked  = trackedVersions[index]

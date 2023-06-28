@@ -83,6 +83,8 @@ export class FileProxy extends DatabaseProxy {
         return insertionIndex ? insertionIndex + 1 : null
     }
 
+    public readonly getFile = () => this.client.file.findUniqueOrThrow({ where: { id: this.id } })
+
     public async insertLine(content: string, relations?: { previous?: LineProxy, next?: LineProxy, sourceBlock?: BlockProxy }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const previous = relations?.previous
         const next     = relations?.next
