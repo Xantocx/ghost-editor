@@ -6,7 +6,7 @@ services:
     image: postgres:15.2
     container_name: postgres_db
     ports:
-      - 5432:5432
+      - 27017:5432  # for some reason, my desktop PC refuses connections on 5432 (I probably broke something up there), so this maps the DB port to 27017 on my desktop
     expose:
       - 5432
     env_file:
