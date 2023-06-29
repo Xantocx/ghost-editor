@@ -53,7 +53,7 @@ export interface VCSProvider {
     // reload all data in a Block
     reloadSessionData(sessionId: SessionId): Promise<SessionData>
 
-    // snapshot interface
+    // snapshot interface -> Inline Blocks
     createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null>
     deleteSnapshot(sessionId: SessionId, uuid: SnapshotUUID): Promise<void>
     getSnapshot(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSSnapshotData>

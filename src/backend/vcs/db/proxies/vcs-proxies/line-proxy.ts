@@ -1,73 +1,46 @@
-import { FileDatabaseProxy } from "../database-proxy"
-import { BlockProxy, VersionProxy } from "../../types"
-import { Prisma, VersionType } from "@prisma/client"
+import { prismaClient } from "../../client";
+import { FileDatabaseProxy } from "../database-proxy";
+import { VersionProxy, BlockProxy } from "../../types";
+import { HeadList, Line, Prisma, Version, VersionType } from "@prisma/client"
+import { FileProxy } from "./file-proxy";
 
 export class LineProxy extends FileDatabaseProxy {
 
-    /*
-    // Nice in theory, but under the current circumstances unnecessary and slow
-
-    public async getPreviousLine(): Promise<LineProxy | undefined> {
-        const line     = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
-        const previous = await this.client.line.findFirst({
-            where:   { fileId: line.fileId, order: { lt: line.order } },
-            orderBy: { order: "desc" }
-        })
-
-        return previous ? new LineProxy(previous.id) : undefined
+    public static createFrom(line: Line, file?: FileProxy): LineProxy {
+        file = file ? file : new FileProxy(line.fileId)
+        return new LineProxy(line.id, file)
     }
 
-    public async getNextLine(): Promise<LineProxy | undefined> {
-        const line = await this.client.line.findUniqueOrThrow({ where: { id: this.id } })
-        const next = await this.client.line.findFirst({
-            where:   { fileId: line.fileId, order: { gt: line.order } },
-            orderBy: { order: "asc" }
-        })
+    public readonly getBlocks = () => prismaClient.block.findMany({ where: { lines: { some: { id: this.id } } } })
 
-        return next ? new LineProxy(next.id) : undefined
-    }
-    */
+    public readonly getLatestVersion = () => prismaClient.version.findFirstOrThrow({
+        where:   { lineId: this.id },
+        orderBy: { timestamp: "desc" }
+    })
 
-    public readonly getBlocks = () => this.client.block.findMany({ where: { lines: { some: { id: this.id } } } })
+    public readonly getLatestTracking = () => prismaClient.trackedVersion.findFirst({
+        where:   { lineId: this.id },
+        orderBy: { timestamp: "desc" }
+    })
 
-    public async addBlock(block: BlockProxy, headVersion: VersionProxy): Promise<void> {
-        await this.client.line.update({
-            where: { id: this.id },
-            data:  { 
-                blocks: { connect: { id: block.id } },
-                heads: {
-                    create: {
-                        blocks:    { connect: { id: block.id } },
-                        versionId: headVersion.id
+    public async addBlocks(blockVersions: Map<BlockProxy, VersionProxy>): Promise<void> {
+        const blocks = Array.from(blockVersions.keys())
+
+        const updates = blocks.map(block => {
+            return prismaClient.block.update({
+                where: { id: block.id },
+                data:  {
+                    lines:       { connect: { id: this.id } },
+                    headList: { 
+                        update: {
+                            versions: { connect: { id: blockVersions.get(block)!.id } }
+                        }
                     }
                 }
-            }
+            })
         })
 
-        /*
-        const head = await prisma.head.findFirstOrThrow({ where: { blockId: block.id, lineId: this.id } })
-        return head
-        */
-    }
-
-    public async addBlocks(headInfo: Map<BlockProxy, VersionProxy>): Promise<void> {
-        const blocks = Array.from(headInfo.keys())
-
-        await this.client.$transaction([
-            this.client.line.update({
-                where: { id: this.id },
-                data:  { blocks: { connect: blocks.map(block => { return { id: block.id } }) } }
-            }),
-            this.client.head.createMany({
-                data: blocks.map(block => {
-                    return {
-                        blockId:   block.id,
-                        lineId:    this.id,
-                        versionId: headInfo.get(block)!.id
-                    }
-                })
-            })
-        ])
+        await prismaClient.$transaction(updates)
 
         /*
         const heads = await prisma.head.findMany({ 
@@ -81,60 +54,68 @@ export class LineProxy extends FileDatabaseProxy {
         */
     }
 
-    //{ timestamp: timestamp++, versionType: VersionType.INSERTION,     isActive: false, content     }
+    private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
+        let version: Version
 
-    public async updateContent(content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
-
-        const versionData: (Prisma.Without<Prisma.VersionCreateInput, Prisma.VersionUncheckedCreateInput> & Prisma.VersionUncheckedCreateInput) = {
-            lineId: this.id,
+        const versionConfig: Prisma.VersionUncheckedCreateInput = {
+            lineId:    this.id,
             timestamp: timestamp++,
-            versionType: VersionType.CHANGE,
-            isActive: true,
+            type:      isActive ? VersionType.CHANGE : VersionType.DELETION,
+            isActive:  isActive,
             content
         }
 
         if (sourceBlock) {
-
-            versionData.sourceBlockId = sourceBlock.id
-
-            const [latestVersion, latestTracking, head] = await this.client.$transaction([
-                this.client.version.findFirstOrThrow({
-                    where:   { lineId: this.id },
-                    orderBy: { timestamp: "desc" }
-                }),
-                this.client.trackedVersion.findFirst({
-                    where:   { lineId: this.id },
-                    orderBy: { timestamp: "desc" }
-                }),
-                this.client.head.findUnique({ where: { blockId_lineId: { blockId: sourceBlock.id, lineId: this.id } }, include: { version: { select: { timestamp: true } } } })
+            const [headList, head, latestVersion, latestTracking] = await prismaClient.$transaction([
+                sourceBlock.getHeadList(),
+                sourceBlock.getHeadFor(this),
+                this.getLatestVersion(),
+                this.getLatestTracking()
             ])
 
+            if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
+
+            versionConfig.sourceBlockId = sourceBlock.id
+
             // TODO: experimental. expectation: should not revert to original timetravel state, but to timetravel state + 1 change
-            if (latestVersion.id !== head.versionId) {
-                versionData.originId = head.versionId
+            if (latestVersion.id !== head.id) {
+                versionConfig.originId = head.id
             } 
             
             // TODO: is this condition too broad? should it be &&?
-            if (latestTracking.timestamp > head.version.timestamp || latestTracking.versionId !== head.versionId) {
-                await this.client.trackedVersion.create({
+            if (latestTracking && (latestTracking.timestamp > head.timestamp || latestTracking.versionId !== head.id)) {
+                await prismaClient.trackedVersion.create({
                     data: {
                         timestamp: timestamp++,
                         lineId:    this.id,
-                        versionId: head.versionId
+                        versionId: head.id
                     }
                 })
             }
-        }
 
-        const version = await this.client.version.create({ data: versionData })
+            version = await prismaClient.version.create({data: versionConfig })
 
-        if (sourceBlock) {
-            await this.client.head.update({
-                where: { blockId_lineId: { blockId: sourceBlock.id, lineId: this.id } },
-                data:  { versionId: version.id }
+            await prismaClient.headList.update({
+                where: { id: headList.id },
+                data:  {
+                    versions: {
+                        connect:    { id: version.id },
+                        disconnect: { id: head.id }
+                    }
+                }
             })
+        } else {
+            version = await prismaClient.version.create({data: versionConfig })
         }
 
         return new VersionProxy(version.id)
+    }
+
+    public async updateContent(content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
+        return await this.createNewVersion(true, content, sourceBlock)        
+    }
+
+    public async delete(sourceBlock?: BlockProxy): Promise<VersionProxy> {
+        return await this.createNewVersion(false, "", sourceBlock)   
     }
 }

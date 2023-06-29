@@ -7,8 +7,9 @@ import { LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { ResourceManager } from "./vcs/utils/resource-manager"
 import { SessionInfo, Session } from "./vcs/utils/session"
-import { Block, DBBlock } from "./vcs/core/block"
+import { Block } from "./vcs/core/block"
 import { Line } from "./vcs/core/line"
+import { BlockProxy } from "./vcs/db/types"
 
 export class GhostVCSServer extends BasicVCSServer {
 
@@ -27,7 +28,7 @@ export class GhostVCSServer extends BasicVCSServer {
         else                                      { throw new Error("This session ID is unknown!") }
     }
 
-    private getBlock(sessionId: SessionId): DBBlock { return this.getSession(sessionId).block }
+    private getBlock(sessionId: SessionId): Block { return this.getSession(sessionId).block }
 
     private updatePreview(block: Block) {
         const versionCounts = block.getActiveLines().map(line => { return line.getVersionCount() })
