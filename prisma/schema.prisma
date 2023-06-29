@@ -33,14 +33,13 @@ model Line {
 
   order Float
 
-  lineType LineType
+  type LineType
 
   versions        Version[]        @relation("VersionsInLine")
   trackedVersions TrackedVersion[] @relation("TrackedVersionsOfLine")
 
   blocks Block[] @relation("LinesInBlocks")
-
-  heads Head[] @relation("HeadsForLine")
+  heads  Head[]  @relation("HeadsForLine")
 
   @@index([order(sort: Asc), fileId])
 }
@@ -60,7 +59,7 @@ model Version {
   lineId Int
   line   Line @relation("VersionsInLine", fields: [lineId], references: [id], onDelete: Cascade)
 
-  versionType VersionType
+  type VersionType
 
   timestamp Int              @unique
   tracking  TrackedVersion[] @relation("TrackingOfVersion")
@@ -76,7 +75,7 @@ model Version {
   sourceBlockId Int?
   sourceBlock   Block? @relation("VersionsFromSourceBlock", fields: [sourceBlockId], references: [id])
 
-  heads Head[] @relation("HeadsFromVersion")
+  heads Head[] @relation("HeadsWithVersion")
 
   @@index([timestamp(sort: Asc)])
 }
@@ -95,6 +94,12 @@ model TrackedVersion {
   @@index([timestamp(sort: Asc)])
 }
 
+enum BlockType {
+  ROOT
+  INLINE
+  CLONE
+}
+
 model Block {
   id Int @id @default(autoincrement())
 
@@ -103,54 +108,53 @@ model Block {
   fileId Int
   file   File @relation("BlocksInFile", fields: [fileId], references: [id], onDelete: Cascade)
 
-  isRoot Boolean
+  type BlockType
 
   lines Line[] @relation("LinesInBlocks")
+  heads Head[] @relation("HeadsOfBlocks")
+  tags  Tag[]  @relation("TagsForBlock")
 
-  headListId    Int
-  headList      HeadList  @relation("HeadsForBlock", fields: [headListId], references: [id])
-  ownedHeadList HeadList? @relation("HeadListOwner")
-
-  tags Tag[] @relation("TagsForBlock")
+  ownedHeads Head[] @relation("HeadOwner")
 
   parentId Int?
-  parent   Block?  @relation("ChildrenInParent", fields: [parentId], references: [id])
-  children Block[] @relation("ChildrenInParent")
+  parent   Block?  @relation("ChildrenInParent", fields: [parentId], references: [id], onDelete: Cascade)
+  children Block[] @relation("ChildrenInParent") // always inline blocks that have the same heads
 
   originId Int?
   origin   Block?  @relation("ClonedBlocksOfOrigin", fields: [originId], references: [id])
-  clones   Block[] @relation("ClonedBlocksOfOrigin")
+  clones   Block[] @relation("ClonedBlocksOfOrigin") // always clone blocks with new heads
 
   createdVersions Version[] @relation("VersionsFromSourceBlock")
 
   @@index([fileId])
 }
 
-model HeadList {
-  id Int @id @default(autoincrement())
-
-  ownerId Int   @unique
-  owner   Block @relation("HeadListOwner", fields: [ownerId], references: [id])
-
-  blocks Block[] @relation("HeadsForBlock")
-
-  heads Head[] @relation("HeadsInList")
-}
+//model HeadList {
+//  id Int @id @default(autoincrement())
+//
+//  ownerId Int   @unique
+//  owner   Block @relation("HeadListOwner", fields: [ownerId], references: [id])
+//
+//  blocks Block[] @relation("HeadsForBlock")
+//
+//  heads Head[] @relation("HeadsInList")
+//}
 
 model Head {
   id Int @id @default(autoincrement())
 
-  listId Int
-  list   HeadList @relation("HeadsInList", fields: [listId], references: [id], onDelete: Cascade)
+  ownerBlockId Int
+  ownerBlock   Block @relation("HeadOwner", fields: [ownerBlockId], references: [id], onDelete: Cascade)
+
+  blocks Block[] @relation("HeadsOfBlocks")
 
   lineId Int
-  line   Line @relation("HeadsForLine", fields: [lineId], references: [id])
+  line   Line @relation("HeadsForLine", fields: [lineId], references: [id], onDelete: Cascade)
 
   versionId Int
-  version   Version @relation("HeadsFromVersion", fields: [versionId], references: [id])
+  version   Version @relation("HeadsWithVersion", fields: [versionId], references: [id])
 
-  @@unique([listId, lineId])
-  @@index([listId, lineId])
+  @@index([lineId])
 }
 
 model Tag {

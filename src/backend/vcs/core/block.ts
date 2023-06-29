@@ -29,8 +29,8 @@ interface LineRange {
 export class DBBlock {
 
     private readonly data: BlockProxy
-    private get id(): number { return this.data.id }
-    private get file(): FileProxy { return this.data.file }
+    public  get id(): number { return this.data.id }
+    public  get file(): FileProxy { return this.data.file }
 
     public constructor(block: BlockProxy) {
         this.data = block
@@ -45,7 +45,7 @@ export class DBBlock {
     public readonly getLineCount = () => prismaClient.line.count({
         where: {
             fileId: this.file.id,
-            blocks: { some: { id: this.id } }
+            blocks: { some: { id: this.id } } 
         }
     })
 
@@ -54,7 +54,7 @@ export class DBBlock {
             fileId: this.file.id,
             heads: {
                 some: {
-                    blockId: this.id,
+                    blocks:  { some: { id: this.id } },
                     version: { isActive: true }
                 }
             } 
@@ -65,22 +65,32 @@ export class DBBlock {
 
     public readonly getChildrenCount = () => prismaClient.block.count({ where: { parentId: this.id } })
 
-    public readonly getHeadsWithLines = () => prismaClient.head.findMany({ where: { blockId: this.id }, include: { line: true } })
+    public readonly getCloneCount = () => prismaClient.block.count({ where: { originId: this.id } })
+
+    public readonly getHeadsWithLines = () => prismaClient.head.findMany({ where: { blocks: { some: { id: this.id } } }, include: { line: true } })
 
     public readonly getActiveHeads = () => prismaClient.head.findMany({
-        where:   { blockId: this.id, version: { isActive: true } },
+        where:   {
+            blocks:  { some: { id: this.id } },
+            version: { isActive: true }
+        },
         orderBy: { line: { order: "asc" } },
     })
 
     public readonly getActiveLines = () => prismaClient.line.findMany({
-        where:   { heads: { some: { blockId: this.id, version: { isActive: true } } } },
+        where:   { 
+            heads: { 
+                some:    { blocks: { some: { id: this.id } },
+                version: { isActive: true } }
+            }
+        },
         orderBy: { order: "asc" }
     })
 
     public readonly getActiveVersions = () => prismaClient.version.findMany({
         where: {
             isActive: true,
-            heads:    { some: { blockId: this.id } }
+            heads:    { some: { blocks: { some: { id: this.id } } } }
         },
         orderBy: {
             line: { order: "asc" }
@@ -93,8 +103,8 @@ export class DBBlock {
 
     public readonly getTimeline = () => prismaClient.version.findMany({
         where: {
-            line:        { blocks: { some: { id: this.id } } },
-            versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
+            line: { blocks: { some: { id: this.id } } },
+            type: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] }
         },
         orderBy: {
             timestamp: "asc"
@@ -103,17 +113,17 @@ export class DBBlock {
 
     public readonly getCurrentVersion = () => prismaClient.version.findFirstOrThrow({
         where: {
-            heads:       { some: { block: { id: this.id } } },
-            versionType: { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
+            heads: { some: { blocks: { some: { id: this.id } } } },
+            type:  { notIn: [VersionType.IMPORTED, VersionType.PRE_INSERTION] }
         },
         orderBy: { timestamp: "desc" }
     })
 
     public readonly getTimelineIndexFor = (version: Version) => prismaClient.version.count({
         where: {
-            line:        { blocks: { some: { id: this.id } } },
-            versionType: { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
-            timestamp:   { lte: version.timestamp }
+            line:      { blocks: { some: { id: this.id } } },
+            type:      { notIn: [VersionType.IMPORTED, VersionType.INSERTION] },
+            timestamp: { lte: version.timestamp }
         }
     }).then(position => position - 1)
 
@@ -271,7 +281,7 @@ export class DBBlock {
                     blocks: { none: { id: this.id } },     // line is not part of this block,
                     heads: {                               // but has a head (aka is part of) the parent block
                         some: {
-                            blockId: block.parentId,
+                            blocks:  { some: { id: block.parentId } },
                             version: { isActive: true }
                         }
                     },
@@ -366,7 +376,7 @@ export class DBBlock {
         // If the next version is selected and still on post-insertion, then set it to pre-insertion
         else if (nextVersion?.id === latestVersion.id && nextVersion.insertionState(this) === InsertionState.PreInsertionReleased)   { version = nextVersion }
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
-        else if (selectedVersion.versionType === VersionType.PRE_INSERTION && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))           { version = selectedVersion.next }
+        else if (selectedVersion.type === VersionType.PRE_INSERTION && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))           { version = selectedVersion.next }
 
         await this.applyTimestamp(version.timestamp)
     }

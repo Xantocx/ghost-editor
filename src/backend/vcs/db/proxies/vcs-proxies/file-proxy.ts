@@ -21,7 +21,7 @@ export class FileProxy extends DatabaseProxy {
                         data: lineContents.map((_, index) => {
                             return { 
                                 order: index + 1,
-                                lineType: LineType.ORIGINAL,
+                                type: LineType.ORIGINAL,
                             }
                         })
                     }
@@ -39,7 +39,7 @@ export class FileProxy extends DatabaseProxy {
         await this.client.version.createMany({
             data: lineContents.map((content, index) => {
                 const versionType = index === lineContents.length - 1 ? VersionType.LAST_IMPORTED : VersionType.IMPORTED
-                return { lineId: file.lines[index].id, versionType, timestamp: timestamp++, isActive: true, content }
+                return { lineId: file.lines[index].id, type: versionType, timestamp: timestamp++, isActive: true, content }
             }),
         })
 
@@ -108,17 +108,17 @@ export class FileProxy extends DatabaseProxy {
         }
 
         const versionData: Prisma.Enumerable<Prisma.VersionCreateManyLineInput> = [
-            { timestamp: timestamp++, versionType: VersionType.PRE_INSERTION, isActive: false, content: "" },
-            { timestamp: timestamp++, versionType: VersionType.INSERTION,     isActive: false, content     }
+            { timestamp: timestamp++, type: VersionType.PRE_INSERTION, isActive: false, content: "" },
+            { timestamp: timestamp++, type: VersionType.INSERTION,     isActive: false, content     }
         ]
 
         if (relations?.sourceBlock) { versionData.forEach(version => version.sourceBlockId = relations.sourceBlock.id) }
 
         const line = await this.client.line.create({
             data: {
-                file: { connect: { id: this.id } },
-                order: order,
-                lineType: LineType.INSERTED,
+                fileId: this.id,
+                order:  order,
+                type:   LineType.INSERTED,
                 versions: {
                     createMany: {
                         data: versionData

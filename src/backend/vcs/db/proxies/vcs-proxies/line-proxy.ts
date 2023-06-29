@@ -37,8 +37,8 @@ export class LineProxy extends FileDatabaseProxy {
                 blocks: { connect: { id: block.id } },
                 heads: {
                     create: {
-                        block:   { connect: { id: block.id } },
-                        version: { connect: { id: headVersion.id } }
+                        blocks:    { connect: { id: block.id } },
+                        versionId: headVersion.id
                     }
                 }
             }
@@ -83,7 +83,7 @@ export class LineProxy extends FileDatabaseProxy {
 
     //{ timestamp: timestamp++, versionType: VersionType.INSERTION,     isActive: false, content     }
 
-    public async updateContent(content: string, sourceBlock: BlockProxy): Promise<VersionProxy> {
+    public async updateContent(content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
 
         const versionData: (Prisma.Without<Prisma.VersionCreateInput, Prisma.VersionUncheckedCreateInput> & Prisma.VersionUncheckedCreateInput) = {
             lineId: this.id,
