@@ -1,5 +1,13 @@
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
-import { BlockType } from "@prisma/client"
+//import { BlockType } from "@prisma/client"
+
+// avoid prisma import -> types from this class are used in definition of ELectron Preload file, which cannot include an import to prisma for security reasons
+let BlockType: {
+    ROOT: 'ROOT',
+    INLINE: 'INLINE',
+    CLONE: 'CLONE'
+};
+type BlockType = (typeof BlockType)[keyof typeof BlockType]
 
 export class VCSSessionId {
 

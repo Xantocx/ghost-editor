@@ -404,9 +404,10 @@ interface GhostBlockSessionLoadingOptions {
 
 type GhostLoadingOptions = undefined | GhostFileLoadingOptions | GhostFilePathLoadingOptions | GhostBlockLoadingOptions | GhostTagLoadingOptions | GhostBlockSessionLoadingOptions
 
-export class GhostEditor extends View implements ReferenceProvider {
+export class GhostEditor extends View implements ReferenceProvider, CodeProvider {
 
-    public static readonly defaultCode = "function setup() {\n\tcreateCanvas(400, 400);\n}\n\nfunction draw() {\n\tbackground(220);\n}"
+    public static readonly defaultLanguageId = "javascript"
+    public static readonly defaultCode       = "function setup() {\n\tcreateCanvas(400, 400);\n}\n\nfunction draw() {\n\tbackground(220);\n}"
 
     private static _session?: VCSSession
     public static async getSession(): Promise<VCSSession> {
@@ -417,7 +418,7 @@ export class GhostEditor extends View implements ReferenceProvider {
     public readonly enableFileManagement: boolean
     public readonly sideViewEnabled:      boolean
     public readonly mainViewFlex:         number
-    public readonly languageId?:          string
+    public          languageId?:          string
 
     // view containers to seperate main editor and side view
     public  readonly editorContainer:    HTMLDivElement
@@ -507,7 +508,7 @@ export class GhostEditor extends View implements ReferenceProvider {
 
         if (this.sideViewEnabled) {
             //this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
-            this.sideView!.update(this.sideViewIdentifiers!.p5js, session)
+            //this.sideView!.update(this.sideViewIdentifiers!.p5js, session)
             this.sideView!.update(this.sideViewIdentifiers!.versionManager, { languageId: textModel.getLanguageId() })
         }
     }
@@ -520,6 +521,10 @@ export class GhostEditor extends View implements ReferenceProvider {
     public getSession(): VCSBlockSession {
         if (this.hasModel) { return this.editorModel!.session }
         else               { throw new Error("The editor currently has no session. Please load a session in order to re-establish functionality before using this function.") } 
+    }
+
+    public async getCode(): Promise<string> {
+        return this.code
     }
 
     // edior and model options to extract config
@@ -575,7 +580,7 @@ export class GhostEditor extends View implements ReferenceProvider {
             */
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
-                return new P5JSPreview(root, { padding: 5, synchronizer: this.synchronizer })
+                return new P5JSPreview(root, { provider: this, padding: 5, synchronizer: this.synchronizer })
             }, {
                 showCallback(view: P5JSPreview) {
                     view.forceRender()
@@ -653,6 +658,7 @@ export class GhostEditor extends View implements ReferenceProvider {
         let textModel: MonacoModel | undefined
         let session:   VCSBlockSession
 
+        const parent = this
         function setTextModel(uri: URI | undefined, content?: string): string {
             const model        = uri     ? monaco.editor.getModel(uri) : null
             const modelContent = content ? content                     : ""
@@ -661,16 +667,17 @@ export class GhostEditor extends View implements ReferenceProvider {
                 textModel = model
                 textModel.setValue(modelContent)
             } else { 
-                textModel = monaco.editor.createModel(modelContent, this.languageId, uri)
+                textModel = monaco.editor.createModel(modelContent, parent.languageId, uri)
             }
 
             return extractEOLSymbol(textModel)
         }
 
         if (loadingOptions === undefined) {
-            const eol = setTextModel(undefined, undefined)
+            this.languageId = GhostEditor.defaultLanguageId
+            const eol       = setTextModel(undefined, GhostEditor.defaultLanguageId)
 
-            session = await hostSession.loadFile({ eol, content: GhostEditor.defaultCode })
+            session = await hostSession.loadFile({ eol, content: GhostEditor.defaultCode.replace(new RegExp("\n", "g"), eol) })
 
         } else if (loadingOptions as GhostFileLoadingOptions) {
             const options = loadingOptions as GhostFileLoadingOptions

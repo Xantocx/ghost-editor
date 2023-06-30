@@ -2,7 +2,7 @@ export type Timestamp = number
 
 export class TimestampProvider {
 
-    private static nextTimestamp: Timestamp = 0
+    private static nextTimestamp: Timestamp = Math.floor(Math.random() * 100000000)
 
     public static setupNextTimestamp(timestamp: Timestamp): void {
         this.nextTimestamp = timestamp

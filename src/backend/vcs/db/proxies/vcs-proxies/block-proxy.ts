@@ -6,149 +6,169 @@ import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInf
 
 export class BlockProxy extends FileDatabaseProxy {
 
-    public readonly getBlock         = () => prismaClient.block.findUniqueOrThrow({ where: { id: this.id } })
-    public readonly getCloneCount    = () => prismaClient.block.count({ where: { originId: this.id } })
-    public readonly getChildrenCount = () => prismaClient.block.count({ where: { parentId: this.id } })
-    public readonly getLineCount     = () => prismaClient.line.count({ where: { blocks: { some: { id: this.id } } } })
-    public readonly getVersionCount  = () => prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } })
-    public readonly getChildren      = () => prismaClient.block.findMany({ where: { parentId: this.id } })
-    public readonly getLines         = () => prismaClient.line.findMany({ where: { blocks: { some: { id: this.id } } } })
-    public readonly getHeadList      = () => prismaClient.headList.findFirstOrThrow({ where: { blocks: { some: { id: this.id } } } })
-    //public readonly getAllVersions = () => prismaClient.version.findMany({ where: { line: { blocks: { some: { id: this.id } } } }, orderBy: { line: { order: "asc" } } })
-    public readonly getTags          = () => prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } })
+    public getBlock()         { return prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }) }
+    public getCloneCount()    { return prismaClient.block.count({ where: { originId: this.id } }) }
+    public getChildrenCount() { return prismaClient.block.count({ where: { parentId: this.id } }) }
+    public getLineCount()     { return prismaClient.line.count({ where: { blocks: { some: { id: this.id } } } }) }
+    public getVersionCount()  { return prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } }) }
+    public getChildren()      { return prismaClient.block.findMany({ where: { parentId: this.id } }) }
+    public getLines()         { return prismaClient.line.findMany({ where: { blocks: { some: { id: this.id } } } }) }
+    public getHeadList()      { return prismaClient.headList.findFirstOrThrow({ where: { blocks: { some: { id: this.id } } } }) }
+    //public getAllVersions() { return prismaClient.version.findMany({ where: { line: { blocks: { some: { id: this.id } } } }, orderBy: { line: { order: "asc" } } }) }
+    public getTags()          { return prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } }) }
 
-    public readonly getOriginalLineCount = () => prismaClient.version.count({
-        where: {
-            line: { blocks: { some: { id: this.id } } },
-            type: { in: [VersionType.IMPORTED, VersionType.LAST_IMPORTED] }
-        }
-    })
+    public getOriginalLineCount() {
+        return prismaClient.version.count({
+            where: {
+                line: { blocks: { some: { id: this.id } } },
+                type: { in: [VersionType.IMPORTED, VersionType.LAST_IMPORTED] }
+            }
+        })
+    }
 
-    public readonly getActiveLineCount = () => prismaClient.version.count({
-        where: {
-            line: {
-                blocks: { some: { id: this.id } }
-            },
-            headLists: {
-                some: {
+    public getActiveLineCount() {
+        return prismaClient.version.count({
+            where: {
+                line: {
                     blocks: { some: { id: this.id } }
+                },
+                headLists: {
+                    some: {
+                        blocks: { some: { id: this.id } }
+                    }
+                },
+                isActive: true
+            }
+        })
+    }
+
+    public getActiveLines() { 
+        return prismaClient.line.findMany({
+            where: {
+                fileId:   this.file.id,
+                blocks:   { some: { id: this.id } },
+                versions: {
+                    some: {
+                        headLists: { some: { blocks: { some: { id: this.id } } } },
+                        isActive:  true
+                    }
                 }
             },
-            isActive: true
-        }
-    })
+            orderBy: {
+                order: "asc"
+            }
+        })
+    }
 
-    public readonly getActiveLines = () => prismaClient.line.findMany({
-        where: {
-            fileId:   this.file.id,
-            blocks:   { some: { id: this.id } },
-            versions: {
-                some: {
-                    headLists: { some: { blocks: { some: { id: this.id } } } },
-                    isActive:  true
+    public getHeadVersions() { 
+        return prismaClient.version.findMany({
+            where: {
+                line: {
+                    blocks: { some: { id: this.id } }
+                },
+                headLists: {
+                    some: {
+                        blocks: { some: { id: this.id } }
+                    }
+                }
+            },
+            orderBy: {
+                line: { order: "asc" }
+            }
+        })
+    }
+
+    public getActiveHeadVersions() {
+        return prismaClient.version.findMany({
+            where: {
+                line: {
+                    blocks: { some: { id: this.id } }
+                },
+                headLists: {
+                    some: {
+                        blocks: { some: { id: this.id } }
+                    }
+                },
+                isActive: true
+            },
+            orderBy: {
+                line: { order: "asc" }
+            }
+        })
+    }
+
+    public getHeadFor(line: Line | LineProxy) {
+        return prismaClient.version.findFirst({
+            where: {
+                lineId:    line.id,
+                headLists: {
+                    some: {
+                        blocks: { some: { id: this.id } }
+                    }
                 }
             }
-        },
-        orderBy: {
-            order: "asc"
-        }
-    })
+        })
+    }
 
-    public readonly getHeadVersions = () => prismaClient.version.findMany({
-        where: {
-            line: {
-                blocks: { some: { id: this.id } }
-            },
-            headLists: {
-                some: {
+    public getHeadsWithLines() {
+        return prismaClient.version.findMany({
+            where: {
+                line: {
                     blocks: { some: { id: this.id } }
+                },
+                headLists: {
+                    some: {
+                        blocks: { some: { id: this.id } }
+                    }
                 }
+            },
+            orderBy: {
+                line: { order: "asc" }
+            },
+            include: {
+                line: true
             }
-        },
-        orderBy: {
-            line: { order: "asc" }
-        }
-    })
+        })
+    }
 
-    public readonly getActiveHeadVersions = () => prismaClient.version.findMany({
-        where: {
-            line: {
-                blocks: { some: { id: this.id } }
-            },
-            headLists: {
-                some: {
+    public getTimeline() {
+        return prismaClient.version.findMany({
+            where: {
+                line: {
+                    fileId: this.file.id,
                     blocks: { some: { id: this.id } }
-                }
+                },
+                type: { notIn: [VersionType.IMPORTED] }
             },
-            isActive: true
-        },
-        orderBy: {
-            line: { order: "asc" }
-        }
-    })
-
-    public readonly getHeadFor = (line: LineProxy | Line) => prismaClient.version.findFirst({
-        where: {
-            lineId:    line.id,
-            headLists: {
-                some: {
-                    blocks: { some: { id: this.id } }
-                }
+            orderBy: {
+                timestamp: "asc"
             }
-        }
-    })
+        })
+    }
 
-    public readonly getHeadsWithLines = () => prismaClient.version.findMany({
-        where: {
-            line: {
-                blocks: { some: { id: this.id } }
+    public getCurrentVersion() {
+        return prismaClient.version.findFirstOrThrow({
+            where: {
+                line:      { fileId: this.file.id },
+                headLists: { some: { blocks: { some: { id: this.id } } } },
+                type:      { notIn: [VersionType.IMPORTED] }
             },
-            headLists: {
-                some: {
+            orderBy: { timestamp: "desc" }
+        })
+    }
+
+    public getTimelineIndexFor(version: Version) {
+        return prismaClient.version.count({
+            where: {
+                line: {
+                    fileId: this.file.id,
                     blocks: { some: { id: this.id } }
-                }
+                },
+                type:      { notIn: [VersionType.IMPORTED] },
+                timestamp: { lt: version.timestamp }
             }
-        },
-        orderBy: {
-            line: { order: "asc" }
-        },
-        include: {
-            line: true
-        }
-    })
-
-    public readonly getTimeline = () => prismaClient.version.findMany({
-        where: {
-            line: {
-                fileId: this.file.id,
-                blocks: { some: { id: this.id } }
-            },
-            type: { notIn: [VersionType.IMPORTED] }
-        },
-        orderBy: {
-            timestamp: "asc"
-        }
-    })
-
-    public readonly getCurrentVersion = () => prismaClient.version.findFirstOrThrow({
-        where: {
-            line:      { fileId: this.file.id },
-            headLists: { some: { blocks: { some: { id: this.id } } } },
-            type:      { notIn: [VersionType.IMPORTED] }
-        },
-        orderBy: { timestamp: "desc" }
-    })
-
-    public getTimelineIndexFor = (version: Version) => prismaClient.version.count({
-        where: {
-            line: {
-                fileId: this.file.id,
-                blocks: { some: { id: this.id } }
-            },
-            type:      { notIn: [VersionType.IMPORTED] },
-            timestamp: { lt: version.timestamp }
-        }
-    })
+        })
+    }
 
     public async getText(): Promise<string> {
         const [file, versions] = await prismaClient.$transaction([
@@ -477,11 +497,11 @@ export class BlockProxy extends FileDatabaseProxy {
 
         const blockId = VCSBlockId.createFrom(fileId, block.blockId)
         return new VCSBlockInfo(blockId,
-                             block.type,
-                             {startLine: 1, endLine: 1},
-                             userVersionCount,
-                             currentVersionIndex,
-                             tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
+                                block.type,
+                                {startLine: 1, endLine: 1},
+                                userVersionCount,
+                                currentVersionIndex,
+                                tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
     }
 
     public async getChildrenInfo(fileId: VCSFileId): Promise<VCSBlockInfo[]> {

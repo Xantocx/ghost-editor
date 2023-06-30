@@ -7,7 +7,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
     public static readonly createSessionChannel           = "vcs-create-session"
     public static readonly closeSessionChannel            = "vcs-close-session"
 
-    public static readonly loadFileChannel                = "vcs-load-ile"
+    public static readonly loadFileChannel                = "vcs-load-file"
     public static readonly unloadFileChannel              = "vcs-unload-file"
 
     public static readonly getTextChannel                 = "vcs-get-text"
