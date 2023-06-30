@@ -5,7 +5,7 @@ import * as monaco from "monaco-editor"
 import { CodeProvider, View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { SessionData, SessionFactory, SessionOptions, SnapshotUUID, TagId, VCSClient, VCSSession } from "../../../../app/components/vcs/vcs-provider";
+import { TagId, VCSClient, VCSBlockSession, BlockInfo } from "../../../../app/components/vcs/vcs-rework";
 import { MetaView, ViewIdentifier } from "../meta-view";
 import { GhostSnapshot, VCSVersion } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
@@ -24,20 +24,20 @@ class GhostEditorSnapshotManager {
 
     private snapshots: GhostSnapshot[] = []
 
-    public get session():            VCSSession                    { return this.editor.getSession() }
+    public get session():            VCSBlockSession               { return this.editor.getSession() }
     public get interactionManager(): GhostEditorInteractionManager { return this.editor.interactionManager }
 
     public constructor(editor: GhostEditor) {
         this.editor = editor
     }
 
-    public replaceSnapshots(snapshots: VCSSnapshotData[]): void {
+    public replaceSnapshots(snapshots: BlockInfo[]): void {
         this.removeSnapshots()
         this.snapshots = snapshots.map(snapshot => new GhostSnapshot(this.editor, snapshot))
     }
 
     public async loadSnapshots(): Promise<void> {
-        const snapshots = await this.session.getSnapshots()
+        const snapshots = await this.session.getChildrenInfo()
         this.replaceSnapshots(snapshots)
     }
 

@@ -4,6 +4,7 @@ import { VersionProxy, BlockProxy } from "../../types";
 import { HeadList, Line, Prisma, Version, VersionType } from "@prisma/client"
 import { FileProxy } from "./file-proxy";
 import { BlockId, FileId } from "../../../../../app/components/vcs/vcs-rework";
+import { TimestampProvider } from "../../../core/metadata/timestamps";
 
 export class LineProxy extends FileDatabaseProxy {
 
@@ -65,7 +66,7 @@ export class LineProxy extends FileDatabaseProxy {
 
         const versionConfig: Prisma.VersionUncheckedCreateInput = {
             lineId:    this.id,
-            timestamp: timestamp++,
+            timestamp: TimestampProvider.getTimestamp(),
             type:      isActive ? VersionType.CHANGE : VersionType.DELETION,
             isActive:  isActive,
             content
@@ -92,7 +93,7 @@ export class LineProxy extends FileDatabaseProxy {
             if (latestTracking && (latestTracking.timestamp > head.timestamp || latestTracking.versionId !== head.id)) {
                 await prismaClient.trackedVersion.create({
                     data: {
-                        timestamp: timestamp++,
+                        timestamp: TimestampProvider.getTimestamp(),
                         lineId:    this.id,
                         versionId: head.id
                     }

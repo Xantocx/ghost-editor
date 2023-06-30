@@ -1,4 +1,4 @@
-import { VCSClient } from "../../app/components/vcs/vcs-provider"
+import { VCSClient } from "../../app/components/vcs/vcs-rework"
 
 // see preload
 // TypeScript:    https://github.com/electron/electron/issues/9920#issuecomment-468323625

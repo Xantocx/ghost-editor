@@ -1,6 +1,7 @@
 import { IRange, Range } from "../utils/range"
 import { SnapshotUUID, Text, VCSProvider, VCSSession, TagId } from "../vcs/vcs-provider"
 import { RangeProvider } from "../../../editor/utils/line-locator"
+import { BlockInfo, TagInfo } from "../vcs/vcs-rework"
 
 export interface VCSSnapshotData {
     uuid:         SnapshotUUID
@@ -8,7 +9,7 @@ export interface VCSSnapshotData {
     _endLine:     number
     versionCount: number
     versionIndex: number
-    tags:         VCSTag[]
+    tags:         TagInfo[]
 }
 
 export interface VCSTag {
@@ -30,7 +31,7 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
     public versionCount: number
     public versionIndex: number
 
-    public readonly tags: VCSTag[]
+    public readonly tags: TagInfo[]
 
     public get startLine(): number {
         return this._startLine
@@ -67,12 +68,12 @@ export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
         this.update(range)
     }
 
-    public static create(session: VCSSession, snapshot: VCSSnapshotData): VCSSnapshot {
-        const range = new Range(snapshot._startLine, 1, snapshot._endLine, Number.MAX_SAFE_INTEGER)
-        return new VCSSnapshot(snapshot.uuid, session, range, snapshot.versionCount, snapshot.versionIndex, snapshot.tags)
+    public static create(session: VCSSession, snapshot: BlockInfo): VCSSnapshot {
+        const range = new Range(snapshot.range.startLine, 1, snapshot.range.endLine, Number.MAX_SAFE_INTEGER)
+        return new VCSSnapshot(snapshot.blockId, session, range, snapshot.versionCount, snapshot.versionIndex, snapshot.tags)
     }
 
-    constructor(uuid: string, session: VCSSession, range: IRange, versionCount: number, versionIndex: number, tags: VCSTag[]) {
+    constructor(uuid: string, session: VCSSession, range: IRange, versionCount: number, versionIndex: number, tags: TagInfo[]) {
         this.uuid = uuid
         this.session = session
         

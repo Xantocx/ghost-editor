@@ -8,11 +8,12 @@ import { VCSSnapshotData, VCSSnapshot, VCSTag } from "../../../app/components/da
 import { SessionFactory, SnapshotUUID, TagId, VCSSession } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { MetaView } from "../views/meta-view"
+import { BlockInfo, TagInfo } from "../../../app/components/vcs/vcs-rework"
 
-export class VCSVersion implements VCSTag {
+export class VCSVersion implements TagInfo {
 
     public readonly snapshot: GhostSnapshot
-    public readonly tag:      VCSTag
+    public readonly tag:      TagInfo
     
     private     session?:         VCSSession
     private get sessionFactory(): SessionFactory { return this.snapshot.editor }
@@ -23,7 +24,7 @@ export class VCSVersion implements VCSTag {
     public get text(): string                 { return this.tag.text }
     public get automaticSuggestion(): boolean { return this.tag.automaticSuggestion }
 
-    public constructor(snapshot: GhostSnapshot, tag: VCSTag) {
+    public constructor(snapshot: GhostSnapshot, tag: TagInfo) {
         this.snapshot = snapshot
         this.tag      = tag
     }
@@ -168,7 +169,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return new GhostSnapshot(editor, snapshot)
     }
 
-    constructor(editor: GhostEditor, snapshot: VCSSnapshotData, viewZonesOnly?: boolean, toggleMode?: boolean) {
+    constructor(editor: GhostEditor, snapshot: BlockInfo, viewZonesOnly?: boolean, toggleMode?: boolean) {
         super()
 
         this.editor = editor

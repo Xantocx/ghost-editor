@@ -209,6 +209,113 @@ export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServ
 export interface VCSClient extends VCSProvider {}
 export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {}
 
+export class VCSSession {
+
+    public readonly client:  VCSClient
+    public readonly session: SessionId
+
+    public static async create(client: VCSClient): Promise<VCSSession> {
+        const session = await client.createSession()
+        return new VCSSession(client, session)
+    }
+
+    public constructor(client: VCSClient, session: SessionId) {
+        this.client  = client
+        this.session = session
+    }
+
+    public async loadFile(options: FileLoadingOptions): Promise<VCSBlockSession> {
+        const blockInfo = await this.client.loadFile(this.session, options)
+        return VCSBlockSession.createFileSession(this, blockInfo)
+    }
+
+    // WARNING: This will also close all active block sessions belonging to this session! Any further operation on them will fail!
+    public async close(): Promise<void> {
+        await this.client.closeSession(this.session)
+    }
+}
+
+export class VCSBlockSession {
+
+    public readonly session:     VCSSession
+    public readonly block:       BlockId
+    public readonly isRootBlock: boolean
+
+    public get client(): VCSClient { return this.session.client }
+
+    public static createFileSession(session: VCSSession, rootBlock: BlockId): VCSBlockSession {
+        return new VCSBlockSession(session, rootBlock, true)
+    }
+
+    private constructor(hostSession: VCSSession, block: BlockId, isRootBlock: boolean) {
+        this.session     = hostSession,
+        this.block       = block
+        this.isRootBlock = isRootBlock
+    }
+
+    public async lineChanged (change: LineChange): Promise<BlockId[]> {
+        return await this.client.lineChanged(this.block, change)
+    }
+
+    public async linesChanged(change: MultiLineChange): Promise<BlockId[]> {
+        return await this.client.linesChanged(this.block, change)
+    }
+
+    public async applyChange(change: AnyChange): Promise<BlockId[]> {
+        return await this.client.applyChange(this.block, change)
+    }
+
+    public async applyChanges(changes: ChangeSet): Promise<BlockId[]> {
+        return await this.client.applyChanges(this.block, changes)
+    }
+
+    public async copyBlock(): Promise<VCSBlockSession> {
+        const copyBlock = await this.client.copyBlock(this.block)
+        return new VCSBlockSession(this.session, copyBlock, false)
+    }
+
+    public async createChild(range: BlockRange): Promise<ChildBlockInfo | null> {
+        return await this.client.createChild(this.block, range)
+    }
+
+    public async deleteChild(childBlockId: BlockId): Promise<void> {
+        await this.client.deleteBlock(childBlockId)
+    }
+
+    public async getBlockInfo(): Promise<BlockInfo> {
+        return await this.client.getBlockInfo(this.block)
+    }
+
+    public async getChildInfo(childBlockId: BlockId): Promise<BlockInfo> {
+        return await this.client.getBlockInfo(childBlockId)
+    }
+
+    public async getChildrenInfo(): Promise<BlockInfo[]> {
+        return await this.client.getChildrenInfo(this.block)
+    }
+
+    public async updateChildBlock(childBlockId: BlockId, update: BlockUpdate): Promise<void> {
+        await this.client.updateBlock(childBlockId, update)
+    }
+
+    public async setChildBlockVersionIndex(childBlockId: BlockId, versionIndex: number): Promise<string> {
+        return await this.client.setBlockVersionIndex(childBlockId, versionIndex)
+    }
+
+    public async saveChildBlockVersion(childBlockId: BlockId): Promise<TagInfo> {
+        return await this.client.saveCurrentBlockVersion(childBlockId)
+    }
+
+    public async close(): Promise<void> {
+        if (this.isRootBlock) {
+            this.client.unloadFile(this.block)
+        } else {
+            // QUESTION: Should copy blocks be deleted?
+            // await this.client.deleteBlock(this.block)
+        }
+    }
+}
+
 // adapter that allows to build an adaptable server with varying backend
 export interface VCSAdapter extends VCSProvider {}
 export abstract class BasicVCSAdapter extends BasicVCSProvider implements VCSAdapter {}

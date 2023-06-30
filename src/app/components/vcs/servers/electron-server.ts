@@ -1,27 +1,33 @@
 import { ipcMain } from "electron"
-import { VCSAdapter, AdaptableVCSServer, TagId, SnapshotUUID, Text, SessionOptions, SessionId } from "../vcs-provider"
+import { VCSAdapter, AdaptableVCSServer, TagId, SessionId, FileLoadingOptions, FileId, BlockId, BlockRange, BlockUpdate } from "../vcs-rework"
 import { IRange } from "../../../../editor/utils/types"
 import { VCSSnapshotData } from "../../data/snapshot"
 import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
 
 export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSServer<Adapter> {
 
-    public static startSessionChannel              = "vcs-start-session"
-    public static closeSessionChannel              = "vcs-close-session"
-    public static reloadSessionDataChannel         = "vcs-reload-session-data"
-    public static updatePathChannel                = "vcs-update-path"
-    public static cloneToPathChannel               = "vcs-clone-to-path"
-    public static createSnapshotChannel            = "vcs-create-snapshot"
-    public static deleteSnapshotChannel            = "vcs-delete-snapshot"
-    public static getSnapshotChannel               = "vcs-get-snapshot"
-    public static getSnapshotsChannel              = "vcs-get-snapshots"
-    public static updateSnapshotChannel            = "vcs-update-snapshot"
-    public static applySnapshotVersionIndexChannel = "vcs-apply-snapshot-version-index"
-    public static lineChangedChannel               = "vcs-line-changed"
-    public static linesChangedChannel              = "vcs-lines-Changed"
-    public static applyChangeChannel               = "vcs-apply-change"
-    public static applyChangesChannel              = "vcs-apply-changes"
-    public static saveCurrentVersionChannel        = "vcs-save-current-version"
+    public static createSessionChannel           = "vcs-create-session"
+    public static closeSessionChannel            = "vcs-close-session"
+
+    public static loadFileChannel                = "vcs-load-ile"
+    public static unloadFileChannel              = "vcs-unload-file"
+
+    public static lineChangedChannel             = "vcs-line-changed"
+    public static linesChangedChannel            = "vcs-lines-Changed"
+    public static applyChangeChannel             = "vcs-apply-change"
+    public static applyChangesChannel            = "vcs-apply-changes"
+
+    public static copyBlockChannel               = "vcs-copy-block"
+    public static createChildChannel             = "vcs-create-child-block"
+    public static deleteBlockChannel             = "vcs-delete-block"
+
+    public static getBlockInfoChannel            = "vcs-get-block-info"
+    public static getChildrenInfoChannel         = "vcs-get-children-info"
+
+    public static updateBlockChannel             = "vcs-update-block"
+    public static setBlockVersionIndexChannel    = "vcs-set-block-version-index"
+
+    public static saveCurrentBlockVersionChannel = "vcs-save-current-block-version"
 
     constructor(adapter: Adapter) {
         super(adapter)
@@ -30,68 +36,68 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     private mapChannels() {
 
-        const startSessionSubscription = ipcMain.handle(ElectronVCSServer.startSessionChannel, async (event, options: SessionOptions) => {
-            return this.startSession(options)
+        const createSessionSubscription = ipcMain.handle(ElectronVCSServer.createSessionChannel, async (event) => {
+            return await this.createSession()
         })
 
         const closeSessionSubscription = ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, sessionId: SessionId) => {
-            return this.closeSession(sessionId)
+            await this.closeSession(sessionId)
         })
 
-        const reloadSessionDataSubscription = ipcMain.handle(ElectronVCSServer.reloadSessionDataChannel, async (event, sessionId: SessionId) => {
-            return this.reloadSessionData(sessionId)
+        const loadFileSubscription = ipcMain.handle(ElectronVCSServer.loadFileChannel, async (event, sessionId: SessionId, options: FileLoadingOptions) => {
+            return await this.loadFile(sessionId, options)
         })
 
-        const updatePathSubscription = ipcMain.handle(ElectronVCSServer.updatePathChannel, async (event, sessionId: SessionId, filePath: string) => {
-            return this.updatePath(sessionId, filePath)
+        const unloadFileSubscription = ipcMain.handle(ElectronVCSServer.unloadFileChannel, async (event, fileId: FileId) => {
+            await this.unloadFile(fileId)
         })
 
-        const cloneToPathSubscription = ipcMain.handle(ElectronVCSServer.cloneToPathChannel, async (event, sessionId: SessionId, filePath: string) => {
-            return this.cloneToPath(sessionId, filePath)
+        const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, async (event, blockId: BlockId, change: LineChange) => {
+            return await this.lineChanged(blockId, change)
         })
 
-        const createSnapshotSubscription = ipcMain.handle(ElectronVCSServer.createSnapshotChannel, async (event, sessionId: SessionId, range: IRange) => {
-            return this.createSnapshot(sessionId, range)
+        const linesChangedSubscription = ipcMain.handle(ElectronVCSServer.linesChangedChannel, async (event, blockId: BlockId, change: MultiLineChange) => {
+            return await this.linesChanged(blockId, change)
         })
 
-        const deleteSnapshotSubscription = ipcMain.handle(ElectronVCSServer.deleteSnapshotChannel, async (event, sessionId: SessionId, uuid: SnapshotUUID) => {
-            return this.deleteSnapshot(sessionId, uuid)
+        const applyChangeSubscription = ipcMain.handle(ElectronVCSServer.applyChangeChannel, async (event, blockId: BlockId, change: AnyChange) => {
+            return await this.applyChange(blockId, change)
         })
 
-        const getSnapshotSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotChannel, async (event, sessionId: SessionId, uuid: SnapshotUUID) => {
-            return this.getSnapshot(sessionId, uuid)
+        const applyChangesSubscription = ipcMain.handle(ElectronVCSServer.applyChangesChannel, async (event, blockId: BlockId, changes: ChangeSet) => {
+            return await this.applyChanges(blockId, changes)
         })
 
-        const getSnapshotsSubscription = ipcMain.handle(ElectronVCSServer.getSnapshotsChannel, async (event, sessionId: SessionId) => {
-            return this.getSnapshots(sessionId)
+        const copyBlockSubscription = ipcMain.handle(ElectronVCSServer.copyBlockChannel, async (event, blockId: BlockId) => {
+            return await this.copyBlock(blockId)
         })
 
-        const updateSnapshotSubscription = ipcMain.handle(ElectronVCSServer.updateSnapshotChannel, async (event, sessionId: SessionId, snapshot: VCSSnapshotData) => {
-            this.updateSnapshot(sessionId, snapshot)
+        const createChildSubscription = ipcMain.handle(ElectronVCSServer.createChildChannel, async (event, parentBlockId: BlockId, range: BlockRange) => {
+            return await this.createChild(parentBlockId, range)
         })
 
-        const applySnapshotVersionIndexSubscription = ipcMain.handle(ElectronVCSServer.applySnapshotVersionIndexChannel, async (event, sessionId: SessionId, uuid: SnapshotUUID, versionIndex: number) => {
-            return this.applySnapshotVersionIndex(sessionId, uuid, versionIndex)
+        const deleteBlockSubscription = ipcMain.handle(ElectronVCSServer.deleteBlockChannel, async (event, blockId: BlockId) => {
+            await this.deleteBlock(blockId)
         })
 
-        const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, async (event, sessionId: SessionId, change: LineChange) => {
-            return this.lineChanged(sessionId, change)
+        const getBlockInfoSubscription = ipcMain.handle(ElectronVCSServer.getBlockInfoChannel, async (event, blockId: BlockId) => {
+            return await this.getBlockInfo(blockId)
         })
 
-        const linesChangedSubscription = ipcMain.handle(ElectronVCSServer.linesChangedChannel, async (event, sessionId: SessionId, change: MultiLineChange) => {
-            return this.linesChanged(sessionId, change)
+        const getChildrenInfoSubscription = ipcMain.handle(ElectronVCSServer.getChildrenInfoChannel, async (event, blockId: BlockId) => {
+            return await this.getChildrenInfo(blockId)
         })
 
-        const applyChangeSubscription = ipcMain.handle(ElectronVCSServer.applyChangeChannel, async (event, sessionId: SessionId, change: AnyChange) => {
-            return this.applyChange(sessionId, change)
+        const updateBlockSubscription = ipcMain.handle(ElectronVCSServer.updateBlockChannel, async (event, blockId: BlockId, update: BlockUpdate) => {
+            await this.updateBlock(blockId, update)
         })
 
-        const applyChangesSubscription = ipcMain.handle(ElectronVCSServer.applyChangesChannel, async (event, sessionId: SessionId, changes: ChangeSet) => {
-            return this.applyChanges(sessionId, changes)
+        const setBlockVersionIndexSubscription = ipcMain.handle(ElectronVCSServer.setBlockVersionIndexChannel, async (event, blockId: BlockId, versionIndex: number) => {
+            return await this.setBlockVersionIndex(blockId, versionIndex)
         })
 
-        const saveCurrentVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentVersionChannel, async (event, sessionId: SessionId, uuid: TagId) => {
-            return this.saveCurrentVersion(sessionId, uuid)
+        const saveCurrentBlockVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentBlockVersionChannel, async (event, blockId: BlockId) => {
+            return await this.saveCurrentBlockVersion(blockId)
         })
     }
 }
