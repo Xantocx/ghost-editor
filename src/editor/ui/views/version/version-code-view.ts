@@ -1,8 +1,7 @@
-import { VCSTag } from "../../../../app/components/data/snapshot";
-import { VCSSession } from "../../../../app/components/vcs/vcs-provider";
+import { VCSVersion } from "../../../../app/components/data/version";
+import { VCSBlockSession } from "../../../../app/components/vcs/vcs-rework";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { Button, IconButton } from "../../components/button";
-import { VCSVersion } from "../../snapshot/snapshot";
 import { GhostEditor } from "../editor/editor";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
@@ -21,7 +20,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
 
     public get style(): CSSStyleDeclaration { return this.listElement.style }
 
-    public constructor(root: Container, version: VCSVersion, session: VCSSession, languageId?: string, synchronizer?: Synchronizer) {
+    public constructor(root: Container, version: VCSVersion, session: VCSBlockSession, languageId?: string, synchronizer?: Synchronizer) {
         super(root, version)
         this.languageId = languageId
 
@@ -39,7 +38,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.setupMenu()
         this.setupEditor()
 
-        this.editor = GhostEditor.createVersionEditor(this.editorContainer, version, { session, enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
+        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, { session }, { enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
     }
 
     private setupMenu(): void {

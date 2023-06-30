@@ -1,126 +1,73 @@
-import { IRange, Range } from "../utils/range"
-import { SnapshotUUID, Text, VCSProvider, VCSSession, TagId } from "../vcs/vcs-provider"
 import { RangeProvider } from "../../../editor/utils/line-locator"
-import { BlockInfo, TagInfo } from "../vcs/vcs-rework"
+import { VCSBlockInfo, VCSBlockRange, VCSBlockSession, VCSTagInfo } from "../vcs/vcs-rework"
 
-export interface VCSSnapshotData {
-    uuid:         SnapshotUUID
-    _startLine:   number
-    _endLine:     number
-    versionCount: number
-    versionIndex: number
-    tags:         TagInfo[]
-}
+export class VCSSnapshot implements RangeProvider {
 
-export interface VCSTag {
-    id:                  TagId
-    blockId:             string
-    name:                string
-    text:                Text
-    automaticSuggestion: boolean
-}
+    public          blockInfo: VCSBlockInfo
+    public readonly session:   VCSBlockSession
 
-export class VCSSnapshot implements VCSSnapshotData, RangeProvider {
+    public get blockId(): string { return this.blockInfo.blockId }
 
-    public readonly uuid: string
-    public readonly session: VCSSession
+    public get versionCount(): number { return this.blockInfo.versionCount }
+    public get versionIndex(): number { return this.blockInfo.versionIndex }
 
-    public _startLine: number
-    public _endLine: number
+    public get lineCount(): number { return this.endLine - this.startLine + 1 }
 
-    public versionCount: number
-    public versionIndex: number
+    public get tags(): VCSTagInfo[] { return this.blockInfo.tags }
 
-    public readonly tags: TagInfo[]
+    public get range():     VCSBlockRange  { return this.blockInfo.range }
+    public set range(range: VCSBlockRange) { this.update(range) } // used to update server, not anymore for overlapping reasons when inserting lines too late -> see manualUpdate if this is desired
 
-    public get startLine(): number {
-        return this._startLine
-    }
-
+    public get startLine():    number  { return this.range.startLine }
     public set startLine(line: number) {
-        if (this._startLine !== line) {
-            this._startLine = line
+        if (this.range.startLine !== line) {
+            this.range.startLine = line
             this.updateServer()
         }
     }
 
-    public get endLine(): number {
-        return this._endLine
-    }
-
+    public get endLine():    number  { return this.range.endLine }
     public set endLine(line: number) {
-        if (this._endLine !== line) {
-            this._endLine = line
+        if (this.range.endLine !== line) {
+            this.range.endLine = line
             this.updateServer()
         }
     }
 
-    public get lineCount(): number {
-        return this.endLine - this.startLine + 1
+    public constructor(snapshot: VCSBlockInfo, session: VCSBlockSession) {
+        this.blockInfo = snapshot
+        this.session   = session
     }
 
-    public get range(): IRange {
-        return new Range(this.startLine, 1, this.endLine, Number.MAX_SAFE_INTEGER)
-    }
+    private update(range: VCSBlockRange): boolean {
+        const start = Math.min(range.startLine, range.endLine)
+        const end   = Math.max(range.startLine, range.endLine)
 
-    public set range(range: IRange) {
-        // used to update server, not anymore for overlapping reasons when inserting lines too late
-        this.update(range)
-    }
-
-    public static create(session: VCSSession, snapshot: BlockInfo): VCSSnapshot {
-        const range = new Range(snapshot.range.startLine, 1, snapshot.range.endLine, Number.MAX_SAFE_INTEGER)
-        return new VCSSnapshot(snapshot.blockId, session, range, snapshot.versionCount, snapshot.versionIndex, snapshot.tags)
-    }
-
-    constructor(uuid: string, session: VCSSession, range: IRange, versionCount: number, versionIndex: number, tags: TagInfo[]) {
-        this.uuid = uuid
-        this.session = session
-        
-        this._startLine = Math.min(range.startLineNumber, range.endLineNumber)
-        this._endLine   = Math.max(range.startLineNumber, range.endLineNumber)
-
-        this.versionCount = versionCount
-        this.versionIndex = versionIndex
-
-        this.tags = tags
-    }
-
-    private update(range: IRange): boolean {
-        const start = Math.min(range.startLineNumber, range.endLineNumber)
-        const end   = Math.max(range.startLineNumber, range.endLineNumber)
-
-        const updated = this._startLine !== start || this._endLine !== end
+        const updated = this.startLine !== start || this.endLine !== end
 
         if (updated) {
-            this._startLine = start
-            this._endLine   = end
+            // this by-passes the automatic update loop if it's not needed
+            // manual update will invoke updateServer if needed afterwards
+            this.range.startLine = start
+            this.range.endLine   = end
         }
 
         return updated
     }
 
     private updateServer(): void {
-        this.session.updateSnapshot(this.compress())
+        this.session.updateChildBlock(this.blockInfo, this.range)
     }
 
-    public compress(): VCSSnapshotData {
-
-        const parent = this
-
-        return {
-            uuid:         parent.uuid,
-            _startLine:   parent.startLine,
-            _endLine:     parent.endLine,
-            versionCount: parent.versionCount,
-            versionIndex: parent.versionIndex,
-            tags:         parent.tags
-        }
-    }
-
-    public manualUpdate(range: IRange) {
+    public manualUpdate(range: VCSBlockRange) {
         if (this.update(range)) {
             this.updateServer()
         }
     }
+
+    public async reload(data?: VCSBlockInfo): Promise<void> {
+        if (data === undefined)                      { data = await this.session.getChildInfo(this.blockInfo) }
+        if (this.blockInfo.blockId !== data.blockId) { throw new Error("You cannot update this Snapshot with an incompatiple snapshot!") }
+        this.blockInfo = data
+    } 
 }

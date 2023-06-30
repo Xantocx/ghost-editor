@@ -1,9 +1,8 @@
-import { SessionCreationOptions, SessionData, SessionInfo, SessionLoadingOptions, SessionOptions } from "../../../app/components/vcs/vcs-provider"
 import { BlockProxy, FileProxy, TagProxy } from "../db/types"
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { BlockId, FileId, FileLoadingOptions, RootBlockInfo, SessionId } from "../../../app/components/vcs/vcs-rework"
+import { VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagId } from "../../../app/components/vcs/vcs-rework"
 
 export class Session {
 
@@ -12,17 +11,18 @@ export class Session {
 
     private readonly files  = new Map<string, BlockProxy>() // this may be called files, but refers to the root block for each file - due to the implementation, this name makes most sense though
     private readonly blocks = new Map<string, BlockProxy>() // a cache for previously loaded blocks to speed up performance
+    private readonly tags   = new Map<string, TagProxy>()
 
     public constructor(resourceManager: ResourceManager) {
         this.resources = resourceManager
     }
 
-    public async loadFile(options: FileLoadingOptions): Promise<RootBlockInfo> {
+    public async loadFile(options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         const sessionId = this.asId()
 
         if (options.filePath !== undefined) {
             const filePath = options.filePath!
-            const fileId   = FileId.createFrom(sessionId, filePath)
+            const fileId   = VCSFileId.createFrom(sessionId, filePath)
 
             if (this.files.has(filePath)) {
                 return await this.files.get(filePath)!.asBlockInfo(fileId)
@@ -51,16 +51,16 @@ export class Session {
             this.files.set(file.filePath, rootBlock.block)
             this.blocks.set(rootBlock.blockId, rootBlock.block)
 
-            const fileId = FileId.createFrom(sessionId, file.filePath)
+            const fileId = VCSFileId.createFrom(sessionId, file.filePath)
             return await rootBlock.block.asBlockInfo(fileId)
         }
     }
 
-    public unloadFile(fileId: FileId): void {
+    public unloadFile(fileId: VCSFileId): void {
         this.files.delete(fileId.filePath)
     }
 
-    public getFile(fileId: FileId): FileProxy {
+    public getFile(fileId: VCSFileId): FileProxy {
         const filePath = fileId.filePath
         if (this.files.has(filePath)) {
             return this.files.get(filePath)!.file
@@ -69,7 +69,7 @@ export class Session {
         }
     }
 
-    public async getBlock(blockId: BlockId): Promise<BlockProxy> {
+    public async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
         const id = blockId.blockId
         if (this.blocks.has(id)) {
             return this.blocks.get(id)!
@@ -84,7 +84,22 @@ export class Session {
         }
     }
 
-    public getRootBlockFor(fileId: FileId): BlockProxy {
+    public async getTag(tagId: VCSTagId): Promise<TagProxy> {
+        const id = tagId.tagId
+        if (this.tags.has(id)) {
+            return this.tags.get(id)!
+        } else {
+            const tag = await prismaClient.tag.findFirst({ where: { tagId: id } })
+            if (!tag) { throw new Error(`Cannot find tag for provided tag id "${id}"`) }
+
+            const tagProxy = TagProxy.createFrom(tag)
+            this.tags.set(id, tagProxy)
+
+            return tagProxy
+        }
+    }
+
+    public getRootBlockFor(fileId: VCSFileId): BlockProxy {
         const filePath = fileId.filePath
         if (this.files.has(filePath)) {
             return this.files.get(filePath)!
@@ -93,8 +108,8 @@ export class Session {
         }
     }
 
-    public asId(): SessionId {
-        return new SessionId(this.id)
+    public asId(): VCSSessionId {
+        return new VCSSessionId(this.id)
     }
 
     public close(): void {
@@ -106,19 +121,19 @@ export class ResourceManager {
 
     private readonly sessions = new Map<string, Session>()
 
-    public createSession(): SessionId {
+    public createSession(): VCSSessionId {
         const session = new Session(this)
         this.sessions.set(session.id, session)
         return session.asId()
     }
 
-    public closeSession(sessionId: SessionId): void {
+    public closeSession(sessionId: VCSSessionId): void {
         const id = sessionId.sessionId
         this.sessions.get(id)?.close()
         this.sessions.delete(id)
     }
 
-    public getSession(sessionId: SessionId): Session {
+    public getSession(sessionId: VCSSessionId): Session {
         const id = sessionId.sessionId
         if (this.sessions.has(id)) {
             return this.sessions.get(id)!
@@ -131,23 +146,27 @@ export class ResourceManager {
         return Array.from(this.sessions.values())
     }
 
-    public async loadFile(sessionId: SessionId, options: FileLoadingOptions): Promise<RootBlockInfo> {
+    public async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         return await this.getSession(sessionId).loadFile(options)
     }
 
-    public unloadFile(fileId: FileId): void {
+    public unloadFile(fileId: VCSFileId): void {
         this.getSession(fileId).unloadFile(fileId)
     }
 
-    public getFile(fileId: FileId): FileProxy {
+    public getFile(fileId: VCSFileId): FileProxy {
         return this.getSession(fileId).getFile(fileId)
     }
 
-    public async getBlock(blockId: BlockId): Promise<BlockProxy> {
+    public async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
         return await this.getSession(blockId).getBlock(blockId)
     }
 
-    public getRootBlockFor(fileId: FileId): BlockProxy {
+    public async getTag(tagId: VCSTagId): Promise<TagProxy> {
+        return await this.getSession(tagId).getTag(tagId)
+    }
+
+    public getRootBlockFor(fileId: VCSFileId): BlockProxy {
         return this.getSession(fileId).getRootBlockFor(fileId)
     }
 

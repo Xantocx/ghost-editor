@@ -2,7 +2,7 @@ import { Prisma, BlockType, Block, VersionType, Version, Line } from "@prisma/cl
 import { FileDatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client"
 import { FileProxy, LineProxy, VersionProxy } from "../../types"
-import { BlockId, BlockInfo, BlockRange, FileId, TagId, TagInfo } from "../../../../../app/components/vcs/vcs-rework"
+import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInfo, VCSUnwrappedText } from "../../../../../app/components/vcs/vcs-rework"
 
 export class BlockProxy extends FileDatabaseProxy {
 
@@ -160,7 +160,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return content.join(file.eol)
     }
 
-    public async getFullText(accumulation?: { blockText: string, selectedVersions: Map<number, Version> }): Promise<{ blockText: string, fullText: string }> {
+    public async getUnwrappedText(accumulation?: { blockText: string, selectedVersions: Map<number, Version> }): Promise<VCSUnwrappedText> {
         const block = await this.getBlock()
 
         type Accumulation = { blockText: string, selectedVersions: Map<number, Version> }
@@ -198,24 +198,24 @@ export class BlockProxy extends FileDatabaseProxy {
 
             const origin        = new BlockProxy(block.originId!, this.file)
             const blockVersions = await this.getHeadVersions()
-            return await origin.getFullText(await accumulate(this.file, blockVersions, accumulation))
+            return await origin.getUnwrappedText(await accumulate(this.file, blockVersions, accumulation))
 
         } else if (block.type === BlockType.INLINE) {
 
             const parent = new BlockProxy(block.parentId!, this.file)
 
             if (accumulation) {
-                return await parent.getFullText(accumulation)
+                return await parent.getUnwrappedText(accumulation)
             } else {
                 const blockVersions = await this.getHeadVersions()
-                return await parent.getFullText(await accumulate(this.file, blockVersions))
+                return await parent.getUnwrappedText(await accumulate(this.file, blockVersions))
             }
         } else {
             throw new Error("Block type unknown!")
         }
     }
 
-    public async getLinesInRange(range: BlockRange): Promise<LineProxy[]> {
+    public async getLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
         const versions = await this.getHeadsWithLines()
 
         const activeVersions = versions.filter(version => version.isActive)
@@ -228,7 +228,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return versionsInRange.map(version => LineProxy.createFrom(version.line, this.file))
     }
 
-    public async getActiveLinesInRange(range: BlockRange): Promise<LineProxy[]> {
+    public async getActiveLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
         const lines        = await this.getActiveLines()
         const linesInRange = lines.filter((line, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
         return lines.map(line => LineProxy.createFrom(line, this.file))
@@ -409,7 +409,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return createdLine
     }
 
-    public async createChild(range: BlockRange): Promise<BlockProxy | null> {
+    public async createChild(range: VCSBlockRange): Promise<BlockProxy | null> {
         const linesInRange = await this.getLinesInRange(range)
 
         const overlappingChild = await prismaClient.block.findFirst({
@@ -427,7 +427,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return this.inlineCopy(linesInRange)
     }
 
-    public async asBlockInfo(fileId: FileId): Promise<BlockInfo> {
+    public async asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
 
         const [block, originalLineCount, activeLineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
             this.getBlock(),
@@ -475,16 +475,16 @@ export class BlockProxy extends FileDatabaseProxy {
 
         const currentVersionIndex = await this.getTimelineIndexFor(currentVersion)
 
-        const blockId = BlockId.createFrom(fileId, block.blockId)
-        return new BlockInfo(blockId,
+        const blockId = VCSBlockId.createFrom(fileId, block.blockId)
+        return new VCSBlockInfo(blockId,
                              block.type,
                              {startLine: 1, endLine: 1},
                              userVersionCount,
                              currentVersionIndex,
-                             tags.map(tag => new TagInfo(TagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
+                             tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
     }
 
-    public async getChildrenInfo(fileId: FileId): Promise<BlockInfo[]> {
+    public async getChildrenInfo(fileId: VCSFileId): Promise<VCSBlockInfo[]> {
         const children = await this.getChildren()
         const blocks = children.map(child => BlockProxy.createFrom(child, this.file))
         return await Promise.all(blocks.map(block => block.asBlockInfo(fileId)))

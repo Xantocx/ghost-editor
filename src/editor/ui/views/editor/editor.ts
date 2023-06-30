@@ -5,18 +5,19 @@ import * as monaco from "monaco-editor"
 import { CodeProvider, View } from "../view";
 import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { TagId, VCSClient, VCSBlockSession, BlockInfo } from "../../../../app/components/vcs/vcs-rework";
+import { VCSTagId, VCSClient, VCSBlockSession, VCSBlockInfo, VCSSession, VCSBlockRange, VCSFileLoadingOptions, VCSBlockId } from "../../../../app/components/vcs/vcs-rework";
 import { MetaView, ViewIdentifier } from "../meta-view";
-import { GhostSnapshot, VCSVersion } from "../../snapshot/snapshot";
+import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
 import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionManagerView } from "../version/version-manager";
-import { VCSSnapshot, VCSSnapshotData, VCSTag } from "../../../../app/components/data/snapshot";
+import { VCSSnapshot } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
 import { extractEOLSymbol, sleep } from "../../../utils/helpers";
+import { VCSVersion } from "../../../../app/components/data/version";
 
 class GhostEditorSnapshotManager {
 
@@ -31,7 +32,7 @@ class GhostEditorSnapshotManager {
         this.editor = editor
     }
 
-    public replaceSnapshots(snapshots: BlockInfo[]): void {
+    public replaceSnapshots(snapshots: VCSBlockInfo[]): void {
         this.removeSnapshots()
         this.snapshots = snapshots.map(snapshot => new GhostSnapshot(this.editor, snapshot))
     }
@@ -41,7 +42,7 @@ class GhostEditorSnapshotManager {
         this.replaceSnapshots(snapshots)
     }
 
-    public async createSnapshot(range: IRange): Promise<GhostSnapshot | null> {
+    public async createSnapshot(range: VCSBlockRange): Promise<GhostSnapshot | null> {
         const overlappingSnapshot = this.snapshots.find(snapshot => snapshot.overlapsWith(range))
 
         if (!overlappingSnapshot){
@@ -55,20 +56,20 @@ class GhostEditorSnapshotManager {
 
             return snapshot
         } else {
-            console.warn(`You cannot create a snapshot overlapping with ${overlappingSnapshot.snapshot.uuid}}!`)
+            console.warn(`You cannot create a snapshot overlapping with ${overlappingSnapshot.snapshot.blockId}}!`)
             return null
         }
     }
 
-    public getSnapshot(uuid: string): GhostSnapshot | undefined {
-        return this.snapshots.find(snapshot => { return snapshot.uuid === uuid })
+    public getSnapshot(blockId: string): GhostSnapshot | undefined {
+        return this.snapshots.find(snapshot => { return snapshot.blockId === blockId })
     }
 
     public getSnapshots(lineNumber: number): GhostSnapshot[] {
         return this.snapshots.filter(snapshot => { return snapshot.containsLine(lineNumber) })
     }
 
-    public getOverlappingSnapshots(range: IRange): GhostSnapshot[] {
+    public getOverlappingSnapshots(range: VCSBlockRange): GhostSnapshot[] {
         return this.snapshots.filter(snapshot => snapshot.overlapsWith(range))
     }
 
@@ -88,15 +89,15 @@ class GhostEditorSnapshotManager {
         this.forEach(snapshot => snapshot.manualUpdate())
     }
 
-    public updateFrom(snapshots: VCSSnapshotData[]): void {
+    public updateFrom(snapshots: VCSBlockInfo[]): void {
         snapshots.forEach(updatedSnapshot => {
-            const currentSnapshot = this.find(currentSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
-            if (currentSnapshot !== undefined) { currentSnapshot.updateFrom(updatedSnapshot) }
+            const currentSnapshot = this.find(currentSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
+            if (currentSnapshot !== undefined) { currentSnapshot.updateFrom({ snapshotData: updatedSnapshot }) }
             else                               { this.snapshots.push(new GhostSnapshot(this.editor, updatedSnapshot)) }
         })
 
         this.snapshots.reverse().forEach((currentSnapshot, index) => {
-            const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
             if (updatedSnapshot === undefined) {
                 currentSnapshot.remove()
                 this.snapshots.splice(index, 1)
@@ -104,15 +105,15 @@ class GhostEditorSnapshotManager {
         })
     }
 
-    public manualUpdateFrom(snapshots: VCSSnapshotData[]): void {
+    public manualUpdateFrom(snapshots: VCSBlockInfo[]): void {
         snapshots.forEach(updatedSnapshot => {
-            const currentSnapshot = this.find(currentSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            const currentSnapshot = this.find(currentSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
             if (currentSnapshot !== undefined) { currentSnapshot.manualUpdateFrom(updatedSnapshot) }
             else                               { this.snapshots.push(new GhostSnapshot(this.editor, updatedSnapshot)) }
         })
 
         this.snapshots.reverse().forEach((currentSnapshot, index) => {
-            const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.uuid === updatedSnapshot.uuid)
+            const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
             if (updatedSnapshot === undefined) {
                 currentSnapshot.remove()
                 this.snapshots.splice(index, 1)
@@ -120,8 +121,8 @@ class GhostEditorSnapshotManager {
         })
     }
 
-    public deleteSnapshot(uuid: SnapshotUUID): GhostSnapshot | undefined {
-        const snapshot = this.getSnapshot(uuid)
+    public deleteSnapshot(blockId: string): GhostSnapshot | undefined {
+        const snapshot = this.getSnapshot(blockId)
 
         if (snapshot) {
             snapshot.delete()
@@ -161,8 +162,8 @@ class GhostEditorInteractionManager extends SubscriptionManager {
 
     private disableVcsSync: boolean = false
 
-    private selectedRange:     IRange | undefined = undefined
-    public  selectedSnapshots: GhostSnapshot[]    = []
+    private selectedRange:     VCSBlockRange | undefined = undefined
+    public  selectedSnapshots: GhostSnapshot[]           = []
 
     private get activeSnapshot(): GhostSnapshot | undefined         { return this.editor.activeSnapshot }
     private set activeSnapshot(snapshot: GhostSnapshot | undefined) { this.editor.activeSnapshot = snapshot }
@@ -232,7 +233,7 @@ class GhostEditorInteractionManager extends SubscriptionManager {
             contextMenuOrder: 1,
         
             run: function (core) {
-                snapshotManager.deleteSnapshot(parent.selectedSnapshots[0].uuid)
+                snapshotManager.deleteSnapshot(parent.selectedSnapshots[0].blockId)
                 parent.readEditorState()
             },
         }));
@@ -319,11 +320,11 @@ class GhostEditorInteractionManager extends SubscriptionManager {
             const selection = this.getSelection()
 
             if (selection) {
-                this.selectedRange     = selection
-                this.selectedSnapshots = this.snapshotManager.getOverlappingSnapshots(selection)
+                this.selectedRange     = { startLine: selection.startLineNumber, endLine: selection.endLineNumber }
+                this.selectedSnapshots = this.snapshotManager.getOverlappingSnapshots(this.selectedRange)
             } else if (position) {
                 const lineNumber       = position.lineNumber
-                this.selectedRange     = new monaco.Range(lineNumber, 1, lineNumber, Number.MAX_SAFE_INTEGER)
+                this.selectedRange     = { startLine: lineNumber, endLine: lineNumber }
                 this.selectedSnapshots = this.snapshotManager.getSnapshots(lineNumber)
             } else {
                 this.selectedRange     = undefined
@@ -363,11 +364,11 @@ class GhostEditorInteractionManager extends SubscriptionManager {
 export class GhostEditorModel {
 
     public readonly textModel: MonacoModel
-    public readonly session:   VCSSession
+    public readonly session:   VCSBlockSession
 
     public get uri(): URI { return this.textModel.uri }
 
-    public constructor(textModel: MonacoModel, session: VCSSession) {
+    public constructor(textModel: MonacoModel, session: VCSBlockSession) {
         this.textModel = textModel
         this.session   = session
     }
@@ -377,7 +378,39 @@ export class GhostEditorModel {
     }
 }
 
-export class GhostEditor extends View implements ReferenceProvider, SessionFactory {
+
+interface GhostFileLoadingOptions {
+    uri:      URI
+    content?: string
+}
+
+interface GhostFilePathLoadingOptions {
+    filePath: string
+    content?: string
+}
+
+interface GhostBlockLoadingOptions extends GhostFilePathLoadingOptions {
+    blockId: VCSBlockId
+}
+
+interface GhostTagLoadingOptions extends GhostFilePathLoadingOptions {
+    tagId:    VCSTagId
+    blockId?: VCSBlockId
+}
+
+interface GhostBlockSessionLoadingOptions {
+    session: VCSBlockSession
+}
+
+type GhostLoadingOptions = GhostFileLoadingOptions | GhostFilePathLoadingOptions | GhostBlockLoadingOptions | GhostTagLoadingOptions | GhostBlockSessionLoadingOptions
+
+export class GhostEditor extends View implements ReferenceProvider {
+
+    private static _session?: VCSSession
+    public static async getSession(): Promise<VCSSession> {
+        if (!this._session) { this._session = await VCSSession.create(window.vcs) } 
+        return this._session!
+    }
 
     public readonly enableFileManagement: boolean
     public readonly sideViewEnabled:      boolean
@@ -388,7 +421,6 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     public  readonly editorContainer:    HTMLDivElement
     public  readonly sideViewContainer?: HTMLDivElement
     private readonly containers:         HTMLDivElement[] = []
-    private readonly hostedSessions:     VCSSession[]     = []
 
     // main editor
     public readonly core:               MonacoEditor
@@ -416,9 +448,6 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
     public get spaceWidth():       number { return this.getFontInfo().spaceWidth }
     public get tabSize():          number { return this.getModelOptions().tabSize }
 
-    // vcs system allowing for version management
-    public get vcs(): VCSClient { return window.vcs }
-
     // snapshot management
     private _activeSnapshot:      GhostSnapshot | undefined = undefined
     public  get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
@@ -436,18 +465,11 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    public static createVersionEditor(root: HTMLElement, tag: VCSTag, options?: { session?: VCSSession, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
-        return new GhostEditor(root, { 
-                                        tagId: tag.id,
-                                        session: options?.session,
-                                        enableSideView: options?.enableSideView,
-                                        mainViewFlex: options?.mainViewFlex,
-                                        languageId: options?.languageId,
-                                        synchronizer: options?.synchronizer
-                                     })
+    public static createEditorFromSession(root: HTMLElement, loadingOptions: GhostBlockSessionLoadingOptions, options?: { enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
+        return new GhostEditor(root, loadingOptions, options)
     }
 
-    public constructor(root: HTMLElement, options?: { filePath?: string, blockId?: string, tagId?: TagId, content?: string, session?: VCSSession, enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
+    public constructor(root: HTMLElement, loadOptions: GhostLoadingOptions, options?: { enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
         super(root, options?.synchronizer)
 
         this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
@@ -473,10 +495,10 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         this.interactionManager = new GhostEditorInteractionManager(this)
 
         this.setup()
-        this.load(options)
+        this.load(loadOptions)
     }
 
-    private createEditorModel(textModel: MonacoModel, session: VCSSession, vcsContent: string): void {
+    private createEditorModel(textModel: MonacoModel, session: VCSBlockSession, vcsContent: string): void {
         textModel.setValue(vcsContent)
         this.editorModel = new GhostEditorModel(textModel, session)
         this.core.setModel(textModel)
@@ -493,7 +515,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         else               { throw new Error("The editor currently has no model. Please load a session in order to re-establish functionality before using this function.") }
     }
 
-    public getSession(): VCSSession {
+    public getSession(): VCSBlockSession {
         if (this.hasModel) { return this.editorModel!.session }
         else               { throw new Error("The editor currently has no session. Please load a session in order to re-establish functionality before using this function.") } 
     }
@@ -592,15 +614,19 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
     public async applyChangeSet(changeSet: ChangeSet): Promise<void> {
         // forEach is a bitch for anything but synchronous arrays...
-        const changedSnapshots = Array.from(new Set(await this.getSession().applyChanges(changeSet)))
-        await Promise.all(changedSnapshots.map(uuid => this.snapshotManager.getSnapshot(uuid)?.update()))
+        const changedSnapshots = await this.getSession().applyChanges(changeSet)
+        await Promise.all(changedSnapshots.map(id => this.snapshotManager.getSnapshot(id.blockId)?.update()))
         if (changedSnapshots.length > 0) { this.triggerSync() }
     }
 
     public override async sync(trigger: Synchronizable): Promise<void> {
-        const snapshotData = await this.getSession().reloadData()
-        this.update(snapshotData.content)
-        this.snapshotManager.updateFrom(snapshotData.snapshots)
+        const session   = this.getSession()
+
+        const content   = await session.getText()
+        const snapshots = await session.getChildrenInfo()
+
+        this.update(content)
+        this.snapshotManager.updateFrom(snapshots)
     }
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
@@ -612,48 +638,96 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
         this.editorModel = undefined
     }
 
-    public async createSession(options: SessionOptions): Promise<{ session: VCSSession, sessionData: SessionData }> {
-        const info    = await this.vcs.startSession(options)
-        const session = new VCSSession(info, this.vcs)
-        this.hostedSessions.push(session)
-        return { session: session, sessionData: info.sessionData }
+    public async createSession(options: VCSFileLoadingOptions): Promise<VCSBlockSession> {
+        const vcsSession = await GhostEditor.getSession()
+        return await vcsSession.loadFile(options)
     }
 
-    public async load(options?: { uri?: URI, filePath?: string, blockId?: string, tagId?: TagId, content?: string, session?: VCSSession }): Promise<void> {
+    public async load(loadingOptions: GhostLoadingOptions): Promise<void> {
         this.unload()
 
-        const uri      = options?.uri
-        const filePath = options?.filePath ? options.filePath : uri?.fsPath
-        const blockId  = options?.blockId
-        const tagId    = options?.tagId
-        const content  = options?.content  ? options.content  : ""
+        const hostSession = await GhostEditor.getSession()
 
-        let textModel = uri ? monaco.editor.getModel(uri) : null
+        let textModel: MonacoModel | undefined
+        let session:   VCSBlockSession
 
-        if (textModel) { textModel.setValue(content) }
-        else           { textModel = monaco.editor.createModel(content, this.languageId, uri) }
+        function setTextModel(uri: URI | undefined, content?: string): string {
+            const model        = uri     ? monaco.editor.getModel(uri) : null
+            const modelContent = content ? content                     : ""
+            
+            if (model) {
+                textModel = model
+                textModel.setValue(modelContent)
+            } else { 
+                textModel = monaco.editor.createModel(modelContent, this.languageId, uri)
+            }
 
-        let session:     VCSSession
-        let sessionData: SessionData
-
-        if (options?.session) {
-            if (!options.session.validateSession({ filePath, blockId })) { throw new Error("Provided Session is not compatiple with the provided file path or BlockID!") }
-            session     = options.session
-            sessionData = await session.reloadData()
-        } else {
-            const EOL    = extractEOLSymbol(textModel)
-            const result = await this.createSession({ filePath, blockId, tagId, eol: EOL, content: options?.content })
-
-            session      = result.session
-            sessionData  = result.sessionData
+            return extractEOLSymbol(textModel)
         }
 
-        this.createEditorModel(textModel, session!, sessionData.content)
+        if (loadingOptions as GhostFileLoadingOptions) {
+            const options = loadingOptions as GhostFileLoadingOptions
+            const uri     = options.uri
+            const content = options.content ? options.content : ""
+            const eol     = setTextModel(uri, content)
+
+            session = await hostSession.loadFile({ filePath: uri.fsPath, eol, content })
+
+        } else if (loadingOptions as GhostFilePathLoadingOptions) {
+            const options  = loadingOptions as GhostFilePathLoadingOptions
+            const filePath = options.filePath
+            const content  = options.content ? options.content : ""
+
+            const uri = monaco.Uri.file(filePath)
+            const eol = setTextModel(uri, content)
+
+            session = await hostSession.loadFile({ filePath: filePath, eol, content })
+
+        } else if (loadingOptions as GhostBlockLoadingOptions) {
+            const options  = loadingOptions as GhostBlockLoadingOptions
+            const filePath = options.filePath
+            const blockId  = options.blockId
+            const content  = options.content ? options.content : ""
+            const eol      = setTextModel(undefined, content)
+
+            const fileSession = await hostSession.loadFile({ filePath: filePath, eol, content })
+            
+            session = await fileSession.getChild(blockId)
+
+        } else if (loadingOptions as GhostTagLoadingOptions) {
+            const options  = loadingOptions as GhostTagLoadingOptions
+            const filePath = options.filePath
+            const tagId    = options.tagId
+            const blockId  = options.blockId
+            const content  = options.content ? options.content : ""
+            const eol      = setTextModel(undefined, content)
+
+            const fileSession  = await hostSession.loadFile({ filePath: filePath, eol, content })
+            const blockSession = await fileSession.getChild(blockId ? blockId : tagId) // TODO: is this the most sensible way to select the right block? why not the root block?
+            
+            await blockSession.applyTag(tagId)
+
+            session = blockSession
+
+        } else if (loadingOptions as GhostBlockSessionLoadingOptions) {
+            const options = loadingOptions as GhostBlockSessionLoadingOptions
+            
+            setTextModel(undefined, undefined)
+            session = options.session
+
+        } else {
+            throw new Error("The provided set of options does not match any of the allowed types!")
+        }
+
+        const content   = await session.getText()
+        const snapshots = await session.getChildrenInfo()
+
+        this.createEditorModel(textModel!, session!, content)
 
         // NOTE: Creating snapshots will create view zones. This cannot happen immediately, and should only be done after the editor finished rendering the first frame. Waiting for this event will allow me to do so.
         const setupDisposable = this.core.onDidContentSizeChange(() => {
             setupDisposable.dispose()
-            this.snapshotManager.replaceSnapshots(sessionData.snapshots)
+            this.snapshotManager.replaceSnapshots(snapshots)
         })
     }
 
@@ -692,7 +766,7 @@ export class GhostEditor extends View implements ReferenceProvider, SessionFacto
 
     public override remove(): void {
         this.snapshotManager.removeSnapshots()
-        this.hostedSessions.forEach(session => session.close())
+        this.editorModel?.close()
         super.remove()
     }
 }

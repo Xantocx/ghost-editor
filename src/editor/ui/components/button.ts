@@ -1,10 +1,10 @@
-import { VCSTag } from "../../../app/components/data/snapshot"
 import { Disposable } from "../../utils/types"
 import { VersionViewContainer, VersionViewElement } from "../views/version/version-view"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { P5JSPreview } from "../views/previews/p5js-preview"
 import { CodeProvider } from "../views/view"
 import { Synchronizer } from "../../utils/synchronizer"
+import { VCSVersion } from "../../../app/components/data/version"
 
 export class Button extends SubscriptionManager {
 
@@ -56,16 +56,16 @@ export class Button extends SubscriptionManager {
         return button
     }
 
-    public static versionButton(root: HTMLElement, version: VCSTag, onClick?: (button: Button) => void): Button {
+    public static versionButton(root: HTMLElement, version: VCSVersion, onClick?: (button: Button) => void): Button {
         return new VersionButton(root, version, onClick)
     }
 
-    public static p5jsPreviewButton<Version extends VCSTag, Container extends VersionViewContainer<Version, P5JSPreviewButton<Version, Container>>>(root: Container, version: Version, provider: CodeProvider, onClick: (button: Button) => void, synchronizer?: Synchronizer): P5JSPreviewButton<Version, Container> {
-        return new P5JSPreviewButton(root, version, provider, { onClick, synchronizer })
+    public static p5jsPreviewButton<Container extends VersionViewContainer<VCSVersion, P5JSPreviewButton<Container>>>(root: Container, version: VCSVersion, onClick: (button: Button) => void, synchronizer?: Synchronizer): P5JSPreviewButton<Container> {
+        return new P5JSPreviewButton(root, version, { onClick, synchronizer })
     }
 
-    public static p5jsPreviewToggleButton<Version extends VCSTag, Container extends VersionViewContainer<Version, P5JSPreviewToggleButton<Version, Container>>>(root: Container, version: Version, provider: CodeProvider, onSelect: (version: Version, selected: boolean) => void, synchronizer?: Synchronizer): P5JSPreviewToggleButton<Version, Container> {
-        return new P5JSPreviewToggleButton(root, version, provider, undefined, { onSelect, synchronizer })
+    public static p5jsPreviewToggleButton<Container extends VersionViewContainer<VCSVersion, P5JSPreviewToggleButton<Container>>>(root: Container, version: VCSVersion, onSelect: (version: VCSVersion, selected: boolean) => void, synchronizer?: Synchronizer): P5JSPreviewToggleButton<Container> {
+        return new P5JSPreviewToggleButton(root, version, undefined, { onSelect, synchronizer })
     }
 
     public readonly root: HTMLElement
@@ -167,7 +167,7 @@ export class IconButton extends Button {
 
 export class VersionButton extends TextButton {
 
-    constructor(root: HTMLElement, version: VCSTag, onClick?: (button: Button) => void) {
+    constructor(root: HTMLElement, version: VCSVersion, onClick?: (button: Button) => void) {
         super(root, version.name, onClick)
 
         this.style.display = "inline-block"
@@ -188,15 +188,15 @@ export class VersionButton extends TextButton {
 }
 
 
-export class P5JSPreviewButton<Version extends VCSTag, Container extends VersionViewContainer<Version, P5JSPreviewButton<Version, Container>>> extends Button implements VersionViewElement<Version, P5JSPreviewButton<Version, Container>, VersionViewContainer<Version, P5JSPreviewButton<Version, Container>>> {
+export class P5JSPreviewButton<Container extends VersionViewContainer<VCSVersion, P5JSPreviewButton<Container>>> extends Button implements VersionViewElement<VCSVersion, P5JSPreviewButton<Container>, VersionViewContainer<VCSVersion, P5JSPreviewButton<Container>>> {
 
     public  readonly container: Container
-    public  readonly version:  Version
+    public  readonly version:  VCSVersion
     private readonly preview:  P5JSPreview
 
     private readonly namePadding = 5
 
-    constructor(container: Container, version: Version, provider: CodeProvider, options?: { onClick?: (button: Button) => void, synchronizer?: Synchronizer }) {
+    constructor(container: Container, version: VCSVersion, options?: { onClick?: (button: Button) => void, synchronizer?: Synchronizer }) {
         super(container.container, { onClick: options?.onClick })
         this.version = version
 
@@ -232,7 +232,7 @@ export class P5JSPreviewButton<Version extends VCSTag, Container extends Version
         previewContainer.style.margin  = "0"
         this.button.appendChild(previewContainer)
 
-        this.preview = new P5JSPreview(previewContainer, { provider, padding: 5, errorMessageColor: "white", synchronizer: options?.synchronizer })
+        this.preview = new P5JSPreview(previewContainer, { provider: version, padding: 5, errorMessageColor: "white", synchronizer: options?.synchronizer })
     }
 
     public override remove(): void {
@@ -242,7 +242,7 @@ export class P5JSPreviewButton<Version extends VCSTag, Container extends Version
 }
 
 
-export class P5JSPreviewToggleButton<Version extends VCSTag, Container extends VersionViewContainer<Version, P5JSPreviewToggleButton<Version, Container>>> extends P5JSPreviewButton<Version, Container> {
+export class P5JSPreviewToggleButton<Container extends VersionViewContainer<VCSVersion, P5JSPreviewToggleButton<Container>>> extends P5JSPreviewButton<Container> {
 
     private readonly colors?: {selected?: string, default?: string}
 
@@ -262,15 +262,14 @@ export class P5JSPreviewToggleButton<Version extends VCSTag, Container extends V
     }
 
     constructor(container: Container, 
-                version: Version,
-                provider: CodeProvider,
+                version: VCSVersion,
                 colors?: {selected?: string, default?: string}, 
                 options?: {
-                    onSelect?: (version: Version, selected: boolean) => void,
+                    onSelect?: (version: VCSVersion, selected: boolean) => void,
                     synchronizer?: Synchronizer
                 }) {
 
-        super(container, version, provider, options)
+        super(container, version, options)
         this.colors = colors
 
         this.button.onclick = () => {
@@ -282,7 +281,7 @@ export class P5JSPreviewToggleButton<Version extends VCSTag, Container extends V
         if (options?.onSelect) { this.onSelect(options.onSelect) }
     }
 
-    public onSelect(callback: (version: Version, selected: boolean) => void): Disposable {
+    public onSelect(callback: (version: VCSVersion, selected: boolean) => void): Disposable {
         return super.onClick(button => {
             callback(this.version, this.selected)
         })

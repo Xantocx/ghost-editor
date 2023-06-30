@@ -3,7 +3,7 @@ import { FileDatabaseProxy } from "../database-proxy";
 import { VersionProxy, BlockProxy } from "../../types";
 import { HeadList, Line, Prisma, Version, VersionType } from "@prisma/client"
 import { FileProxy } from "./file-proxy";
-import { BlockId, FileId } from "../../../../../app/components/vcs/vcs-rework";
+import { VCSBlockId, VCSFileId } from "../../../../../app/components/vcs/vcs-rework";
 import { TimestampProvider } from "../../../core/metadata/timestamps";
 
 export class LineProxy extends FileDatabaseProxy {

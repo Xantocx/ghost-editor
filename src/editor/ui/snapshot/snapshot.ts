@@ -4,53 +4,19 @@ import { GhostSnapshotHeader } from "./header"
 import { GhostSnapshotHighlight } from "./highlight"
 import { GhostSnapshotFooter } from "./footer"
 import { RangeProvider, LineLocator } from "../../utils/line-locator"
-import { VCSSnapshotData, VCSSnapshot, VCSTag } from "../../../app/components/data/snapshot"
-import { SessionFactory, SnapshotUUID, TagId, VCSSession } from "../../../app/components/vcs/vcs-provider"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
 import { MetaView } from "../views/meta-view"
-import { BlockInfo, TagInfo } from "../../../app/components/vcs/vcs-rework"
-
-export class VCSVersion implements TagInfo {
-
-    public readonly snapshot: GhostSnapshot
-    public readonly tag:      TagInfo
-    
-    private     session?:         VCSSession
-    private get sessionFactory(): SessionFactory { return this.snapshot.editor }
-
-    public get id(): string                   { return this.tag.id }
-    public get blockId(): string              { return this.tag.blockId }
-    public get name(): string                 { return this.tag.name }
-    public get text(): string                 { return this.tag.text }
-    public get automaticSuggestion(): boolean { return this.tag.automaticSuggestion }
-
-    public constructor(snapshot: GhostSnapshot, tag: TagInfo) {
-        this.snapshot = snapshot
-        this.tag      = tag
-    }
-
-    public async getSession(): Promise<VCSSession> {
-        if (!this.session) {
-            const result = await this.sessionFactory.createSession({ tagId: this.id })
-            this.session = result.session
-        }
-
-        return this.session
-    }
-
-    public closeSession(): void {
-        this.session?.close()
-        this.session = undefined
-    }
-}
+import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockSession, VCSTagInfo } from "../../../app/components/vcs/vcs-rework"
+import { VCSSnapshot } from "../../../app/components/data/snapshot"
+import { VCSVersion } from "../../../app/components/data/version"
 
 export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
 
     private readonly color = "ghostHighlightGray"
 
-    public readonly editor: GhostEditor
-    public snapshot: VCSSnapshot
-    private readonly locator: LineLocator
+    public  readonly editor:   GhostEditor
+    public           snapshot: VCSSnapshot
+    private readonly locator:  LineLocator
 
     private readonly versions: VCSVersion[]
 
@@ -63,49 +29,26 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     private readonly sideViewIdentifier = "versionManager"
 
-    public get uuid(): SnapshotUUID {
-        return this.snapshot.uuid
-    }
+    public get vcsId():   VCSBlockId { return this.snapshot.blockInfo }
+    public get blockId(): string     { return this.snapshot.blockId }
 
-    public get core(): MonacoEditor {
-        return this.editor.core
-    }
+    public get core():  MonacoEditor { return this.editor.core }
+    public get model(): MonacoModel  { return this.editor.getTextModel() }
 
-    public get model(): MonacoModel {
-        return this.editor.getTextModel()
-    }
+    public get sideView(): MetaView | undefined { return this.editor.sideView }
 
-    public get sideView(): MetaView | undefined {
-        return this.editor.sideView
-    }
+    public get range():     VCSBlockRange  { return this.snapshot.range }
+    public set range(range: VCSBlockRange) { this.snapshot.range = range }
 
-    public get range(): IRange {
-        return this.snapshot.range
-    }
+    public get startLine(): number { return this.snapshot.startLine }
+    public get endLine():   number { return this.snapshot.endLine }
+    public get lineCount(): number { return this.snapshot.lineCount }
 
-    public set range(range: IRange) {
-        this.snapshot.range = range
-    }
+    public get layoutInfo():     LayoutInfo { return this.core.getLayoutInfo() }
+    public get editorWidth():    number     { return this.layoutInfo.minimap.minimapLeft - this.layoutInfo.contentLeft - 2 } // -2 for style reasons
+    public get highlightWidth(): number     { return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20) }
 
-    public get startLine(): number {
-        return this.snapshot.startLine
-    }
-
-    public get endLine(): number {
-        return this.snapshot.endLine
-    }
-
-    public get lineCount(): number {
-        return this.snapshot.lineCount
-    }
-
-    public get layoutInfo(): LayoutInfo {
-        return this.core.getLayoutInfo();
-    }
-
-    public get editorWidth(): number {
-        return this.layoutInfo.minimap.minimapLeft - this.layoutInfo.contentLeft - 2 // -2 for style reasons
-    }
+    private get defaultHighlightWidth(): number { return 0.7 * this.editorWidth }
 
     public get longestLineWidth(): number {
 
@@ -140,26 +83,13 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return longestLine
     }
 
-    private get defaultHighlightWidth(): number {
-        return 0.7 * this.editorWidth
-    }
+    public get menuVisible(): boolean { return this.header?.visible || this.footer?.visible }
+    public get menuActive():  boolean { return this.header?.mouseOn || this.footer?.mouseOn }
 
-    public get highlightWidth(): number {
-        return Math.max(this.defaultHighlightWidth, this.longestLineWidth + 20)
-    }
+    public get session(): VCSBlockSession { return this.editor.getSession() }
 
-    public get menuVisible(): boolean {
-        return this.header?.visible || this.footer?.visible
-    }
-
-    public get menuActive(): boolean {
-        return this.header?.mouseOn || this.footer?.mouseOn
-    }
-
-    public get session(): VCSSession { return this.editor.getSession() }
-
-    public static async create(editor: GhostEditor, range: IRange): Promise<GhostSnapshot | null> {
-        const snapshot = await editor.getSession().createSnapshot(range)
+    public static async create(editor: GhostEditor, range: VCSBlockRange): Promise<GhostSnapshot | null> {
+        const snapshot = await editor.getSession().createChild(range)
 
         if (!snapshot) { 
             console.warn("Failed to create snapshot!")
@@ -169,14 +99,14 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return new GhostSnapshot(editor, snapshot)
     }
 
-    constructor(editor: GhostEditor, snapshot: BlockInfo, viewZonesOnly?: boolean, toggleMode?: boolean) {
+    public constructor(editor: GhostEditor, snapshot: VCSBlockInfo, viewZonesOnly?: boolean, toggleMode?: boolean) {
         super()
 
         this.editor = editor
         this.viewZonesOnly = viewZonesOnly ? viewZonesOnly : true //TODO: fix positioning of banners when using overlays instead of viewzones
         this.toggleMode    = toggleMode    ? toggleMode    : true
 
-        this.snapshot = VCSSnapshot.create(this.session, snapshot)
+        this.snapshot = new VCSSnapshot(snapshot, this.session)
         this.locator  = new LineLocator(this.editor, this.snapshot)
         this.versions = snapshot.tags.map(tag => new VCSVersion(this, tag))
 
@@ -191,7 +121,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.addSubscription(this.highlight.onDidChange((event) => {
             const newRange = this.highlight.range
             if (newRange) {
-                this.range = newRange
+                this.range = { startLine: newRange.startLineNumber, endLine: newRange.endLineNumber }
                 this.header?.update()
                 this.highlight.update()
                 this.footer?.update()
@@ -225,7 +155,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         // value updating
         this.addSubscription(this.footer.onChange(async value => {
-            const newText = await this.session.applySnapshotVersionIndex(this.uuid, value)
+            const newText = await this.session.setChildBlockVersionIndex(this.vcsId, value)
             this.editor.reload(newText)
         }))
 
@@ -265,7 +195,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
     }
 
-    public addVersion(tag: VCSTag): void {
+    public addVersion(tag: VCSTagInfo): void {
         this.versions.push(new VCSVersion(this, tag))
     }
 
@@ -294,8 +224,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return this.startLine <= lineNumber && this.endLine >= lineNumber
     }
 
-    public overlapsWith(range: IRange): boolean {
-        return this.startLine <= range.endLineNumber && this.endLine >= range.startLineNumber
+    public overlapsWith(range: VCSBlockRange): boolean {
+        return this.startLine <= range.endLine && this.endLine >= range.startLine
     }
 
     public manualUpdate(): void {
@@ -303,25 +233,21 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
     }
 
     public async update(manualUpdate?: boolean): Promise<void> {
-        const snapshotData = await this.session.getSnapshot(this.uuid)
-        this.updateFrom(snapshotData, manualUpdate)
+        this.updateFrom({ manualUpdate })
     }
 
-    public manualUpdateFrom(snapshotData: VCSSnapshotData): void {
-        this.updateFrom(snapshotData, true)
+    public manualUpdateFrom(snapshotData: VCSBlockInfo): void {
+        this.updateFrom({ snapshotData, manualUpdate: true })
     }
 
-    public updateFrom(snapshotData: VCSSnapshotData, manualUpdate?: boolean): void {
-        if (this.snapshot.uuid !== snapshotData.uuid) { throw new Error("You cannot update this Snapshot with an incompatiple Snapshot!") }
-
-        this.snapshot = VCSSnapshot.create(this.session, snapshotData)
-        this.locator.rangeProvider = this.snapshot
+    public updateFrom(options?: { snapshotData?: VCSBlockInfo, manualUpdate?: boolean }): void {
+        this.snapshot.reload(options?.snapshotData)
 
         this.header?.update()
         this.highlight?.update()
         this.footer?.update()
 
-        if (!manualUpdate) { this.footer?.updateSlider() }
+        if (!options?.manualUpdate) { this.footer?.updateSlider() }
     }
 
     public showMenu(): void {
@@ -356,6 +282,6 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     public delete(): void {
         this.remove()
-        this.session.deleteSnapshot(this.uuid)
+        this.session.deleteChild(this.vcsId)
     }
 }

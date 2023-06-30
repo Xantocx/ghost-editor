@@ -1,12 +1,11 @@
 import { BrowserWindow } from "electron"
 
-import { BasicVCSServer, BlockId, BlockInfo, BlockRange, BlockUpdate, CopyBlockInfo, FileId, FileLoadingOptions, ChildBlockInfo, RootBlockInfo, SessionId, TagInfo } from "../app/components/vcs/vcs-rework"
+import { BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText } from "../app/components/vcs/vcs-rework"
 import { LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { ResourceManager, Session } from "./vcs/db/utilities"
-import { Block } from "./vcs/core/block"
 
-import { BlockProxy, FileProxy, LineProxy } from "./vcs/db/types"
+import { BlockProxy, FileProxy, LineProxy, TagProxy } from "./vcs/db/types"
 import { prismaClient } from "./vcs/db/client"
 
 export class DBVCSServer extends BasicVCSServer {
@@ -49,91 +48,113 @@ export class DBVCSServer extends BasicVCSServer {
         }
     }
 
-    private getSession(sessionId: SessionId): Session {
+    private getSession(sessionId: VCSSessionId): Session {
         return this.resources.getSession(sessionId)
     }
 
-    private getFile(fileId: FileId): FileProxy {
+    private getFile(fileId: VCSFileId): FileProxy {
         return this.resources.getFile(fileId)
     }
 
-    private async getBlock(blockId: BlockId): Promise<BlockProxy> {
+    private async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
         return await this.resources.getBlock(blockId)
     }
 
+    private async getTag(tagId: VCSTagId): Promise<TagProxy> {
+        return await this.resources.getTag(tagId)
+    }
 
 
-    public async createSession(): Promise<SessionId> {
+
+    public async createSession(): Promise<VCSSessionId> {
         return this.resources.createSession()
     }
 
-    public async closeSession(sessionId: SessionId): Promise<void> {
+    public async closeSession(sessionId: VCSSessionId): Promise<void> {
         this.resources.closeSession(sessionId)
     }
 
-    public async loadFile(sessionId: SessionId, options: FileLoadingOptions): Promise<RootBlockInfo> {
+    public async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         return await this.resources.loadFile(sessionId, options)
     }
 
-    public async unloadFile(fileId: FileId): Promise<void> {
+    public async unloadFile(fileId: VCSFileId): Promise<void> {
         this.resources.unloadFile(fileId)
     }
 
-    public async copyBlock(blockId: BlockId): Promise<CopyBlockInfo> {
+    public async getText(blockId: VCSBlockId): Promise<string> {
+        const block = await this.getBlock(blockId)
+        return await block.getText()
+    }
+
+    public async getUnwrappedText(blockId: VCSBlockId): Promise<VCSUnwrappedText> {
+        const block = await this.getBlock(blockId)
+        return await block.getUnwrappedText()
+    }
+
+    public async copyBlock(blockId: VCSBlockId): Promise<VCSCopyBlockInfo> {
         const block = await this.getBlock(blockId)
         const copy  = await block.copy()
         return await copy.asBlockInfo(blockId)
     }
 
-    public async createChild(parentBlockId: BlockId, range: BlockRange): Promise<ChildBlockInfo> {
+    public async createChild(parentBlockId: VCSBlockId, range: VCSBlockRange): Promise<VCSChildBlockInfo> {
         const block = await this.getBlock(parentBlockId)
         const child = await block.createChild(range)
         return await child.asBlockInfo(parentBlockId)
     }
 
-    public async deleteBlock(blockId: BlockId): Promise<void> {
+    public async deleteBlock(blockId: VCSBlockId): Promise<void> {
         throw new Error("Method not implemented.")
     }
 
-    public async getBlockInfo(blockId: BlockId): Promise<BlockInfo> {
+    public async getBlockInfo(blockId: VCSBlockId): Promise<VCSBlockInfo> {
         const block = await this.getBlock(blockId)
         return await block.asBlockInfo(blockId)
     }
 
-    public async getChildrenInfo(blockId: BlockId): Promise<BlockInfo[]> {
+    public async getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]> {
         const block = await this.getBlock(blockId)
         return await block.getChildrenInfo(blockId)
     }
 
-    public async updateBlock(blockId: BlockId, update: BlockUpdate): Promise<void> {
+    public async updateBlock(blockId: VCSBlockId, update: VCSBlockUpdate): Promise<void> {
         console.warn("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
     }
 
-    public async setBlockVersionIndex(blockId: BlockId, versionIndex: number): Promise<string> {
+    public async setBlockVersionIndex(blockId: VCSBlockId, versionIndex: number): Promise<string> {
         const root  = this.resources.getRootBlockFor(blockId)
         const block = await this.getBlock(blockId)
         await block.applyIndex(versionIndex)
         return await root.getText()
     }
 
-    public async saveCurrentBlockVersion(blockId: BlockId): Promise<TagInfo> {
+    public async saveCurrentBlockVersion(blockId: VCSBlockId): Promise<VCSTagInfo> {
         throw new Error("Currently, block versions cannot be saved. I will implement that as soon as I can verify that the rest works!")
+    }
+
+    public async applyTag(tagId: VCSTagId, blockId: VCSBlockId): Promise<VCSBlockInfo> {
+        // TODO: Should the frontend or backend evaluate that blocks and tags fit together? Or do we assume I can apply any tag to any block?
+        const tag   = await this.getTag(tagId)
+        const block = await this.getBlock(blockId)
+        await block.applyTimestamp(tag.timestamp)
+        return await block.asBlockInfo(blockId)
     }
 
 
 
 
-    public async lineChanged(blockId: BlockId, change: LineChange): Promise<BlockId[]> {
+    public async lineChanged(blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const block = await this.getBlock(blockId)
         const line  = await block.updateLine(change.lineNumber, change.lineText)
         
         await this.updatePreview(block)
 
         const ids = await line.getBlockIds()
-        return ids.map(id => BlockId.createFrom(blockId, id))
+        return ids.map(id => VCSBlockId.createFrom(blockId, id))
     }
 
-    public async linesChanged(blockId: BlockId, change: MultiLineChange): Promise<BlockId[]> {
+    public async linesChanged(blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block = await this.getBlock(blockId)
         const eol   = await block.file.getEol()
 
@@ -229,6 +250,6 @@ export class DBVCSServer extends BasicVCSServer {
             blockIds.forEach(id => affectedBlocks.add(id))
         }
 
-        return Array.from(affectedBlocks).map(id => BlockId.createFrom(blockId, id))
+        return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
     }
 }

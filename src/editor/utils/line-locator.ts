@@ -1,3 +1,4 @@
+import { VCSBlockRange } from "../../app/components/vcs/vcs-rework"
 import { IRange } from "../utils/types"
 import { Range } from "monaco-editor"
 
@@ -6,7 +7,7 @@ export interface ReferenceProvider {
 }
 
 export interface RangeProvider {
-    range: IRange
+    range: VCSBlockRange
 }
 
 export class LineLocator {
@@ -18,11 +19,11 @@ export class LineLocator {
 
     public get range(): Range {
         const range = this.rangeProvider.range
-        return new Range(range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn)
+        return new Range(range.startLine, 1, range.endLine, Number.MAX_VALUE)
     }
 
     public set range(range: IRange) {
-        this.rangeProvider.range = range
+        this.rangeProvider.range = { startLine: range.startLineNumber, endLine: range.endLineNumber }
     }
 
     public get startLine(): number {
