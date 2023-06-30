@@ -507,7 +507,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         this.core.setModel(textModel)
 
         if (this.sideViewEnabled) {
-            //this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
+            this.sideView!.update(this.sideViewIdentifiers!.vcs, { editorModel: this.editorModel, vcsContent })
             //this.sideView!.update(this.sideViewIdentifiers!.p5js, session)
             this.sideView!.update(this.sideViewIdentifiers!.versionManager, { languageId: textModel.getLanguageId() })
         }
@@ -569,7 +569,6 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         if (this.sideViewEnabled) {
             this.sideView = new MetaView(this.sideViewContainer!)
 
-            /*
             const vcsPreview = this.sideView.addView("vcs", root => {
                 return new VCSPreview(root, this.editorModel)
             }, {
@@ -577,7 +576,6 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
                     view.updateEditor(args.editorModel, args.vcsContent)
                 }
             })
-            */
 
             const p5jsPreview = this.sideView.addView("p5js", root => {
                 return new P5JSPreview(root, { provider: this, padding: 5, synchronizer: this.synchronizer })
