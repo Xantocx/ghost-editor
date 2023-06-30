@@ -14,7 +14,7 @@ export class BlockProxy extends FileDatabaseProxy {
     public readonly getChildren      = () => prismaClient.block.findMany({ where: { parentId: this.id } })
     public readonly getLines         = () => prismaClient.line.findMany({ where: { blocks: { some: { id: this.id } } } })
     public readonly getHeadList      = () => prismaClient.headList.findFirstOrThrow({ where: { blocks: { some: { id: this.id } } } })
-    //public readonly getAllVersions   = () => prismaClient.version.findMany({ where: { line: { blocks: { some: { id: this.id } } } }, orderBy: { line: { order: "asc" } } })
+    //public readonly getAllVersions = () => prismaClient.version.findMany({ where: { line: { blocks: { some: { id: this.id } } } }, orderBy: { line: { order: "asc" } } })
     public readonly getTags          = () => prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } })
 
     public readonly getOriginalLineCount = () => prismaClient.version.count({
@@ -64,6 +64,23 @@ export class BlockProxy extends FileDatabaseProxy {
                     blocks: { some: { id: this.id } }
                 }
             }
+        },
+        orderBy: {
+            line: { order: "asc" }
+        }
+    })
+
+    public readonly getActiveHeadVersions = () => prismaClient.version.findMany({
+        where: {
+            line: {
+                blocks: { some: { id: this.id } }
+            },
+            headLists: {
+                some: {
+                    blocks: { some: { id: this.id } }
+                }
+            },
+            isActive: true
         },
         orderBy: {
             line: { order: "asc" }

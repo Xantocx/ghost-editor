@@ -73,6 +73,11 @@ export class FileProxy extends DatabaseProxy {
 
     public readonly getFile = () => prismaClient.file.findUniqueOrThrow({ where: { id: this.id } })
 
+    public async getEol(): Promise<string> {
+        const file = await this.getFile()
+        return file.eol
+    }
+
     public async insertLine(content: string, relations?: { previous?: LineProxy, next?: LineProxy, sourceBlock?: BlockProxy }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
         const previous = relations?.previous
         const next     = relations?.next

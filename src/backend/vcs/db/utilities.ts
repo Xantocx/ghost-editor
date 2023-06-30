@@ -60,6 +60,15 @@ export class Session {
         this.files.delete(fileId.filePath)
     }
 
+    public getFile(fileId: FileId): FileProxy {
+        const filePath = fileId.filePath
+        if (this.files.has(filePath)) {
+            return this.files.get(filePath)!.file
+        } else {
+            throw new Error("File appears to not have been loaded!")
+        }
+    }
+
     public async getBlock(blockId: BlockId): Promise<BlockProxy> {
         const id = blockId.blockId
         if (this.blocks.has(id)) {
@@ -128,6 +137,10 @@ export class ResourceManager {
 
     public unloadFile(fileId: FileId): void {
         this.getSession(fileId).unloadFile(fileId)
+    }
+
+    public getFile(fileId: FileId): FileProxy {
+        return this.getSession(fileId).getFile(fileId)
     }
 
     public async getBlock(blockId: BlockId): Promise<BlockProxy> {

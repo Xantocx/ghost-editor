@@ -3,6 +3,7 @@ import { FileDatabaseProxy } from "../database-proxy";
 import { VersionProxy, BlockProxy } from "../../types";
 import { HeadList, Line, Prisma, Version, VersionType } from "@prisma/client"
 import { FileProxy } from "./file-proxy";
+import { BlockId, FileId } from "../../../../../app/components/vcs/vcs-rework";
 
 export class LineProxy extends FileDatabaseProxy {
 
@@ -22,6 +23,11 @@ export class LineProxy extends FileDatabaseProxy {
         where:   { lineId: this.id },
         orderBy: { timestamp: "desc" }
     })
+
+    public async getBlockIds(): Promise<string[]> {
+        const blocks = await this.getBlocks()
+        return blocks.map(block => block.blockId)
+    }
 
     public async addBlocks(blockVersions: Map<BlockProxy, VersionProxy>): Promise<void> {
         const blocks = Array.from(blockVersions.keys())

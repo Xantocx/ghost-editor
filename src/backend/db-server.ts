@@ -6,7 +6,7 @@ import { LineChange, MultiLineChange } from "../app/components/data/change"
 import { ResourceManager, Session } from "./vcs/db/utilities"
 import { Block } from "./vcs/core/block"
 
-import { BlockProxy, LineProxy } from "./vcs/db/types"
+import { BlockProxy, FileProxy, LineProxy } from "./vcs/db/types"
 import { prismaClient } from "./vcs/db/client"
 
 export class DBVCSServer extends BasicVCSServer {
@@ -51,6 +51,10 @@ export class DBVCSServer extends BasicVCSServer {
 
     private getSession(sessionId: SessionId): Session {
         return this.resources.getSession(sessionId)
+    }
+
+    private getFile(fileId: FileId): FileProxy {
+        return this.resources.getFile(fileId)
     }
 
     private async getBlock(blockId: BlockId): Promise<BlockProxy> {
@@ -122,22 +126,28 @@ export class DBVCSServer extends BasicVCSServer {
     public async lineChanged(blockId: BlockId, change: LineChange): Promise<BlockId[]> {
         const block = await this.getBlock(blockId)
         const line  = await block.updateLine(change.lineNumber, change.lineText)
+        
         await this.updatePreview(block)
-        return line.getAffectedBlockIds()
+
+        const ids = await line.getBlockIds()
+        return ids.map(id => BlockId.createFrom(blockId, id))
     }
 
     public async linesChanged(blockId: BlockId, change: MultiLineChange): Promise<BlockId[]> {
         const block = await this.getBlock(blockId)
+        const eol   = await block.file.getEol()
+
+        const versions = await block.getActiveHeadVersions()
 
         //block.resetVersionMerging()
 
-        const startsWithEol = change.insertedText[0] === block.eol
-        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === block.eol
+        const startsWithEol = change.insertedText[0] === eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === eol
 
         const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > block.getLineByLineNumber(change.modifiedRange.startLineNumber).currentContent.length
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > versions[change.modifiedRange.startLineNumber - 1].content.length
 
-        const insertedAtEnd   = change.modifiedRange.endColumn > block.getLineByLineNumber(change.modifiedRange.endLineNumber).currentContent.length
+        const insertedAtEnd   = change.modifiedRange.endColumn > versions[change.modifiedRange.endLineNumber - 1].content.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
         const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
@@ -154,7 +164,7 @@ export class DBVCSServer extends BasicVCSServer {
         }
 
         let vcsLines: LineProxy[] = []
-        const modifiedLines = change.lineText.split(block.eol)
+        const modifiedLines = change.lineText.split(eol)
 
         if (modifyStartLine) {
             vcsLines = await block.getActiveLinesInRange(modifiedRange)
@@ -213,6 +223,12 @@ export class DBVCSServer extends BasicVCSServer {
 
         this.updatePreview(block)
 
-        return affectedLines.map(line => line.getAffectedBlockIds()).flat()
+        const affectedBlocks = new Set<string>()
+        for (const line of affectedLines) {
+            const blockIds = await line.getBlockIds()
+            blockIds.forEach(id => affectedBlocks.add(id))
+        }
+
+        return Array.from(affectedBlocks).map(id => BlockId.createFrom(blockId, id))
     }
 }
