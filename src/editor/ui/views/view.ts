@@ -1,7 +1,5 @@
 import { Synchronizer } from "../../utils/synchronizer"
 import { SubscriptionManager } from "../widgets/mouse-tracker"
-import { MonacoModel } from "../../utils/types"
-import { VCSSession } from "../../../app/components/vcs/vcs-provider"
 
 export abstract class View extends SubscriptionManager {
 

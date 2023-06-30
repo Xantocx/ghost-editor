@@ -4,7 +4,7 @@ import { Block } from "./block"
 import { Line } from "./line"
 import { LineNodeVersion } from "./version"
 import { Timestamp } from "./metadata/timestamps"
-import { VCSTag } from "../../../app/components/data/snapshot"
+import { VCSTag } from "../../../app/components/vcs/vcs-provider-old"
 
 export class Tag implements Resource {
 

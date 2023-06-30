@@ -5,6 +5,22 @@ import { prismaClient } from "./backend/vcs/db/client"
 import { FileProxy, BlockProxy, LineProxy, VersionProxy } from "./backend/vcs/db/types"
 
 async function main() {
+    GhostApp.start(app, BrowserWindow)
+}
+
+main()
+    .then(async () => {
+        await prismaClient.$disconnect()
+    })
+    .catch(async (e) => {
+        console.error(e)
+        await prismaClient.$disconnect()
+        process.exit(1)
+    })
+
+
+/*
+async function main() {
     const { file, rootBlock }  = await FileProxy.create(undefined, "\n", "This is an amazing test string!\nI will use it to create a file in my database!\nBelieve it or not!")
     const lines = await prismaClient.line.findMany({
         where:   { fileId: file.id },
@@ -76,3 +92,5 @@ main()
         await prismaClient.$disconnect()
         process.exit(1)
     })
+
+*/

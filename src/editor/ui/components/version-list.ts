@@ -1,11 +1,11 @@
-import { VCSTag } from "../../../app/components/data/snapshot"
+import { VCSVersion } from "../../../app/components/data/version"
 import { TagViewContainer } from "../views/version/version-view"
 import { Button, P5JSPreviewButton } from "./button"
 
-class SideScrollVersionListElement extends TagViewContainer<P5JSPreviewButton<VCSTag, SideScrollVersionListElement>> {
+class SideScrollVersionListElement extends TagViewContainer<P5JSPreviewButton<SideScrollVersionListElement>> {
 
     public readonly list:    SideScrollVersionList
-    public readonly content: VCSTag
+    public readonly content: VCSVersion
     public readonly button:  Button
 
     public get htmlList(): HTMLUListElement {
@@ -16,7 +16,7 @@ class SideScrollVersionListElement extends TagViewContainer<P5JSPreviewButton<VC
         return this.button.style
     }
 
-    constructor(list: SideScrollVersionList, content: VCSTag, onClick?: () => void) {
+    constructor(list: SideScrollVersionList, content: VCSVersion, onClick?: () => void) {
         const element = document.createElement("li")
         list.list.appendChild(element)
 
@@ -63,11 +63,11 @@ export class SideScrollVersionList {
         return this.list.style
     }
 
-    public get versions(): VCSTag[] {
+    public get versions(): VCSVersion[] {
         return this.elements.map(elem => elem.content)
     }
 
-    constructor(root: HTMLElement, versions?: VCSTag[], placeholderText?: string) {
+    constructor(root: HTMLElement, versions?: VCSVersion[], placeholderText?: string) {
         // set root style
         this.root = root
         this.rootStyle.display = "flex"
@@ -119,19 +119,19 @@ export class SideScrollVersionList {
         this.list.appendChild(this.emptyPlaceholder)
     }
 
-    public fillList(versions: VCSTag[]): void {
+    public fillList(versions: VCSVersion[]): void {
         this.emptyPlaceholder.remove()
 
         if (versions.length === 0) {
             this.clearList()
         } else {
-            versions.forEach((version: VCSTag, index: number) => {
+            versions.forEach((version: VCSVersion, index: number) => {
                 this.addVersion(version, index === 0)
             })
         }
     }
 
-    public addVersion(version: VCSTag, isFirst?: boolean): void {
+    public addVersion(version: VCSVersion, isFirst?: boolean): void {
         if (!isFirst && this.elements.length === 0) {
             this.emptyPlaceholder.remove()
             isFirst = true

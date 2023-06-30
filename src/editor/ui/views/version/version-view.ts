@@ -1,4 +1,4 @@
-import { VCSTag } from "../../../../app/components/data/snapshot";
+import { VCSVersion } from "../../../../app/components/data/version";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { Disposable } from "../../../utils/types";
 import { View } from "../view";
@@ -126,7 +126,7 @@ export abstract class VersionViewContainer<Version, CustomView extends VersionVi
     }
 }
 
-export class TagView extends VersionView<VCSTag> {}
-export class TagViewElement<CustomView extends TagViewElement<CustomView, Container>, Container extends TagViewContainer<CustomView>> extends VersionViewElement<VCSTag, CustomView, Container> {}
-export class TagViewContainer<CustomView extends TagViewElement<CustomView, TagViewContainer<CustomView>>> extends VersionViewContainer<VCSTag, CustomView> {}
-export interface ITagViewContainer extends IVersionViewContainer<VCSTag> {}
+export class TagView extends VersionView<VCSVersion> {}
+export class TagViewElement<CustomView extends TagViewElement<CustomView, Container>, Container extends TagViewContainer<CustomView>> extends VersionViewElement<VCSVersion, CustomView, Container> {}
+export class TagViewContainer<CustomView extends TagViewElement<CustomView, TagViewContainer<CustomView>>> extends VersionViewContainer<VCSVersion, CustomView> {}
+export interface ITagViewContainer extends IVersionViewContainer<VCSVersion> {}

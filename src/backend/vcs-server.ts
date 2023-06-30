@@ -1,8 +1,7 @@
 import { BrowserWindow } from "electron"
 
-import { VCSSnapshotData, VCSTag } from "../app/components/data/snapshot"
 import { IRange } from "../app/components/utils/range"
-import { BasicVCSServer, SessionData, SessionId, SessionOptions, SnapshotUUID } from "../app/components/vcs/vcs-provider"
+import { BasicVCSServer, SessionData, SessionId, SessionOptions, SnapshotUUID, VCSSnapshotData, VCSTag } from "../app/components/vcs/vcs-provider-old"
 import { LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { ResourceManager } from "./vcs/utils/resource-manager"

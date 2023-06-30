@@ -402,9 +402,11 @@ interface GhostBlockSessionLoadingOptions {
     session: VCSBlockSession
 }
 
-type GhostLoadingOptions = GhostFileLoadingOptions | GhostFilePathLoadingOptions | GhostBlockLoadingOptions | GhostTagLoadingOptions | GhostBlockSessionLoadingOptions
+type GhostLoadingOptions = undefined | GhostFileLoadingOptions | GhostFilePathLoadingOptions | GhostBlockLoadingOptions | GhostTagLoadingOptions | GhostBlockSessionLoadingOptions
 
 export class GhostEditor extends View implements ReferenceProvider {
+
+    public static readonly defaultCode = "function setup() {\n\tcreateCanvas(400, 400);\n}\n\nfunction draw() {\n\tbackground(220);\n}"
 
     private static _session?: VCSSession
     public static async getSession(): Promise<VCSSession> {
@@ -665,7 +667,12 @@ export class GhostEditor extends View implements ReferenceProvider {
             return extractEOLSymbol(textModel)
         }
 
-        if (loadingOptions as GhostFileLoadingOptions) {
+        if (loadingOptions === undefined) {
+            const eol = setTextModel(undefined, undefined)
+
+            session = await hostSession.loadFile({ eol, content: GhostEditor.defaultCode })
+
+        } else if (loadingOptions as GhostFileLoadingOptions) {
             const options = loadingOptions as GhostFileLoadingOptions
             const uri     = options.uri
             const content = options.content ? options.content : ""

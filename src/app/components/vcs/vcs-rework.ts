@@ -260,7 +260,8 @@ export class VCSBlockSession {
     public readonly block:       VCSBlockId
     public readonly isRootBlock: boolean
 
-    public get client(): VCSClient { return this.session.client }
+    public get client():  VCSClient { return this.session.client }
+    public get blockId(): string    { return this.block.blockId }
 
     public static createFileSession(session: VCSSession, rootBlock: VCSBlockId): VCSBlockSession {
         return new VCSBlockSession(session, rootBlock, true)

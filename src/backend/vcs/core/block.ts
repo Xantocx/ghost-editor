@@ -1,5 +1,5 @@
 import { IRange } from "../../../app/components/utils/range"
-import { VCSTag, VCSSnapshotData } from "../../../app/components/data/snapshot"
+import { VCSTag, VCSSnapshotData } from "../../../app/components/vcs/vcs-provider-old"
 
 import { LinkedList } from "../utils/linked-list"
 import { Resource, ResourceManager } from "../utils/resource-manager"

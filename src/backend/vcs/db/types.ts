@@ -4,7 +4,6 @@ import { FileProxy } from "./proxies/vcs-proxies/file-proxy";
 import { BlockProxy } from "./proxies/vcs-proxies/block-proxy";
 import { LineProxy } from "./proxies/vcs-proxies/line-proxy";
 import { VersionProxy } from "./proxies/vcs-proxies/version-proxy";
-import { HeadProxy } from "./proxies/vcs-proxies/head-proxy";
 import { TagProxy } from "./proxies/vcs-proxies/tag-proxy";
 
-export { LineType, FileProxy, BlockProxy, LineProxy, VersionProxy, HeadProxy, TagProxy }
+export { LineType, FileProxy, BlockProxy, LineProxy, VersionProxy, TagProxy }

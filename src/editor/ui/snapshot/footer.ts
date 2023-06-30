@@ -51,12 +51,12 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
         container.appendChild(buttonContainer)
 
         this.addButton = Button.addButton(buttonContainer, async () => {
-            const version = await this.editor.getSession().saveCurrentVersion(this.snapshot.blockId)
+            const version = await this.editor.getSession().saveChildBlockVersion(this.snapshot.vcsId)
             this.snapshot.addVersion(version)
             this.editor.activeSnapshot = this.snapshot
         })
 
-        this.slider = new Slider(container, this.snapshot.snapshot.uuid, 0, this.versionCount - 1, this.versionIndex)
+        this.slider = new Slider(container, this.snapshot.snapshot.blockId, 0, this.versionCount - 1, this.versionIndex)
     }
 
     public updateSlider(): void {

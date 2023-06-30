@@ -1,7 +1,7 @@
 import { SessionId, BlockId, TagId } from "../core/metadata/ids"
 import { Resource, ResourceManager } from "./resource-manager"
 import { Block, ForkBlock, ForkBlockOptions } from "../core/block"
-import { SessionInfo, SessionData } from "../../../app/components/vcs/vcs-provider"
+import { SessionInfo, SessionData } from "../../../app/components/vcs/vcs-provider-old"
 import { Tag } from "../core/tag"
 
 export { SessionInfo, SessionData }

@@ -7,6 +7,7 @@ import { GhostViewZone } from "./view-zone"
 import { GhostOverlayWidget } from "./overlay-widget"
 import { GhostContentWidget } from "./content-widget"
 import { LineLocator } from "../../utils/line-locator"
+import { VCSBlockRange } from "../../../app/components/vcs/vcs-rework"
 
 export class InlineEditorBanner extends MouseTracker {
 
@@ -69,8 +70,9 @@ export class InlineEditorBanner extends MouseTracker {
         if (!this._contentLocator) {
             const parent = this
             this._contentLocator = new LineLocator(this.locator.referenceProvider, {
-                get range(): IRange {
-                    return parent.getContentRange()
+                get range(): VCSBlockRange {
+                    const range = parent.getContentRange()
+                    return { startLine: range.startLineNumber, endLine: range.endLineNumber }
                 }
             })
         }

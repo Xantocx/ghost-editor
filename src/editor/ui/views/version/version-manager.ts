@@ -3,7 +3,7 @@ import { VersionGridView } from "./version-grid-view"
 import { VersionCodeViewList } from "./version-code-view"
 import { IVersionViewContainer } from "./version-view"
 import { Synchronizer } from "../../../utils/synchronizer"
-import { VCSVersion } from "../../snapshot/snapshot"
+import { VCSVersion } from "../../../../app/components/data/version"
 
 export class VersionManagerView extends View implements IVersionViewContainer<VCSVersion> {
 

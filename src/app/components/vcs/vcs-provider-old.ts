@@ -1,28 +1,36 @@
 import { IRange } from "monaco-editor"
-import { VCSSnapshotData, VCSTag } from "../data/snapshot"
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 import { CodeProvider } from "../../../editor/ui/views/view"
+
+export interface VCSSnapshotData {
+    uuid:         SnapshotUUID
+    _startLine:   number
+    _endLine:     number
+    versionCount: number
+    versionIndex: number
+    tags:         VCSTag[]
+}
+
+export interface VCSTag {
+    id:                  TagId
+    blockId:             string
+    name:                string
+    text:                Text
+    automaticSuggestion: boolean
+}
 
 export type Text = string
 export type SnapshotUUID = string
 export type SessionId    = string
 export type TagId        = string
 
-export interface SessionCreationOptions {
-    filePath?: string
-    eol:       string
-    content?:  string
-}
-
-export interface SessionLoadingOptions {
+export interface SessionOptions { 
     filePath?: string
     blockId?:  string
     tagId?:    string
+    eol?:      string
+    content?:  string 
 }
-
-export type SessionOptions = SessionCreationOptions | SessionLoadingOptions
-
-
 
 export interface SessionData {
     content:     string,
