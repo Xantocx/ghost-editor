@@ -62,6 +62,14 @@ export class LineProxy extends FileDatabaseProxy {
     }
 
     private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
+        let previousVersion: Version
+        if (sourceBlock) { previousVersion = await sourceBlock.getHeadFor(this) }
+        else             { previousVersion = await this.getLatestVersion() }
+
+        if (previousVersion.content.trimEnd() === content.trimEnd()) {
+            return new VersionProxy(previousVersion.id)
+        }
+
         let version: Version
 
         const versionConfig: Prisma.VersionUncheckedCreateInput = {

@@ -537,7 +537,7 @@ export class BlockProxy extends FileDatabaseProxy {
     }
 
     public async applyTimestamp(timestamp: number): Promise<void> {
-        const heads = await this.getHeadsWithLines()
+        const heads    = await this.getHeadsWithLines()
         const headList = await this.getHeadList()
 
         const lines = heads.map(head => head.line)
@@ -589,13 +589,14 @@ export class BlockProxy extends FileDatabaseProxy {
             return selected
         }))
 
+        const headsToRemove = heads.filter(head => selected.every(selectedVersion => selectedVersion.id !== head.id))
 
         await prismaClient.headList.update({
             where: { id: headList.id },
             data:  {
                 versions: {
-                    connect:    selected.map(version => { return { id: version.id } }),
-                    disconnect: heads.map(   head    => { return { id: head.id } })
+                    connect:    selected.map(     version => { return { id: version.id } }),
+                    disconnect: headsToRemove.map(head    => { return { id: head.id } })
                 }
             }
         })
