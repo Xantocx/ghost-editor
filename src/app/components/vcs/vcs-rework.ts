@@ -132,7 +132,7 @@ export interface VCSUnwrappedText {
     fullText: string
 }
 
-interface VCSRequest<RequestData> {
+export interface VCSRequest<RequestData> {
     requestId:          string
     previousRequestId?: string
     data:               RequestData
@@ -142,15 +142,15 @@ interface IVCSResponse {
     requestId: string
 }
 
-interface VCSSuccess<ResponseData> extends IVCSResponse {
+export interface VCSSuccess<ResponseData> extends IVCSResponse {
     response: ResponseData
 }
 
-interface VCSError extends IVCSResponse {
+export interface VCSError extends IVCSResponse {
     error: string
 }
 
-type VCSResponse<ResponseData> = VCSSuccess<ResponseData> | VCSError
+export type VCSResponse<ResponseData> = VCSSuccess<ResponseData> | VCSError
 
 export interface VCSProvider {
 

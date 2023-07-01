@@ -3,6 +3,7 @@ import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
 import { VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagId } from "../../../app/components/vcs/vcs-rework"
+import { VCSResponse, VCSSuccess, VCSError, VCSRequest } from "../../../app/components/vcs/vcs-rework"
 
 export class Session {
 
