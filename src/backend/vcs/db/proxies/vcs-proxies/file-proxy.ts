@@ -103,7 +103,7 @@ export class FileProxy extends DatabaseProxy {
 
         const versionData: Prisma.Enumerable<Prisma.VersionCreateManyLineInput> = [
             { timestamp: TimestampProvider.getTimestamp(), type: VersionType.PRE_INSERTION, isActive: false, content: "" },
-            { timestamp: TimestampProvider.getTimestamp(), type: VersionType.INSERTION,     isActive: false, content     }
+            { timestamp: TimestampProvider.getTimestamp(), type: VersionType.INSERTION,     isActive: true,  content     }
         ]
 
         if (relations?.sourceBlock) { versionData.forEach(version => version.sourceBlockId = relations.sourceBlock!.id) }

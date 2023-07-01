@@ -26,8 +26,9 @@ export class VCSPreview extends Preview {
 
         this.decorations = this.diffEditor.createDecorationsCollection()
 
+        // TODO: fix id selector
         window.ipcRenderer.on("update-vcs-preview", (blockId: string, content: string, versionCounts: number[]) => {
-            if (this.blockId === blockId) { this.updateVCS(content, versionCounts) }
+            /*if (this.blockId === blockId) { */this.updateVCS(content, versionCounts)// }
         })
 
         this.updateEditor(editorModel)

@@ -604,7 +604,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
             })
 
             this.sideViewIdentifiers = this.sideView.identifiers
-            this.defaultSideView     = this.sideViewIdentifiers.p5js
+            this.defaultSideView     = this.sideViewIdentifiers.vcs
             this.showDefaultSideView()
         }
     }

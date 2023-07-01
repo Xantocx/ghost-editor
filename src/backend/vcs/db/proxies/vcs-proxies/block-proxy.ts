@@ -173,7 +173,7 @@ export class BlockProxy extends FileDatabaseProxy {
     public async getText(): Promise<string> {
         const [file, versions] = await prismaClient.$transaction([
             this.file.getFile(),
-            this.getHeadVersions()
+            this.getActiveHeadVersions()
         ])
 
         const content = versions.map(version => version.content)
@@ -201,7 +201,7 @@ export class BlockProxy extends FileDatabaseProxy {
 
             const [file, rootVersions] = await prismaClient.$transaction([
                 this.file.getFile(),
-                this.getHeadVersions()
+                this.getActiveHeadVersions()
             ])
 
             if (accumulation) {
@@ -217,7 +217,7 @@ export class BlockProxy extends FileDatabaseProxy {
         } else if (block.type === BlockType.CLONE) {
 
             const origin        = new BlockProxy(block.originId!, this.file)
-            const blockVersions = await this.getHeadVersions()
+            const blockVersions = await this.getActiveHeadVersions()
             return await origin.getUnwrappedText(await accumulate(this.file, blockVersions, accumulation))
 
         } else if (block.type === BlockType.INLINE) {
@@ -227,7 +227,7 @@ export class BlockProxy extends FileDatabaseProxy {
             if (accumulation) {
                 return await parent.getUnwrappedText(accumulation)
             } else {
-                const blockVersions = await this.getHeadVersions()
+                const blockVersions = await this.getActiveHeadVersions()
                 return await parent.getUnwrappedText(await accumulate(this.file, blockVersions))
             }
         } else {
@@ -251,7 +251,7 @@ export class BlockProxy extends FileDatabaseProxy {
     public async getActiveLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
         const lines        = await this.getActiveLines()
         const linesInRange = lines.filter((line, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
-        return lines.map(line => LineProxy.createFrom(line, this.file))
+        return linesInRange.map(line => LineProxy.createFrom(line, this.file))
     }
 
     public static createFrom(block: Block, file?: FileProxy): BlockProxy {
@@ -444,7 +444,7 @@ export class BlockProxy extends FileDatabaseProxy {
             return null
         }
 
-        return this.inlineCopy(linesInRange)
+        return await this.inlineCopy(linesInRange)
     }
 
     public async asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
@@ -488,7 +488,7 @@ export class BlockProxy extends FileDatabaseProxy {
                     order: { lt: firstLine.order },          // only lines before the block
                 }
             })
-    
+
             firstLineNumberInParent = activeLinesBeforeBlock + 1
             lastLineNumberInParent  = activeLinesBeforeBlock + activeLineCount
         }
@@ -498,7 +498,10 @@ export class BlockProxy extends FileDatabaseProxy {
         const blockId = VCSBlockId.createFrom(fileId, block.blockId)
         return new VCSBlockInfo(blockId,
                                 block.type,
-                                {startLine: 1, endLine: 1},
+                                {
+                                    startLine: firstLineNumberInParent,
+                                    endLine:   lastLineNumberInParent
+                                },
                                 userVersionCount,
                                 currentVersionIndex,
                                 tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))

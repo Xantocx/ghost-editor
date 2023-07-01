@@ -126,6 +126,7 @@ export class DBVCSServer extends BasicVCSServer {
         const root  = this.resources.getRootBlockFor(blockId)
         const block = await this.getBlock(blockId)
         await block.applyIndex(versionIndex)
+        await this.updatePreview(block)
         return await root.getText()
     }
 
@@ -166,12 +167,12 @@ export class DBVCSServer extends BasicVCSServer {
         const endsWithEol   = change.insertedText[change.insertedText.length - 1] === eol
 
         const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > versions[change.modifiedRange.startLineNumber - 1].content.length
+        const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > versions[change.modifiedRange.startLineNumber - 1].content.length
 
         const insertedAtEnd   = change.modifiedRange.endColumn > versions[change.modifiedRange.endLineNumber - 1].content.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
-        const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
+        const insertOnly          = oneLineModification && change.modifiedRange.startColumn === change.modifiedRange.endColumn
 
         const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
         const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
@@ -197,8 +198,6 @@ export class DBVCSServer extends BasicVCSServer {
             }
         }
 
-
-
         let affectedLines: LineProxy[] = []
 
         async function deleteLine(line: LineProxy): Promise<void> {
@@ -215,8 +214,6 @@ export class DBVCSServer extends BasicVCSServer {
             const line = await block.insertLineAt(lineNumber, content)
             affectedLines.push(line)
         }
-
-
 
         for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
             const line = vcsLines.at(i)
@@ -238,11 +235,12 @@ export class DBVCSServer extends BasicVCSServer {
                 const line = vcsLines.at(i)
                 await updateLine(line, modifiedLines[i])
             } else {
+                // TODO: merge all line insertions into a single operation for performance reasons!
                 await insertLine(modifiedRange.startLine + i, modifiedLines[i])
             }
         }
 
-        this.updatePreview(block)
+        await this.updatePreview(block)
 
         const affectedBlocks = new Set<string>()
         for (const line of affectedLines) {
