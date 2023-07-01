@@ -117,6 +117,124 @@ export class Session {
     }
 }
 
+enum QueryType {
+    ReadOnly,
+    ReadWrite
+}
+
+class Query<QueryResult> {
+
+    public readonly requestId: string
+    public readonly type:      QueryType
+
+    private readonly manager: QueryManager
+    private readonly query:   (session: Session) => Promise<QueryResult>
+
+    private readonly promise: Promise<VCSResponse<QueryResult>>
+    private          resolve: (value: VCSResponse<QueryResult> | PromiseLike<VCSResponse<QueryResult>>) => void
+    private          reject:  (reason?: any) => void
+
+    public constructor(manager: QueryManager, requestId: string, type: QueryType, query: (session: Session) => Promise<QueryResult>) {
+        this.manager   = manager
+        this.requestId = requestId
+        this.type      = type
+        this.query     = query
+
+        this.promise = new Promise((resolve, reject) => {
+            this.resolve = resolve
+            this.reject  = reject
+        })
+    }
+
+    public getPromise(): Promise<VCSResponse<QueryResult>> {
+        return this.promise
+    }
+
+    public execute(): void {
+
+        this.manager.queryRunning(this)
+
+        const requestId  = this.requestId
+        this.query(this.manager.session)
+            .then(response => {
+                this.resolve({ requestId, response })
+            })
+            .catch((error: Error) => {
+                this.resolve({ requestId, error: error.message })
+            })
+    }
+}
+
+class QueryManager {
+
+    public readonly session: Session
+
+    private readonly waiting               = new Map<string, { requiredRequestId: string, query: Query<any> }>
+    private readonly ready:   Query<any>[] = []
+    private readonly running               = new Map<string, Query<any>>
+
+    private readonly finishedRequestIds: string[] = []
+
+    public constructor(session: Session) {
+        this.session = session
+    }
+
+    private setWaiting(query: Query<any>, requiredRequestId?: string): void {
+        if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }) }
+        else                   { this.setReady(query) }
+    }
+
+    private setReady(query: Query<any>): void {
+        this.waiting.delete(query.requestId)
+        this.ready.push(query)
+    }
+
+    private tryQueries(): void {
+        const waitingQueries = Array.from(this.waiting.values())
+        waitingQueries.forEach(({ requiredRequestId, query }) => {
+            if (this.finishedRequestIds.includes(requiredRequestId)) {
+                const index = this.finishedRequestIds.indexOf(requiredRequestId, 0)
+                if (index >= 0) { this.finishedRequestIds.splice(index, 1) }
+                this.setReady(query)
+            }
+        })
+
+        if (this.ready.length > 0) {
+            if (this.ready[0].type === QueryType.ReadWrite) {
+                this.ready[0].execute()
+                this.ready.splice(0, 1)
+            } else {
+                while(this.ready.length > 0 && this.ready[0].type === QueryType.ReadOnly) {
+                    this.ready[0].execute()
+                    this.ready.splice(0, 1)
+                }
+            }
+        }
+    }
+
+    public async execute<RequestData, QueryResult>(request: VCSRequest<RequestData>, queryType: QueryType, query: (session: Session) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        const newQuery = new Query(this, request.requestId, queryType, query)
+
+        this.setWaiting(newQuery, request.previousRequestId)
+        this.tryQueries()
+
+        return newQuery.getPromise()
+    }
+
+    public queryRunning(query: Query<any>): void {
+        this.waiting.delete(query.requestId)
+        const index = this.ready.indexOf(query, 0)
+        if (index >= 0) { this.ready.splice(index, 1) }
+        this.running.set(query.requestId, query)
+    }
+
+    public queryFinished(query: Query<any>): void {
+        this.running.delete(query.requestId)
+        this.finishedRequestIds.push(query.requestId)
+        this.tryQueries()
+    }
+}
+
 export class ResourceManager {
 
     private readonly sessions = new Map<string, Session>()

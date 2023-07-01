@@ -48,17 +48,6 @@ export class LineProxy extends FileDatabaseProxy {
         })
 
         await prismaClient.$transaction(updates)
-
-        /*
-        const heads = await prisma.head.findMany({ 
-            where: { 
-                blockId: { in: blocks.map(blocks => blocks.id) },
-                lineId:  this.id
-            }
-        })
-
-        return heads.map(head => new HeadProxy(head.id))
-        */
     }
 
     private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
