@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron"
 
-import { BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText } from "../app/components/vcs/vcs-rework"
+import { VCSRequest, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText } from "../app/components/vcs/vcs-rework"
 import { LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { ResourceManager, Session } from "./vcs/db/utilities"
@@ -66,7 +66,7 @@ export class DBVCSServer extends BasicVCSServer {
 
 
 
-    public async createSession(): Promise<VCSSessionId> {
+    public async createSession(request: VCSRequest<void>): Promise<VCSResponse<VCSSessionId>> {
         return this.resources.createSession()
     }
 

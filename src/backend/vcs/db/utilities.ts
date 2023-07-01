@@ -3,12 +3,13 @@ import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
 import { VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagId } from "../../../app/components/vcs/vcs-rework"
-import { VCSResponse, VCSSuccess, VCSError, VCSRequest } from "../../../app/components/vcs/vcs-rework"
+import { VCSRequest, VCSResponse } from "../../../app/components/vcs/vcs-rework"
 
 export class Session {
 
     public readonly id = randomUUID()
     public readonly resources: ResourceManager
+    public readonly queries:   QueryManager   // TODO: Move query manager to ResourceManager? How to handle the inaccessibility of request data otherwise... -> slower: every operation handled by the same queue
 
     private readonly files  = new Map<string, BlockProxy>() // this may be called files, but refers to the root block for each file - due to the implementation, this name makes most sense though
     private readonly blocks = new Map<string, BlockProxy>() // a cache for previously loaded blocks to speed up performance
@@ -16,6 +17,7 @@ export class Session {
 
     public constructor(resourceManager: ResourceManager) {
         this.resources = resourceManager
+        this.queries   = new QueryManager(this)
     }
 
     public async loadFile(options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
@@ -123,23 +125,27 @@ enum QueryType {
     ReadWrite
 }
 
-class Query<QueryResult> {
+class Query<QueryData, QueryResult> {
 
-    public readonly requestId: string
+    public readonly request:   VCSRequest<QueryData>
     public readonly type:      QueryType
 
     private readonly manager: QueryManager
-    private readonly query:   (session: Session) => Promise<QueryResult>
+    private readonly query:   (session: Session, data: QueryData) => Promise<QueryResult>
 
     private readonly promise: Promise<VCSResponse<QueryResult>>
     private          resolve: (value: VCSResponse<QueryResult> | PromiseLike<VCSResponse<QueryResult>>) => void
     private          reject:  (reason?: any) => void
 
-    public constructor(manager: QueryManager, requestId: string, type: QueryType, query: (session: Session) => Promise<QueryResult>) {
-        this.manager   = manager
-        this.requestId = requestId
-        this.type      = type
-        this.query     = query
+    public get session():   Session   { return this.manager.session }
+    public get requestId(): string    { return this.request.requestId }
+    public get data():      QueryData { return this.request.data }
+
+    public constructor(manager: QueryManager, request: VCSRequest<QueryData>, type: QueryType, query: (session: Session, data: QueryData) => Promise<QueryResult>) {
+        this.manager = manager
+        this.request = request
+        this.type    = type
+        this.query   = query
 
         this.promise = new Promise((resolve, reject) => {
             this.resolve = resolve
@@ -156,7 +162,7 @@ class Query<QueryResult> {
         this.manager.queryRunning(this)
 
         const requestId  = this.requestId
-        this.query(this.manager.session)
+        this.query(this.session, this.data)
             .then(response => {
                 this.resolve({ requestId, response })
             })
@@ -166,13 +172,15 @@ class Query<QueryResult> {
     }
 }
 
+type AnyQuery = Query<any, any>
+
 class QueryManager {
 
     public readonly session: Session
 
-    private readonly waiting               = new Map<string, { requiredRequestId: string, query: Query<any> }>
-    private readonly ready:   Query<any>[] = []
-    private readonly running               = new Map<string, Query<any>>
+    private readonly waiting           = new Map<string, { requiredRequestId: string, query: AnyQuery }>
+    private readonly ready: AnyQuery[] = []
+    private readonly running           = new Map<string, AnyQuery>
 
     private readonly finishedRequestIds: string[] = []
 
@@ -180,12 +188,12 @@ class QueryManager {
         this.session = session
     }
 
-    private setWaiting(query: Query<any>, requiredRequestId?: string): void {
+    private setWaiting(query: AnyQuery, requiredRequestId?: string): void {
         if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }) }
         else                   { this.setReady(query) }
     }
 
-    private setReady(query: Query<any>): void {
+    private setReady(query: AnyQuery): void {
         this.waiting.delete(query.requestId)
         this.ready.push(query)
     }
@@ -213,8 +221,8 @@ class QueryManager {
         }
     }
 
-    public async execute<RequestData, QueryResult>(request: VCSRequest<RequestData>, queryType: QueryType, query: (session: Session) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
-        const newQuery = new Query(this, request.requestId, queryType, query)
+    public async executeQuery<RequestData, QueryResult>(request: VCSRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        const newQuery = new Query(this, request, queryType, query)
 
         this.setWaiting(newQuery, request.previousRequestId)
         this.tryQueries()
@@ -222,14 +230,14 @@ class QueryManager {
         return newQuery.getPromise()
     }
 
-    public queryRunning(query: Query<any>): void {
+    public queryRunning(query: AnyQuery): void {
         this.waiting.delete(query.requestId)
         const index = this.ready.indexOf(query, 0)
         if (index >= 0) { this.ready.splice(index, 1) }
         this.running.set(query.requestId, query)
     }
 
-    public queryFinished(query: Query<any>): void {
+    public queryFinished(query: AnyQuery): void {
         this.running.delete(query.requestId)
         this.finishedRequestIds.push(query.requestId)
         this.tryQueries()
@@ -288,66 +296,4 @@ export class ResourceManager {
     public getRootBlockFor(fileId: VCSFileId): BlockProxy {
         return this.getSession(fileId).getRootBlockFor(fileId)
     }
-
-    /*
-
-    private async createSessionFromBlock(block: BlockProxy): Promise<SessionInfo> {
-
-    }
-
-    private async createSessionFromTag(tag: TagProxy): Promise<SessionInfo> {
-        
-    }
-
-    private async createSession(options: SessionCreationOptions): Promise<SessionInfo> {
-        const { file, rootBlock } = await FileProxy.create(options.filePath, options.eol, options.content)
-        // Session.create
-    }
-
-    
-    private async loadSession(options: SessionLoadingOptions): Promise<SessionInfo> {
-        const filePath = options.filePath
-        const blockId  = options.blockId
-        const tagId    = options.tagId
-
-        if (tagId) {
-            const tag = await prismaClient.tag.findFirstOrThrow({ 
-                where:   { tagId: tagId },
-                include: { 
-                    block: { 
-                        include: {
-                            file: true
-                        }
-                    } 
-                }
-            })
-
-            const block = tag.block
-            const file  = block.file
-
-            if (filePath && file.filePath !== filePath) { throw new Error("The provided file path and the file the provided tag id belongs to do not match.") }
-            if (blockId  && block.blockId !== blockId)  { throw new Error("Currently, we do not support the application of tags to blocks other than the ones they were created in.") }
-
-            // TODO: Session.create
-        } else if (blockId) {
-            const block = await prismaClient.block.findFirstOrThrow({
-                where:   { blockId: blockId },
-                include: { file: true }
-            })
-
-            if (filePath && block.file.filePath !== filePath) { throw new Error("The provided file path and the file the provided tag id belongs to do not match.") }
-
-            // TODO: Session.create
-        } else if (filePath) {
-            const block = await prismaClient.block.findFirstOrThrow({ where: { file: { filePath }, type: BlockType.ROOT } })
-            // TODO: Session.create
-        }
-    }
-
-    public async startSession(options: SessionOptions): Promise<SessionInfo> {
-        if      (options as SessionCreationOptions) { return await this.createSession(options as SessionCreationOptions) }
-        else if (options as SessionLoadingOptions)  { return await this.loadSession(options as SessionLoadingOptions) }
-        else                                        { throw new Error("Options do not have correct format!") }
-    }
-    */
 }
