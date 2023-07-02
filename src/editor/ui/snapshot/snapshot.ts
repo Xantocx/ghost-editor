@@ -154,10 +154,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         this.footer = new GhostSnapshotFooter(this, this.locator, this.viewZonesOnly)
 
-        // value updating
+        // value updating -> TODO: test throttle timer, but this is fucking genius, just saying.
         this.addSubscription(this.footer.onChange(throttle(async value => {
             const newText = await this.session.setChildBlockVersionIndex(this.vcsId, value)
-            this.editor.reload(newText)
+            await this.editor.reload(newText)
         }, 100)))
 
         // footer hiding
@@ -229,20 +229,20 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         return this.startLine <= range.endLine && this.endLine >= range.startLine
     }
 
-    public manualUpdate(): void {
-        this.update(true)
+    public async manualUpdate(): Promise<void> {
+        await this.update(true)
     }
 
     public async update(manualUpdate?: boolean): Promise<void> {
-        this.updateFrom({ manualUpdate })
+        await this.updateFrom({ manualUpdate })
     }
 
-    public manualUpdateFrom(snapshotData: VCSBlockInfo): void {
-        this.updateFrom({ snapshotData, manualUpdate: true })
+    public async manualUpdateFrom(snapshotData: VCSBlockInfo): Promise<void> {
+        await this.updateFrom({ snapshotData, manualUpdate: true })
     }
 
-    public updateFrom(options?: { snapshotData?: VCSBlockInfo, manualUpdate?: boolean }): void {
-        this.snapshot.reload(options?.snapshotData)
+    public async updateFrom(options?: { snapshotData?: VCSBlockInfo, manualUpdate?: boolean }): Promise<void> {
+        await this.snapshot.reload(options?.snapshotData)
 
         this.header?.update()
         this.highlight?.update()
@@ -281,8 +281,8 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.footer?.remove()
     }
 
-    public delete(): void {
+    public async delete(): Promise<void> {
         this.remove()
-        this.session.deleteChild(this.vcsId)
+        await this.session.deleteChild(this.vcsId)
     }
 }

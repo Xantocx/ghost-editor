@@ -138,7 +138,7 @@ export class BlockProxy extends FileDatabaseProxy {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                type: { notIn: [VersionType.IMPORTED] }
+                type: { not: VersionType.IMPORTED }
             },
             orderBy: {
                 timestamp: "asc"
@@ -151,7 +151,7 @@ export class BlockProxy extends FileDatabaseProxy {
             where: {
                 line:      { fileId: this.file.id },
                 headLists: { some: { blocks: { some: { id: this.id } } } },
-                type:      { notIn: [VersionType.IMPORTED] }
+                type:      { not: VersionType.IMPORTED }
             },
             orderBy: { timestamp: "desc" }
         })
@@ -164,7 +164,7 @@ export class BlockProxy extends FileDatabaseProxy {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                type:      { notIn: [VersionType.IMPORTED] },
+                type:      { not: VersionType.IMPORTED },
                 timestamp: { lt: version.timestamp }
             }
         })

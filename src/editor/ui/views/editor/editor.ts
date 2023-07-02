@@ -81,20 +81,24 @@ class GhostEditorSnapshotManager {
         return this.snapshots.find(check)
     }
 
-    public update(): void {
-        this.forEach(snapshot => snapshot.update())
+    public async update(): Promise<void> {
+        for (const snaphot of this.snapshots) {
+            await snaphot.update()
+        }
     }
 
-    public manualUpdate(): void {
-        this.forEach(snapshot => snapshot.manualUpdate())
+    public async manualUpdate(): Promise<void> {
+        for (const snaphot of this.snapshots) {
+            await snaphot.manualUpdate()
+        }
     }
 
-    public updateFrom(snapshots: VCSBlockInfo[]): void {
-        snapshots.forEach(updatedSnapshot => {
+    public async updateFrom(snapshots: VCSBlockInfo[]): Promise<void> {
+        for (const updatedSnapshot of snapshots) {
             const currentSnapshot = this.find(currentSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
-            if (currentSnapshot !== undefined) { currentSnapshot.updateFrom({ snapshotData: updatedSnapshot }) }
+            if (currentSnapshot !== undefined) { await currentSnapshot.updateFrom({ snapshotData: updatedSnapshot }) }
             else                               { this.snapshots.push(new GhostSnapshot(this.editor, updatedSnapshot)) }
-        })
+        }
 
         this.snapshots.reverse().forEach((currentSnapshot, index) => {
             const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
@@ -105,12 +109,12 @@ class GhostEditorSnapshotManager {
         })
     }
 
-    public manualUpdateFrom(snapshots: VCSBlockInfo[]): void {
-        snapshots.forEach(updatedSnapshot => {
+    public async manualUpdateFrom(snapshots: VCSBlockInfo[]): Promise<void> {
+        for (const updatedSnapshot of snapshots) {
             const currentSnapshot = this.find(currentSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
-            if (currentSnapshot !== undefined) { currentSnapshot.manualUpdateFrom(updatedSnapshot) }
+            if (currentSnapshot !== undefined) { await currentSnapshot.manualUpdateFrom(updatedSnapshot) }
             else                               { this.snapshots.push(new GhostSnapshot(this.editor, updatedSnapshot)) }
-        })
+        }
 
         this.snapshots.reverse().forEach((currentSnapshot, index) => {
             const updatedSnapshot = snapshots.find(updatedSnapshot => currentSnapshot.blockId === updatedSnapshot.blockId)
@@ -121,11 +125,11 @@ class GhostEditorSnapshotManager {
         })
     }
 
-    public deleteSnapshot(blockId: string): GhostSnapshot | undefined {
+    public async deleteSnapshot(blockId: string): Promise<GhostSnapshot | undefined> {
         const snapshot = this.getSnapshot(blockId)
 
         if (snapshot) {
-            snapshot.delete()
+            await snapshot.delete()
 
             const index = this.snapshots.indexOf(snapshot, 0)
             if (index > -1) { this.snapshots.splice(index, 1) }
@@ -213,9 +217,9 @@ class GhostEditorInteractionManager extends SubscriptionManager {
             contextMenuGroupId: "z_ghost", // z for last spot in order
             contextMenuOrder: 1,
         
-            run: function (core) {
+            run: async function (core) {
                 parent.canCreateSnapshotKey.set(false)
-                snapshotManager.createSnapshot(parent.selectedRange!)
+                await snapshotManager.createSnapshot(parent.selectedRange!)
                     .then(() => parent.readEditorState())
             },
         }));
@@ -232,8 +236,8 @@ class GhostEditorInteractionManager extends SubscriptionManager {
             contextMenuGroupId: "z_ghost", // z for last spot in order
             contextMenuOrder: 1,
         
-            run: function (core) {
-                snapshotManager.deleteSnapshot(parent.selectedSnapshots[0].blockId)
+            run: async function (core) {
+                await snapshotManager.deleteSnapshot(parent.selectedSnapshots[0].blockId)
                 parent.readEditorState()
             },
         }));
@@ -631,7 +635,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         const snapshots = await session.getChildrenInfo()
 
         this.update(content)
-        this.snapshotManager.updateFrom(snapshots)
+        await this.snapshotManager.updateFrom(snapshots)
     }
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
@@ -770,9 +774,9 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         this.interactionManager.withDisabledVcsSync(() => this.core.setValue(code) )
     }
 
-    public reload(code: string): void {
+    public async reload(code: string): Promise<void> {
         this.update(code)
-        this.snapshotManager.manualUpdate()
+        await this.snapshotManager.manualUpdate()
         this.triggerSync()
     }
 
