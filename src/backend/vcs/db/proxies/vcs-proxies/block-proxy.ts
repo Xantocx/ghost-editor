@@ -4,6 +4,12 @@ import { prismaClient } from "../../client"
 import { FileProxy, LineProxy, VersionProxy } from "../../types"
 import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInfo, VCSUnwrappedText } from "../../../../../app/components/vcs/vcs-rework"
 
+
+enum BlockReference {
+    Previous,
+    Next
+}
+
 export class BlockProxy extends FileDatabaseProxy {
 
     public getBlock()         { return prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }) }
@@ -349,14 +355,21 @@ export class BlockProxy extends FileDatabaseProxy {
         return BlockProxy.createFrom(block, this.file)
     }
 
-    private async insertLine(content: string, location?: { previous?: LineProxy, next?: LineProxy }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
-        const { line, v0, v1 } = await this.file.insertLine(content, { previous: location?.previous, next: location?.next, sourceBlock: this })
+    private async insertLine(content: string, options?: { previous?: LineProxy, next?: LineProxy, blockReference?: BlockReference }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+        const { line, v0, v1 } = await this.file.insertLine(content, { previous: options?.previous, next: options?.next, sourceBlock: this })
 
-        const blockReferenceLine = location?.next ? location.next : location?.previous
-        if(blockReferenceLine) {
-            const blocks        = await blockReferenceLine.getBlocks()
-            const blockVersions = new Map(blocks.map(block => [BlockProxy.createFrom(block, this.file), block.id === this.id ? v1 : v0]))
-            await line.addBlocks(blockVersions)
+        const blockReference = options?.blockReference
+        if (blockReference !== undefined) {
+            let blockReferenceLine: LineProxy | undefined = undefined
+
+            if      (blockReference === BlockReference.Previous) { blockReferenceLine = options?.previous ? options.previous : options.next }
+            else if (blockReference === BlockReference.Next)     { blockReferenceLine = options?.next     ? options.next     : options.previous }
+
+            if (blockReferenceLine) {
+                const blocks        = await blockReferenceLine.getBlocks()
+                const blockVersions = new Map(blocks.map(block => [BlockProxy.createFrom(block, this.file), block.id === this.id ? v1 : v0]))
+                await line.addBlocks(blockVersions)
+            }
         }
 
         return { line, v0, v1 }
@@ -367,8 +380,9 @@ export class BlockProxy extends FileDatabaseProxy {
         const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  }, select: { id: true, order: true } })
         const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" }, select: { id: true              } })
         
-        return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
-                                                next:     nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined })
+        return await this.insertLine(content, { previous:       previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
+                                                next:           nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined,
+                                                blockReference: BlockReference.Next })
     }
 
     // TODO: TEST!!!
@@ -376,8 +390,9 @@ export class BlockProxy extends FileDatabaseProxy {
         const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" }, select: { id: true, order: true } })
         const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  }, select: { id: true              } })
         
-        return await this.insertLine(content, { previous: previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
-                                                next:     nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined })
+        return await this.insertLine(content, { previous:       previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
+                                                next:           nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined,
+                                                blockReference: BlockReference.Previous })
     }
 
     public async insertLineAt(lineNumber: number, content: string): Promise<LineProxy> {
@@ -411,7 +426,7 @@ export class BlockProxy extends FileDatabaseProxy {
             const previousLineProxy = new LineProxy(previousLine.id, this.file)
             const currentLineProxy  = new LineProxy(currentLine.id, this.file)
 
-            const { line, v0, v1 } = await this.insertLine(content, { previous: previousLineProxy, next: currentLineProxy })
+            const { line, v0, v1 } = await this.insertLine(content, { previous: previousLineProxy, next: currentLineProxy, blockReference: BlockReference.Previous })
             createdLine = line
         }
 

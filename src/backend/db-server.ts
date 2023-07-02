@@ -169,11 +169,16 @@ export class DBVCSServer extends BasicVCSServer {
 
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+            console.log("GETTING BLOCKS")
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
+            console.log("APPLYING INDEX")
             await block.applyIndex(versionIndex)
             await this.updatePreview(block)
-            return await root.getText()
+            console.log("GETTING TEXT")
+            const text = await root.getText()
+            console.log(text)
+            return text
         })
     }
 
