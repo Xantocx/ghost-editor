@@ -2,8 +2,8 @@ import { BlockProxy, FileProxy, TagProxy } from "../db/types"
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagId } from "../../../app/components/vcs/vcs-rework"
-import { VCSRequest, VCSResponse } from "../../../app/components/vcs/vcs-rework"
+import { IVCSRequest, VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSSessionRequest, VCSTagId } from "../../../app/components/vcs/vcs-rework"
+import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 
 export class Session {
 
@@ -111,6 +111,10 @@ export class Session {
         }
     }
 
+    public async executeQuery<RequestData, QueryResult>(request: IVCSRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        return this.queries.executeQuery(request, queryType, query)
+    }
+
     public asId(): VCSSessionId {
         return new VCSSessionId(this.id)
     }
@@ -120,14 +124,14 @@ export class Session {
     }
 }
 
-enum QueryType {
+export enum QueryType {
     ReadOnly,
     ReadWrite
 }
 
 class Query<QueryData, QueryResult> {
 
-    public readonly request:   VCSRequest<QueryData>
+    public readonly request:   IVCSRequest<QueryData>
     public readonly type:      QueryType
 
     private readonly manager: QueryManager
@@ -141,7 +145,7 @@ class Query<QueryData, QueryResult> {
     public get requestId(): string    { return this.request.requestId }
     public get data():      QueryData { return this.request.data }
 
-    public constructor(manager: QueryManager, request: VCSRequest<QueryData>, type: QueryType, query: (session: Session, data: QueryData) => Promise<QueryResult>) {
+    public constructor(manager: QueryManager, request: IVCSRequest<QueryData>, type: QueryType, query: (session: Session, data: QueryData) => Promise<QueryResult>) {
         this.manager = manager
         this.request = request
         this.type    = type
@@ -221,7 +225,7 @@ class QueryManager {
         }
     }
 
-    public async executeQuery<RequestData, QueryResult>(request: VCSRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async executeQuery<RequestData, QueryResult>(request: IVCSRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         const newQuery = new Query(this, request, queryType, query)
 
         this.setWaiting(newQuery, request.previousRequestId)
@@ -260,7 +264,27 @@ export class ResourceManager {
         this.sessions.delete(id)
     }
 
-    public getSession(sessionId: VCSSessionId): Session {
+
+    public getSessions(): Session[] {
+        return Array.from(this.sessions.values())
+    }
+
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        let session: Session
+
+        try {
+            session = this.getSession(request.sessionId)
+        } catch (error) {
+            let message: string
+            if (error instanceof Error) { message = error.message }
+            else                        { message = String(error) }
+            return { requestId: request.requestId, error: message }
+        }
+
+        return session.executeQuery(request, queryType, query)
+    }
+
+    private getSession(sessionId: VCSSessionId): Session {
         const id = sessionId.sessionId
         if (this.sessions.has(id)) {
             return this.sessions.get(id)!
@@ -269,31 +293,29 @@ export class ResourceManager {
         }
     }
 
-    public getSessions(): Session[] {
-        return Array.from(this.sessions.values())
-    }
-
-    public async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
+    /*
+    private async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         return await this.getSession(sessionId).loadFile(options)
     }
 
-    public unloadFile(fileId: VCSFileId): void {
+    private unloadFile(fileId: VCSFileId): void {
         this.getSession(fileId).unloadFile(fileId)
     }
 
-    public getFile(fileId: VCSFileId): FileProxy {
+    private getFile(fileId: VCSFileId): FileProxy {
         return this.getSession(fileId).getFile(fileId)
     }
 
-    public async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
+    private async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
         return await this.getSession(blockId).getBlock(blockId)
     }
 
-    public async getTag(tagId: VCSTagId): Promise<TagProxy> {
+    private async getTag(tagId: VCSTagId): Promise<TagProxy> {
         return await this.getSession(tagId).getTag(tagId)
     }
 
-    public getRootBlockFor(fileId: VCSFileId): BlockProxy {
+    private getRootBlockFor(fileId: VCSFileId): BlockProxy {
         return this.getSession(fileId).getRootBlockFor(fileId)
     }
+    */
 }
