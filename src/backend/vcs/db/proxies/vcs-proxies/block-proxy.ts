@@ -559,8 +559,6 @@ export class BlockProxy extends FileDatabaseProxy {
 
         const timeline = await this.getTimeline()
 
-        console.log(timeline)
-
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
         let selectedVersion = timeline[targetIndex] // actually targeted version
