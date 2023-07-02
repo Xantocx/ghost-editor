@@ -134,14 +134,14 @@ export interface VCSUnwrappedText {
 
 export interface IVCSRequest<RequestData> {
     requestId:          string
-    previousRequestId?: string
     data:               RequestData
 }
 
 export interface VCSSessionCreationRequest extends IVCSRequest<void> {}
 
 export interface VCSSessionRequest<RequestData> extends IVCSRequest<RequestData> {
-    sessionId: VCSSessionId
+    sessionId:          VCSSessionId
+    previousRequestId?: string
 }
 
 interface IVCSResponse {
@@ -291,8 +291,11 @@ export class VCSUnwrappedClient {
 
     private getNextIds(): { requestId: string, previousRequestId?: string } {
         const lastRequestId   = this.currentRequestId
-        this.currentRequestId = this.currentRequestId ? this.currentRequestId + 1 : 0
-        return { requestId: `${this.currentRequestId!}`, previousRequestId: `${lastRequestId}` }
+        this.currentRequestId = this.currentRequestId !== undefined ? this.currentRequestId + 1 : 0
+        console.log(lastRequestId)
+        console.log(lastRequestId !== undefined ? `${lastRequestId}` : undefined)
+        console.log("-----")
+        return { requestId: `${this.currentRequestId!}`, previousRequestId: lastRequestId !== undefined ? `${lastRequestId}` : undefined }
     }
 
     private createSessionRequest<RequestType>(sessionId: VCSSessionId, args: RequestType): VCSSessionRequest<RequestType> {
@@ -312,8 +315,7 @@ export class VCSUnwrappedClient {
     }
 
     public async createSession(): Promise<VCSSessionId> {
-        const { requestId, previousRequestId } = this.getNextIds()
-        const request = { requestId, previousRequestId, data: null }
+        const request = { requestId: "session-creation", data: null }
         return await this.unwrapResponse(this.client.createSession(request))
     }
 

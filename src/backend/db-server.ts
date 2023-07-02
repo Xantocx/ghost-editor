@@ -74,8 +74,9 @@ export class DBVCSServer extends BasicVCSServer {
     }
 
     public async closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        this.resources.closeSession(request.sessionId)
-        return { requestId: request.requestId, response: null }
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session) => {
+            session.close()
+        })
     }
 
     public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {

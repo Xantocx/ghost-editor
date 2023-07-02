@@ -2,7 +2,7 @@ import { BlockProxy, FileProxy, TagProxy } from "../db/types"
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { IVCSRequest, VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSSessionRequest, VCSTagId } from "../../../app/components/vcs/vcs-rework"
+import { VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagId } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 
 export class Session {
@@ -111,7 +111,7 @@ export class Session {
         }
     }
 
-    public async executeQuery<RequestData, QueryResult>(request: IVCSRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         return this.queries.executeQuery(request, queryType, query)
     }
 
@@ -120,7 +120,7 @@ export class Session {
     }
 
     public close(): void {
-        // does not do anything right now
+        this.resources.closeSession(this.asId())
     }
 }
 
@@ -131,7 +131,7 @@ export enum QueryType {
 
 class Query<QueryData, QueryResult> {
 
-    public readonly request:   IVCSRequest<QueryData>
+    public readonly request:   VCSSessionRequest<QueryData>
     public readonly type:      QueryType
 
     private readonly manager: QueryManager
@@ -145,7 +145,7 @@ class Query<QueryData, QueryResult> {
     public get requestId(): string    { return this.request.requestId }
     public get data():      QueryData { return this.request.data }
 
-    public constructor(manager: QueryManager, request: IVCSRequest<QueryData>, type: QueryType, query: (session: Session, data: QueryData) => Promise<QueryResult>) {
+    public constructor(manager: QueryManager, request: VCSSessionRequest<QueryData>, type: QueryType, query: (session: Session, data: QueryData) => Promise<QueryResult>) {
         this.manager = manager
         this.request = request
         this.type    = type
@@ -168,9 +168,11 @@ class Query<QueryData, QueryResult> {
         const requestId  = this.requestId
         this.query(this.session, this.data)
             .then(response => {
+                this.manager.queryFinished(this)
                 this.resolve({ requestId, response })
             })
             .catch((error: Error) => {
+                this.manager.queryFinished(this)
                 this.resolve({ requestId, error: error.message })
             })
     }
@@ -193,18 +195,23 @@ class QueryManager {
     }
 
     private setWaiting(query: AnyQuery, requiredRequestId?: string): void {
-        if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }) }
+        console.log("|||||||||||||||||||||||||")
+        console.log(requiredRequestId)
+        console.log(query.requestId)
+        if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }); console.log("QUERY WAITING") }
         else                   { this.setReady(query) }
     }
 
     private setReady(query: AnyQuery): void {
         this.waiting.delete(query.requestId)
         this.ready.push(query)
+        console.log("QUERY READY")
     }
 
     private tryQueries(): void {
         const waitingQueries = Array.from(this.waiting.values())
         waitingQueries.forEach(({ requiredRequestId, query }) => {
+            console.log(this.finishedRequestIds)
             if (this.finishedRequestIds.includes(requiredRequestId)) {
                 const index = this.finishedRequestIds.indexOf(requiredRequestId, 0)
                 if (index >= 0) { this.finishedRequestIds.splice(index, 1) }
@@ -225,7 +232,7 @@ class QueryManager {
         }
     }
 
-    public async executeQuery<RequestData, QueryResult>(request: IVCSRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         const newQuery = new Query(this, request, queryType, query)
 
         this.setWaiting(newQuery, request.previousRequestId)
