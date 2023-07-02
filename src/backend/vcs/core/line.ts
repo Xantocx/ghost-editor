@@ -76,8 +76,9 @@ export class LineNode extends LinkedListNode<LineNode> {
 
     public getTrackedTimestamps(): Timestamp[] { return Array.from(this.headTracking.keys()) }
 
-    public getLatestTracking(): { timestamp: Timestamp, version: LineNodeVersion } | undefined           {
-        const lastTimestamp = this.getTrackedTimestamps().pop()
+    public getLatestTracking(): { timestamp: Timestamp, version: LineNodeVersion } | undefined  {
+        const timestamps = this.getTrackedTimestamps()
+        const lastTimestamp = timestamps[timestamps.length - 1]
         return { timestamp: lastTimestamp, version: this.headTracking.get(lastTimestamp) }
     }
 

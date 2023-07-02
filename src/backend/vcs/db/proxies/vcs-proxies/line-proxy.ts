@@ -51,14 +51,6 @@ export class LineProxy extends FileDatabaseProxy {
     }
 
     private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
-        let previousVersion: Version
-        if (sourceBlock) { previousVersion = await sourceBlock.getHeadFor(this) }
-        else             { previousVersion = await this.getLatestVersion() }
-
-        if (previousVersion.content.trimEnd() === content.trimEnd()) {
-            return new VersionProxy(previousVersion.id)
-        }
-
         let version: Version
 
         const versionConfig: Prisma.VersionUncheckedCreateInput = {
@@ -85,16 +77,24 @@ export class LineProxy extends FileDatabaseProxy {
             if (latestVersion.id !== head.id) {
                 versionConfig.originId = head.id
             } 
-            
-            // TODO: is this condition too broad? should it be &&?
-            if (latestTracking && (latestTracking.timestamp > head.timestamp || latestTracking.versionId !== head.id)) {
+
+            // TODO: THIS HAS TO HAPPEN FOR ALL LINES IN THIS BLOCK!
+            if ((latestTracking && latestTracking.timestamp > head.timestamp) || latestVersion.id !== head.id) {
+
+                console.log(latestVersion)
+                console.log(head)
+                console.log("-----------------------------")
+
                 await prismaClient.trackedVersion.create({
                     data: {
-                        timestamp: TimestampProvider.getTimestamp(),
+                        timestamp: versionConfig.timestamp,
                         lineId:    this.id,
                         versionId: head.id
                     }
                 })
+
+                // make sure that version timestamp is bigger than tracked version timestamp
+                versionConfig.timestamp = TimestampProvider.getTimestamp()
             }
 
             version = await prismaClient.version.create({data: versionConfig })
@@ -116,7 +116,15 @@ export class LineProxy extends FileDatabaseProxy {
     }
 
     public async updateContent(content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
-        return await this.createNewVersion(true, content, sourceBlock)        
+        let previousVersion: Version
+        if (sourceBlock) { previousVersion = await sourceBlock.getHeadFor(this) }
+        else             { previousVersion = await this.getLatestVersion() }
+
+        if (previousVersion.content.trimEnd() === content.trimEnd()) {
+            return new VersionProxy(previousVersion.id)
+        } else {
+            return await this.createNewVersion(true, content, sourceBlock)  
+        }      
     }
 
     public async delete(sourceBlock?: BlockProxy): Promise<VersionProxy> {
