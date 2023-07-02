@@ -27,7 +27,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return prismaClient.version.count({
             where: {
                 line: { blocks: { some: { id: this.id } } },
-                type: { in: [VersionType.IMPORTED, VersionType.LAST_IMPORTED] }
+                type: VersionType.IMPORTED
             }
         })
     }
@@ -137,17 +137,17 @@ export class BlockProxy extends FileDatabaseProxy {
         })
     }
 
-    public getTimeline() {
-        return prismaClient.version.findMany({
+    public lastImportedLine() {
+        return prismaClient.version.findFirst({
             where: {
                 line: {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                type: { not: VersionType.IMPORTED }
+                type: VersionType.IMPORTED
             },
             orderBy: {
-                timestamp: "asc"
+                timestamp: "desc"
             }
         })
     }
@@ -156,8 +156,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return prismaClient.version.findFirstOrThrow({
             where: {
                 line:      { fileId: this.file.id },
-                headLists: { some: { blocks: { some: { id: this.id } } } },
-                type:      { not: VersionType.IMPORTED }
+                headLists: { some: { blocks: { some: { id: this.id } } } }
             },
             orderBy: { timestamp: "desc" }
         })
@@ -172,6 +171,23 @@ export class BlockProxy extends FileDatabaseProxy {
                 },
                 type:      { not: VersionType.IMPORTED },
                 timestamp: { lt: version.timestamp }
+            }
+        })
+    }
+
+    public async getTimeline(): Promise<Version[]> {
+        const lastImportedLine = await this.lastImportedLine()
+
+        return await prismaClient.version.findMany({
+            where: {
+                line: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } }
+                },
+                timestamp: { gte: lastImportedLine.timestamp }
+            },
+            orderBy: {
+                timestamp: "asc"
             }
         })
     }
@@ -463,7 +479,6 @@ export class BlockProxy extends FileDatabaseProxy {
     }
 
     public async asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
-
         const [block, originalLineCount, activeLineCount, versionCount, firstLine, currentVersion, tags] = await prismaClient.$transaction([
             this.getBlock(),
             this.getOriginalLineCount(),
@@ -544,6 +559,8 @@ export class BlockProxy extends FileDatabaseProxy {
 
         const timeline = await this.getTimeline()
 
+        console.log(timeline)
+
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
         let selectedVersion = timeline[targetIndex] // actually targeted version
@@ -552,8 +569,10 @@ export class BlockProxy extends FileDatabaseProxy {
     }
 
     public async applyTimestamp(timestamp: number): Promise<void> {
-        const heads    = await this.getHeadsWithLines()
-        const headList = await this.getHeadList()
+        const [heads, headList] = await prismaClient.$transaction([
+            this.getHeadsWithLines(),
+            this.getHeadList()
+        ])
 
         const lines = heads.map(head => head.line)
         

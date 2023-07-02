@@ -173,9 +173,7 @@ export class DBVCSServer extends BasicVCSServer {
             const block = await session.getBlock(blockId)
             await block.applyIndex(versionIndex)
             await this.updatePreview(block)
-            const text = await root.getText()
-            console.log(text)
-            return text
+            return await root.getText()
         })
     }
 

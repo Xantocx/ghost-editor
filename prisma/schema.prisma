@@ -92,7 +92,6 @@ model Line {
 
 enum VersionType {
   IMPORTED
-  LAST_IMPORTED
   PRE_INSERTION
   INSERTION
   CHANGE

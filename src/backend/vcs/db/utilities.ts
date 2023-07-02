@@ -173,6 +173,7 @@ class Query<QueryData, QueryResult> {
                 this.resolve({ requestId, response })
             })
             .catch((error: Error) => {
+                throw error // handle errors in the backend for debugging
                 this.manager.queryFinished(this)
                 this.resolve({ requestId, error: error.message })
             })
@@ -278,7 +279,6 @@ export class ResourceManager {
         try {
             session = this.getSession(request.sessionId)
         } catch (error) {
-            throw error
             let message: string
             if (error instanceof Error) { message = error.message }
             else                        { message = String(error) }

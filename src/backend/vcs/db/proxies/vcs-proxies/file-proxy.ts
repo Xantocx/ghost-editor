@@ -40,8 +40,7 @@ export class FileProxy extends DatabaseProxy {
 
         await prismaClient.version.createMany({
             data: lineContents.map((content, index) => {
-                const versionType = index === lineContents.length - 1 ? VersionType.LAST_IMPORTED : VersionType.IMPORTED
-                return { lineId: file.lines[index].id, type: versionType, timestamp: TimestampProvider.getTimestamp(), isActive: true, content }
+                return { lineId: file.lines[index].id, type: VersionType.IMPORTED, timestamp: TimestampProvider.getTimestamp(), isActive: true, content }
             }),
         })
 
