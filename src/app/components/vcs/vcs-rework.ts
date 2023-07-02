@@ -307,9 +307,8 @@ export class VCSUnwrappedClient {
             const error  = response as VCSError
 
             // NOTE: seemingly I can always cast to an interface, so this seems to be safer than just checking if the cast worked
-            if      (result.response) { return result.response }
-            else if (error.error)     { throw new Error(error.error) }
-            else                      { throw new Error("Could not match response type!") }
+            if (error.error) { throw new Error(error.error) }
+            else             { return result.response }
         })
     }
 

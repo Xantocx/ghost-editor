@@ -49,14 +49,15 @@ export class Session {
                     return await block.asBlockInfo(fileId)
                 }
             }
-        } else {
-            const { file, rootBlock } = await FileProxy.create(options.filePath, options.eol, options.content)
-            this.files.set(file.filePath, rootBlock.block)
-            this.blocks.set(rootBlock.blockId, rootBlock.block)
-
-            const fileId = VCSFileId.createFrom(sessionId, file.filePath)
-            return await rootBlock.block.asBlockInfo(fileId)
         }
+        
+        // in every other case:
+        const { file, rootBlock } = await FileProxy.create(options.filePath, options.eol, options.content)
+        this.files.set(file.filePath, rootBlock.block)
+        this.blocks.set(rootBlock.blockId, rootBlock.block)
+
+        const fileId = VCSFileId.createFrom(sessionId, file.filePath)
+        return await rootBlock.block.asBlockInfo(fileId)
     }
 
     public unloadFile(fileId: VCSFileId): void {
@@ -277,6 +278,7 @@ export class ResourceManager {
         try {
             session = this.getSession(request.sessionId)
         } catch (error) {
+            throw error
             let message: string
             if (error instanceof Error) { message = error.message }
             else                        { message = String(error) }
