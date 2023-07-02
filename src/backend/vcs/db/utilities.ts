@@ -195,23 +195,18 @@ class QueryManager {
     }
 
     private setWaiting(query: AnyQuery, requiredRequestId?: string): void {
-        console.log("|||||||||||||||||||||||||")
-        console.log(requiredRequestId)
-        console.log(query.requestId)
-        if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }); console.log("QUERY WAITING") }
+        if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }) }
         else                   { this.setReady(query) }
     }
 
     private setReady(query: AnyQuery): void {
         this.waiting.delete(query.requestId)
         this.ready.push(query)
-        console.log("QUERY READY")
     }
 
     private tryQueries(): void {
         const waitingQueries = Array.from(this.waiting.values())
         waitingQueries.forEach(({ requiredRequestId, query }) => {
-            console.log(this.finishedRequestIds)
             if (this.finishedRequestIds.includes(requiredRequestId)) {
                 const index = this.finishedRequestIds.indexOf(requiredRequestId, 0)
                 if (index >= 0) { this.finishedRequestIds.splice(index, 1) }

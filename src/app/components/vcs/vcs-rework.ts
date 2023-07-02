@@ -215,7 +215,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
     public abstract linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>>
 
     public async applyChange(request: VCSSessionRequest<{ blockId: VCSBlockId, change: AnyChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        const { blockId, change } = request.data
+        const { blockId: _, change } = request.data
         if (change.changeBehaviour === ChangeBehaviour.Line) {
             return await this.lineChanged(request as VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>)
         } else if (change.changeBehaviour === ChangeBehaviour.MultiLine) {
@@ -225,15 +225,16 @@ export abstract class BasicVCSProvider implements VCSProvider {
         }
     }
 
+    // TODO: this was a great idea in the old, in-memory version of this tool, for databases, this is a bit too inefficient
     public async applyChanges(request: VCSSessionRequest<{ blockId: VCSBlockId, changes: ChangeSet }>): Promise<VCSResponse<VCSBlockId[]>> {
         const { blockId, changes } = request.data
 
         let subIdCount = 0
         let previousRequestId = request.previousRequestId
         const changeResponses: Promise<VCSResponse<VCSBlockId[]>>[] = []
-        for (const change of changes) {
-            const requestId = request.requestId + ":apply-changes-sub-request-" + subIdCount++
-            const changeRequest = { sessionId: request.sessionId, requestId, previousRequestId, data: { blockId, change } }
+        for (let i = 0; i < changes.length; i++) {
+            const requestId = i + 1 < changes.length ? request.requestId + ":apply-changes-sub-request-" + subIdCount++ : request.requestId
+            const changeRequest = { sessionId: request.sessionId, requestId, previousRequestId, data: { blockId, change: changes[i] } }
             changeResponses.push(this.applyChange(changeRequest))
             previousRequestId = requestId
         }
@@ -292,9 +293,6 @@ export class VCSUnwrappedClient {
     private getNextIds(): { requestId: string, previousRequestId?: string } {
         const lastRequestId   = this.currentRequestId
         this.currentRequestId = this.currentRequestId !== undefined ? this.currentRequestId + 1 : 0
-        console.log(lastRequestId)
-        console.log(lastRequestId !== undefined ? `${lastRequestId}` : undefined)
-        console.log("-----")
         return { requestId: `${this.currentRequestId!}`, previousRequestId: lastRequestId !== undefined ? `${lastRequestId}` : undefined }
     }
 

@@ -9,6 +9,7 @@ import { MetaView } from "../views/meta-view"
 import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockSession, VCSTagInfo } from "../../../app/components/vcs/vcs-rework"
 import { VCSSnapshot } from "../../../app/components/data/snapshot"
 import { VCSVersion } from "../../../app/components/data/version"
+import { throttle } from "../../utils/helpers"
 
 export class GhostSnapshot extends SubscriptionManager implements RangeProvider {
 
@@ -154,10 +155,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.footer = new GhostSnapshotFooter(this, this.locator, this.viewZonesOnly)
 
         // value updating
-        this.addSubscription(this.footer.onChange(async value => {
+        this.addSubscription(this.footer.onChange(throttle(async value => {
             const newText = await this.session.setChildBlockVersionIndex(this.vcsId, value)
             this.editor.reload(newText)
-        }))
+        }, 100)))
 
         // footer hiding
         if (this.toggleMode) {
