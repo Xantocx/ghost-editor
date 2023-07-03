@@ -50,16 +50,26 @@ export class LineProxy extends FileDatabaseProxy {
         await prismaClient.$transaction(updates)
     }
 
-    private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
-        let version: Version
+    public async updateHeadTrackingFor(block: BlockProxy): Promise<void> {
+        const [head, latestVersion, latestTracking] = await prismaClient.$transaction([
+            block.getHeadFor(this),
+            this.getLatestVersion(),
+            this.getLatestTracking()
+        ])
 
-        const versionConfig: Prisma.VersionUncheckedCreateInput = {
-            lineId:    this.id,
-            timestamp: TimestampProvider.getTimestamp(),
-            type:      isActive ? VersionType.CHANGE : VersionType.DELETION,
-            isActive:  isActive,
-            content
+        if ((latestTracking && latestTracking.timestamp > head.timestamp) || latestVersion.id !== head.id) {
+            await prismaClient.trackedVersion.create({
+                data: {
+                    timestamp: TimestampProvider.getTimestamp(),
+                    lineId:    this.id,
+                    versionId: head.id
+                }
+            })
         }
+    }
+
+    private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
+       let version: Version
 
         if (sourceBlock) {
             const [headList, head, latestVersion, latestTracking] = await prismaClient.$transaction([
@@ -71,33 +81,31 @@ export class LineProxy extends FileDatabaseProxy {
 
             if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
 
-            versionConfig.sourceBlockId = sourceBlock.id
+            // TODO: works great, but way to slow...
+            await sourceBlock.updateHeadTracking()
+
+            const versionConfig: Prisma.VersionUncheckedCreateInput = {
+                lineId:        this.id,
+                timestamp:     TimestampProvider.getTimestamp(),
+                type:          isActive ? VersionType.CHANGE : VersionType.DELETION,
+                isActive:      isActive,
+                sourceBlockId: sourceBlock.id,
+                content
+            }
 
             // TODO: experimental. expectation: should not revert to original timetravel state, but to timetravel state + 1 change
             if (latestVersion.id !== head.id) {
                 versionConfig.originId = head.id
             } 
 
-            // TODO: THIS HAS TO HAPPEN FOR ALL LINES IN THIS BLOCK!
+            // DEBUG: Remove later
             if ((latestTracking && latestTracking.timestamp > head.timestamp) || latestVersion.id !== head.id) {
-
                 console.log(latestVersion)
                 console.log(head)
                 console.log("-----------------------------")
-
-                await prismaClient.trackedVersion.create({
-                    data: {
-                        timestamp: versionConfig.timestamp,
-                        lineId:    this.id,
-                        versionId: head.id
-                    }
-                })
-
-                // make sure that version timestamp is bigger than tracked version timestamp
-                versionConfig.timestamp = TimestampProvider.getTimestamp()
             }
 
-            version = await prismaClient.version.create({data: versionConfig })
+            version = await prismaClient.version.create({ data: versionConfig })
 
             await prismaClient.headList.update({
                 where: { id: headList.id },
@@ -109,7 +117,15 @@ export class LineProxy extends FileDatabaseProxy {
                 }
             })
         } else {
-            version = await prismaClient.version.create({data: versionConfig })
+            version = await prismaClient.version.create({
+                data: {
+                    lineId:    this.id,
+                    timestamp: TimestampProvider.getTimestamp(),
+                    type:      isActive ? VersionType.CHANGE : VersionType.DELETION,
+                    isActive:  isActive,
+                    content
+                }
+            })
         }
 
         return new VersionProxy(version.id)

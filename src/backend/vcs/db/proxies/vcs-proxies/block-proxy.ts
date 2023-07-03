@@ -3,6 +3,7 @@ import { FileDatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client"
 import { FileProxy, LineProxy, VersionProxy } from "../../types"
 import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInfo, VCSUnwrappedText } from "../../../../../app/components/vcs/vcs-rework"
+import { TimestampProvider } from "../../../core/metadata/timestamps"
 
 
 enum BlockReference {
@@ -160,6 +161,36 @@ export class BlockProxy extends FileDatabaseProxy {
             },
             orderBy: { timestamp: "desc" }
         })
+    }
+
+    public async updateHeadTracking(): Promise<void> {
+        const lines       = await this.getLines()
+        const lineProxies = lines.map(line => new LineProxy(line.id, this.file))
+
+        const heads           = await prismaClient.$transaction(lineProxies.map(line => this.getHeadFor(line)))
+        const latestVersions  = await prismaClient.$transaction(lineProxies.map(line => line.getLatestVersion()))
+        const latestTrackings = await prismaClient.$transaction(lineProxies.map(line => line.getLatestTracking()))
+
+        for (let i = 0; i < lines.length; i++) {
+            const [line, head, latestVersion, latestTracking] = [lineProxies[i], heads[i], latestVersions[i], latestTrackings[i]]
+
+            if ((latestTracking && latestTracking.timestamp > head.timestamp && latestTracking.versionId !== head.id) || latestVersion.id !== head.id) {
+                await prismaClient.trackedVersion.create({
+                    data: {
+                        timestamp: TimestampProvider.getTimestamp(),
+                        lineId:    line.id,
+                        versionId: head.id
+                    }
+                })
+            }
+        }
+
+        /*
+        for (const line of lines) {
+            const proxy = new LineProxy(line.id, this.file)
+            await proxy.updateHeadTrackingFor(this)
+        }
+        */
     }
 
     public getTimelineIndexFor(version: Version) {
