@@ -270,12 +270,14 @@ class QueryManager {
     }
 
     public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
-        await this.breakQueryChain()
+        if (queryType === QueryType.ReadWrite) { await this.breakQueryChain() }
         return this.createNewQuery(request, queryType, query)
     }
 
+    // WARNING: Right now, query chains are only interrupted by new chains of unchained readwrite queries, assuming that we can always read inbetween a chain!!!
     public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
         if (this.currentQueryChain !== chainId) {
+            console.log("Start Chain: " + chainId)
             await this.breakQueryChain()
             this.startQueryChain(chainId, onChainInterrupt)
         }

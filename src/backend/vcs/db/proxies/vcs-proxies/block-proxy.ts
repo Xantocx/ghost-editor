@@ -588,7 +588,7 @@ export class BlockProxy extends FileDatabaseProxy {
         return line
     }
 
-    public async applyIndex(targetIndex: number): Promise<void> {
+    public async applyIndex(targetIndex: number): Promise<Version[]> {
         //this.resetVersionMerging()
 
         const timeline = await this.getTimeline()
@@ -597,10 +597,10 @@ export class BlockProxy extends FileDatabaseProxy {
 
         let selectedVersion = timeline[targetIndex] // actually targeted version
 
-        await this.applyTimestamp(selectedVersion.timestamp)
+        return await this.applyTimestamp(selectedVersion.timestamp)
     }
 
-    public async applyTimestamp(timestamp: number): Promise<void> {
+    public async applyTimestamp(timestamp: number): Promise<Version[]> {
         const [heads, headList] = await prismaClient.$transaction([
             this.getHeadsWithLines(),
             this.getHeadList()
@@ -668,7 +668,8 @@ export class BlockProxy extends FileDatabaseProxy {
             }
         })
 
-        this.flushTrackedHeads(selected)
+        return selected
+        //this.flushTrackedHeads(selected)
     }
 
     /*

@@ -7,6 +7,7 @@ import { QueryType, ResourceManager, Session } from "./vcs/db/utilities"
 
 import { BlockProxy, FileProxy, LineProxy, TagProxy } from "./vcs/db/types"
 import { prismaClient } from "./vcs/db/client"
+import { Version } from "@prisma/client"
 
 export class DBVCSServer extends BasicVCSServer {
 
@@ -20,7 +21,7 @@ export class DBVCSServer extends BasicVCSServer {
         this.browserWindow = browserWindow
     }
 
-    private async updatePreview(block: BlockProxy) {
+    private async updatePreview(block: BlockProxy): Promise<void> {
         if (this.browserWindow) {
             const lines = await prismaClient.line.findMany({
                 where: {
@@ -151,16 +152,37 @@ export class DBVCSServer extends BasicVCSServer {
         throw new Error("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
     }
 
+    private headsToBeTracked: Version[] = []
+    private trackHeads(heads: Version[]): void {
+        const updatesHeads = this.headsToBeTracked.map(currentHead => {
+            const newHeadIndex = heads.findIndex(newHead => newHead.lineId === currentHead.lineId)
+            if (newHeadIndex >= 0) {
+                const head = heads[newHeadIndex]
+                heads.splice(newHeadIndex, 1)
+                return head
+            } else {
+                return currentHead
+            }
+        })
+
+        // attach any heads for lines that were previously not changed
+        this.headsToBeTracked = updatesHeads.concat(heads)
+    }
+
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
         return await this.resources.executeQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
-            await block.applyIndex(versionIndex)
+            const newHeads = await block.applyIndex(versionIndex)
+            this.trackHeads(newHeads)
             await this.updatePreview(block)
             return await root.getText()
         }, async (session) => {
-            
+            console.log("Chain Broke: " + this.headsToBeTracked.length)
+            const block = await session.getBlock(blockId)
+            await block.flushTrackedHeads(this.headsToBeTracked)
+            this.headsToBeTracked = []
         })
     }
 
