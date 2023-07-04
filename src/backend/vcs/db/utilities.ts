@@ -116,6 +116,21 @@ export class Session {
         return this.queries.executeQuery(request, queryType, query)
     }
 
+    public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+        return this.queries.executeQueryChain(chainId, request, queryType, query, onChainInterrupt)
+    }
+
+    public async delete(blockId: VCSBlockId) {
+        const block     = await this.getBlock(blockId)
+        const blockData = await block.getBlock()
+
+        if (blockData.type === BlockType.ROOT) {
+            this.unloadFile(blockId)
+        } else {
+            await prismaClient.block.delete({ where: { id: block.id }})
+        }
+    }
+
     public asId(): VCSSessionId {
         return new VCSSessionId(this.id)
     }
@@ -192,6 +207,9 @@ class QueryManager {
 
     private readonly finishedRequestIds: string[] = []
 
+    private currentQueryChain?:     string                              = undefined
+    private breakingChainCallback?: (session: Session) => Promise<void> = undefined
+
     public constructor(session: Session) {
         this.session = session
     }
@@ -229,13 +247,40 @@ class QueryManager {
         }
     }
 
-    public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public createNewQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         const newQuery = new Query(this, request, queryType, query)
 
         this.setWaiting(newQuery, request.previousRequestId)
         this.tryQueries()
 
         return newQuery.getPromise()
+    }
+
+    private startQueryChain(chainId: string, onChainInterrupt: (session: Session) => Promise<void>): void {
+        this.currentQueryChain     = chainId
+        this.breakingChainCallback = onChainInterrupt
+    }
+
+    private async breakQueryChain(): Promise<void> {
+        if (this.currentQueryChain !== undefined) {
+            await this.breakingChainCallback(this.session)
+            this.currentQueryChain     = undefined
+            this.breakingChainCallback = undefined   
+        }
+    }
+
+    public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        await this.breakQueryChain()
+        return this.createNewQuery(request, queryType, query)
+    }
+
+    public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+        if (this.currentQueryChain !== chainId) {
+            await this.breakQueryChain()
+            this.startQueryChain(chainId, onChainInterrupt)
+        }
+        
+        return this.createNewQuery(request, queryType, query)
     }
 
     public queryRunning(query: AnyQuery): void {
@@ -286,6 +331,21 @@ export class ResourceManager {
         }
 
         return session.executeQuery(request, queryType, query)
+    }
+
+    public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+        let session: Session
+
+        try {
+            session = this.getSession(request.sessionId)
+        } catch (error) {
+            let message: string
+            if (error instanceof Error) { message = error.message }
+            else                        { message = String(error) }
+            return { requestId: request.requestId, error: message }
+        }
+
+        return session.executeQueryChain(chainId, request, queryType, query, onChainInterrupt)
     }
 
     private getSession(sessionId: VCSSessionId): Session {

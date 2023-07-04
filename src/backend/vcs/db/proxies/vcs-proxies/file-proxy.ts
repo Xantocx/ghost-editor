@@ -1,6 +1,6 @@
 import { DatabaseProxy } from "../database-proxy"
 import { randomUUID } from "crypto"
-import { Prisma, VersionType, LineType } from "@prisma/client"
+import { Prisma, VersionType, LineType, Version } from "@prisma/client"
 import { LineProxy, VersionProxy, BlockProxy } from "../../types"
 import { prismaClient } from "../../client"
 import { TimestampProvider } from "../../../core/metadata/timestamps"

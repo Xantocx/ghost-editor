@@ -48,24 +48,6 @@ export class DBVCSServer extends BasicVCSServer {
         }
     }
 
-    /*
-    private getSession(sessionId: VCSSessionId): Session {
-        return this.resources.getSession(sessionId)
-    }
-
-    private getFile(fileId: VCSFileId): FileProxy {
-        return this.resources.getFile(fileId)
-    }
-
-    private async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
-        return await this.resources.getBlock(blockId)
-    }
-
-    private async getTag(tagId: VCSTagId): Promise<TagProxy> {
-        return await this.resources.getTag(tagId)
-    }
-    */
-
 
 
     public async createSession(request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>> {
@@ -146,7 +128,9 @@ export class DBVCSServer extends BasicVCSServer {
     }
 
     public async deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
-        throw new Error("Method not implemented.")
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId }) => {
+            await session.delete(blockId)
+        })
     }
 
     public async getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
@@ -168,12 +152,15 @@ export class DBVCSServer extends BasicVCSServer {
     }
 
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+        const blockId = request.data.blockId
+        return await this.resources.executeQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
             await block.applyIndex(versionIndex)
             await this.updatePreview(block)
             return await root.getText()
+        }, async (session) => {
+            
         })
     }
 

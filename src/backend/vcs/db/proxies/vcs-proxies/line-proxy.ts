@@ -50,6 +50,7 @@ export class LineProxy extends FileDatabaseProxy {
         await prismaClient.$transaction(updates)
     }
 
+    /*
     public async updateHeadTrackingFor(block: BlockProxy): Promise<void> {
         const [head, latestVersion, latestTracking] = await prismaClient.$transaction([
             block.getHeadFor(this),
@@ -67,22 +68,21 @@ export class LineProxy extends FileDatabaseProxy {
             })
         }
     }
+    */
 
     private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
        let version: Version
 
         if (sourceBlock) {
-            const [headList, head, latestVersion, latestTracking] = await prismaClient.$transaction([
+            const [headList, head, latestVersion] = await prismaClient.$transaction([
                 sourceBlock.getHeadList(),
                 sourceBlock.getHeadFor(this),
-                this.getLatestVersion(),
-                this.getLatestTracking()
+                this.getLatestVersion()
             ])
 
             if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
 
-            // TODO: works great, but way to slow...
-            await sourceBlock.updateHeadTracking()
+            //await sourceBlock.flushTrackedHeads()
 
             const versionConfig: Prisma.VersionUncheckedCreateInput = {
                 lineId:        this.id,
@@ -97,13 +97,6 @@ export class LineProxy extends FileDatabaseProxy {
             if (latestVersion.id !== head.id) {
                 versionConfig.originId = head.id
             } 
-
-            // DEBUG: Remove later
-            if ((latestTracking && latestTracking.timestamp > head.timestamp) || latestVersion.id !== head.id) {
-                console.log(latestVersion)
-                console.log(head)
-                console.log("-----------------------------")
-            }
 
             version = await prismaClient.version.create({ data: versionConfig })
 
