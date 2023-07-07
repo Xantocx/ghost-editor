@@ -43,7 +43,7 @@ export class Session {
                 })
 
                 if (rootBlock) {
-                    const block = BlockProxy.createFrom(rootBlock)
+                    const block = await BlockProxy.getFor(rootBlock)
                     this.files.set(filePath, block)
                     this.blocks.set(rootBlock.blockId, block)
                     return await block.asBlockInfo(fileId)
@@ -81,7 +81,7 @@ export class Session {
             const block = await prismaClient.block.findFirst({ where: { blockId: id } })
             if (!block) { throw new Error(`Cannot find block for provided block id "${id}"`) }
 
-            const blockProxy = BlockProxy.createFrom(block)
+            const blockProxy = await BlockProxy.getFor(block)
             this.blocks.set(id, blockProxy)
 
             return blockProxy
@@ -96,7 +96,7 @@ export class Session {
             const tag = await prismaClient.tag.findFirst({ where: { tagId: id } })
             if (!tag) { throw new Error(`Cannot find tag for provided tag id "${id}"`) }
 
-            const tagProxy = TagProxy.createFrom(tag)
+            const tagProxy = await TagProxy.getFor(tag)
             this.tags.set(id, tagProxy)
 
             return tagProxy
@@ -121,10 +121,8 @@ export class Session {
     }
 
     public async delete(blockId: VCSBlockId) {
-        const block     = await this.getBlock(blockId)
-        const blockData = await block.getBlock()
-
-        if (blockData.type === BlockType.ROOT) {
+        const block = await this.getBlock(blockId)
+        if (block.type === BlockType.ROOT) {
             this.unloadFile(blockId)
         } else {
             await prismaClient.block.delete({ where: { id: block.id }})

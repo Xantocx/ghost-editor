@@ -9,17 +9,7 @@ export abstract class DatabaseProxy {
 
     public readonly id: number
 
-    public constructor(id: number) {
+    protected constructor(id: number) {
         this.id = id
-    }
-}
-
-export abstract class FileDatabaseProxy extends DatabaseProxy {
-
-    public readonly file: FileProxy
-
-    public constructor(id: number, file: FileProxy) {
-        super(id)
-        this.file = file
     }
 }

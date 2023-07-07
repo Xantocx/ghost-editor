@@ -1,11 +1,32 @@
 import { DatabaseProxy } from "../database-proxy"
 import { randomUUID } from "crypto"
-import { Prisma, VersionType, LineType, Version } from "@prisma/client"
+import { Prisma, VersionType, LineType, Version, File } from "@prisma/client"
 import { LineProxy, VersionProxy, BlockProxy } from "../../types"
 import { prismaClient } from "../../client"
 import { TimestampProvider } from "../../../core/metadata/timestamps"
+import { ProxyCache } from "../proxy-cache"
 
 export class FileProxy extends DatabaseProxy {
+
+    public static async get(id: number): Promise<FileProxy> {
+        return await ProxyCache.getFileProxy(id)
+    }
+
+    public static async getFor(file: File): Promise<FileProxy> {
+        return await ProxyCache.getFileProxyFor(file)
+    }
+
+    public static async load(id: number): Promise<FileProxy> {
+        return new FileProxy(id)
+    }
+
+    public static async loadFrom(file: File): Promise<FileProxy> {
+        return new FileProxy(file.id)
+    }
+
+    private constructor(id: number) {
+        super(id)
+    }
 
     public static async create(filePath: string | undefined, eol: string, content: string | undefined): Promise<{ file: { filePath: string, file: FileProxy }, rootBlock: { blockId: string, block: BlockProxy } }> {
         
@@ -44,7 +65,7 @@ export class FileProxy extends DatabaseProxy {
             }),
         })
 
-        const fileProxy          = new FileProxy(file.id)
+        const fileProxy          = await FileProxy.get(file.id)
         const { blockId, block } = await BlockProxy.createRootBlock(fileProxy, filePath)
 
         return { file: { filePath, file: fileProxy }, rootBlock: { blockId, block } }
@@ -153,16 +174,16 @@ export class FileProxy extends DatabaseProxy {
             })
         }))
 
-        return lines.map(line => { return { line: new LineProxy(line.id, this), v0: new VersionProxy(line.versions[0].id), v1: new VersionProxy(line.versions[1].id) }})
+        return await Promise.all(lines.map(async line => { return { line: await LineProxy.getFor(line), v0: await VersionProxy.getFor(line.versions[0]), v1: await VersionProxy.getFor(line.versions[1]) }}))
     }
 
     public async prependLines(lineContents: string[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
-        const firstLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "asc" }, select: { id: true } })
-        return await this.insertLines(lineContents, { next: firstLine ? new LineProxy(firstLine.id, this) : undefined })
+        const firstLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "asc" } })
+        return await this.insertLines(lineContents, { next: firstLine ? await LineProxy.getFor(firstLine) : undefined })
     }
 
     public async appendLine(lineContents: string[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
-        const lastLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" }, select: { id: true } })
-        return await this.insertLines(lineContents, { previous: lastLine ? new LineProxy(lastLine.id, this) : undefined })
+        const lastLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" } })
+        return await this.insertLines(lineContents, { previous: lastLine ? await LineProxy.getFor(lastLine) : undefined })
     }
 }
