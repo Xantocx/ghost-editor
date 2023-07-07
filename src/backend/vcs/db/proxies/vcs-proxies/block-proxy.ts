@@ -5,6 +5,7 @@ import { FileProxy, LineProxy, VersionProxy } from "../../types"
 import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInfo, VCSUnwrappedText } from "../../../../../app/components/vcs/vcs-rework"
 import { TimestampProvider } from "../../../core/metadata/timestamps"
 import { throttle } from "../../../../../editor/utils/helpers"
+import { MultiLineChange } from "../../../../../app/components/data/change"
 
 
 enum BlockReference {
@@ -18,7 +19,7 @@ export class BlockProxy extends FileDatabaseProxy {
     public getCloneCount()    { return prismaClient.block.count({ where: { originId: this.id } }) }
     public getChildrenCount() { return prismaClient.block.count({ where: { parentId: this.id } }) }
     public getLineCount()     { return prismaClient.line.count({ where: { blocks: { some: { id: this.id } } } }) }
-    public getVersionCount()  { return prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } } } }) }
+    public getVersionCount()  { return prismaClient.version.count({ where: { line: { blocks: { some: { id: this.id } } }, type: { not: VersionType.CLONE } } }) }
     public getChildren()      { return prismaClient.block.findMany({ where: { parentId: this.id } }) }
     public getLines()         { return prismaClient.line.findMany({ where: { blocks: { some: { id: this.id } } } }) }
     public getHeadList()      { return prismaClient.headList.findFirstOrThrow({ where: { blocks: { some: { id: this.id } } } }) }
@@ -164,38 +165,6 @@ export class BlockProxy extends FileDatabaseProxy {
         })
     }
 
-    /*
-    public async updateHeadTracking(): Promise<void> {
-        const lines       = await this.getLines()
-        const lineProxies = lines.map(line => new LineProxy(line.id, this.file))
-
-        const heads           = await prismaClient.$transaction(lineProxies.map(line => this.getHeadFor(line)))
-        const latestVersions  = await prismaClient.$transaction(lineProxies.map(line => line.getLatestVersion()))
-        const latestTrackings = await prismaClient.$transaction(lineProxies.map(line => line.getLatestTracking()))
-
-        for (let i = 0; i < lines.length; i++) {
-            const [line, head, latestVersion, latestTracking] = [lineProxies[i], heads[i], latestVersions[i], latestTrackings[i]]
-
-            if ((latestTracking && latestTracking.timestamp > head.timestamp && latestTracking.versionId !== head.id) || latestVersion.id !== head.id) {
-                await prismaClient.trackedVersion.create({
-                    data: {
-                        timestamp: TimestampProvider.getTimestamp(),
-                        lineId:    line.id,
-                        versionId: head.id
-                    }
-                })
-            }
-        }
-
-        // COMMENT OUT!!!
-        for (const line of lines) {
-            const proxy = new LineProxy(line.id, this.file)
-            await proxy.updateHeadTrackingFor(this)
-        }
-        //
-    }
-    */
-
     public getTimelineIndexFor(version: Version) {
         return prismaClient.version.count({
             where: {
@@ -203,7 +172,7 @@ export class BlockProxy extends FileDatabaseProxy {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                type:      { not: VersionType.IMPORTED },
+                type:      { notIn: [VersionType.IMPORTED, VersionType.CLONE] },
                 timestamp: { lt: version.timestamp }
             }
         })
@@ -218,6 +187,7 @@ export class BlockProxy extends FileDatabaseProxy {
                     fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
+                type:      { not: VersionType.CLONE },
                 timestamp: { gte: lastImportedLine.timestamp }
             },
             orderBy: {
@@ -445,6 +415,54 @@ export class BlockProxy extends FileDatabaseProxy {
                                                 blockReference: BlockReference.Previous })
     }
 
+    public async insertLinesAt(lineNumber: number, contents: string[]): Promise<LineProxy> {
+        //this.resetVersionMerging()
+
+        const insertedLineCount   = contents.length
+        const lastLineNumber      = await this.getActiveLineCount()
+        const newLastLine         = lastLineNumber + 1
+        const insertionLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
+
+        /*
+        const expandedLine     = activeLines[Math.min(adjustedLineNumber - 1, lastLineNumber) - 1]
+        const expandedChildren = expandedLine.blocks
+        */
+
+        let createdLine: LineProxy
+
+        if (insertionLineNumber === 1) {
+            const { line, v0, v1 } = await this.prependLine(content) // TODO: could be optimized by getting previous line from file lines
+            createdLine = line
+        } else if (insertionLineNumber === newLastLine) {
+            const { line, v0, v1 } = await this.appendLine(content) // TODO: could be optimized by getting previous line from file lines
+            createdLine = line
+        } else {
+            const activeLines = await this.getActiveLines()
+
+            const previousLine = activeLines[insertionLineNumber - 2]
+            const currentLine  = activeLines[insertionLineNumber - 1]
+
+            const previousLineProxy = new LineProxy(previousLine.id, this.file)
+            const currentLineProxy  = new LineProxy(currentLine.id, this.file)
+
+            const { line, v0, v1 } = await this.insertLine(content, { previous: previousLineProxy, next: currentLineProxy, blockReference: BlockReference.Previous })
+            createdLine = line
+        }
+
+        /*
+        expandedChildren.forEach(child => {
+            const snapshotData = child.compressForParent()
+            const lineNumber   = createdLine.getLineNumber()
+            if (snapshotData._endLine < lineNumber) {
+                snapshotData._endLine = lineNumber
+                child.updateInParent(snapshotData)
+            }
+        })
+        */
+
+        return createdLine
+    }
+
     public async insertLineAt(lineNumber: number, content: string): Promise<LineProxy> {
         //this.resetVersionMerging()
 
@@ -581,7 +599,7 @@ export class BlockProxy extends FileDatabaseProxy {
         const lines = await this.getActiveLines()
 
         const line = new LineProxy(lines[lineNumber - 1].id, this.file)
-        await line.updateContent(content, this)
+        await line.updateContent(this, content)
 
         //this.setupVersionMerging(line)
 
@@ -621,39 +639,19 @@ export class BlockProxy extends FileDatabaseProxy {
             })
         }))
 
-        // latest tracked version for lines before or equal to timestamp
-        const trackedVersions = await prismaClient.$transaction(lines.map(line => {
-            return prismaClient.trackedVersion.findFirst({
-                where: {
-                    lineId:    line.id,
-                    timestamp: { lte: timestamp }
-                },
-                orderBy: { timestamp: "desc" },
-                include: { version: true }
-            })
-        }))
-
         // update head for each line with whatever has the latest timestamp, the latest version or the latest tracked version
         const selected = await Promise.all(lines.map(async (line, index) => {
-            const version  = versions[index]
-            const tracked  = trackedVersions[index]
+            let version = versions[index]
 
-            let selected: Version
-            if (version) {
-                if (tracked) {
-                    selected = version.timestamp >= tracked.timestamp ? version : tracked.version
-                } else {
-                    selected = version
-                }
-            } else {
+            if (!version) {
                 // this can only happen if a line is inserted after the timestamp, in this case we need the first version which is pre-insertion
-                selected = await prismaClient.version.findFirstOrThrow({
+                version = await prismaClient.version.findFirstOrThrow({
                     where:   { lineId: line.id },
                     orderBy: { timestamp: "asc" }
                 })
             }
 
-            return selected
+            return version
         }))
 
         const headsToRemove = heads.filter(head => selected.every(selectedVersion => selectedVersion.id !== head.id))
@@ -669,59 +667,157 @@ export class BlockProxy extends FileDatabaseProxy {
         })
 
         return selected
-        //this.flushTrackedHeads(selected)
     }
 
-    /*
-    private headsToBeTracked: Version[] = []
-    public trackHeads(heads: Version[]): void {
-        console.log("TRACK " + heads.length)
+    public async cloneOutdatedHeads(heads: Version[]): Promise<void> {
+        const headList = await this.getHeadList()
+        const lines    = heads.map(head => new LineProxy(head.lineId, this.file))
 
-        const updatesHeads = this.headsToBeTracked.map(currentHead => {
-            const newHeadIndex = heads.findIndex(newHead => newHead.lineId === currentHead.lineId)
-            if (newHeadIndex >= 0) {
-                const head = heads[newHeadIndex]
-                heads.splice(newHeadIndex, 1)
-                return head
-            } else {
-                return currentHead
+        const timestamp = TimestampProvider.getTimestamp()
+
+        await prismaClient.headList.update({
+            where: { id: headList.id },
+            data: {
+                versions: {
+                    create: heads.map(head => {
+                        return {
+                            lineId:        head.lineId,
+                            timestamp:     timestamp,
+                            type:          VersionType.CLONE,
+                            isActive:      head.isActive,
+                            originId:      head.id,
+                            sourceBlockId: this.id,
+                            content:       head.content
+                        }
+                    }),
+                    disconnect: heads.map(head => { return { id: head.id } })
+                }
             }
         })
-
-        // attach any heads for lines that were previously not changed
-        this.headsToBeTracked = updatesHeads.concat(heads)
     }
-    */
 
-    public async flushTrackedHeads(heads: Version[]): Promise<void> {
-        /*
-        console.log("FLUSH " + this.headsToBeTracked.length)
+    private async changeLines(change: MultiLineChange): Promise<VCSBlockId[]> {
+        const eol      = await this.file.getEol()
+        const heads    = await this.getHeadVersions()
+        const headList = await this.getHeadList()
 
-        const heads = this.headsToBeTracked
-        this.headsToBeTracked = []
-        */
+        const activeHeads = heads.filter(head => head.isActive)
 
-        const lines = heads.map(head => new LineProxy(head.lineId, this.file))
+        //block.resetVersionMerging()
 
-        const latestVersions  = await prismaClient.$transaction(lines.map(line => line.getLatestVersion()))
-        const latestTrackings = await prismaClient.$transaction(lines.map(line => line.getLatestTracking()))
+        const startsWithEol = change.insertedText[0] === eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === eol
 
-        const trackingCreations = []
+        const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
+        const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > activeHeads[change.modifiedRange.startLineNumber - 1].content.length
 
-        for (let i = 0; i < lines.length; i++) {
-            const [line, head, latestVersion, latestTracking] = [lines[i], heads[i], latestVersions[i], latestTrackings[i]]
+        const insertedAtEnd   = change.modifiedRange.endColumn > activeHeads[change.modifiedRange.endLineNumber - 1].content.length
 
-            if ((latestTracking && latestTracking.timestamp > head.timestamp && latestTracking.versionId !== head.id) || latestVersion.id !== head.id) {
-                trackingCreations.push(prismaClient.trackedVersion.create({
-                    data: {
-                        timestamp: TimestampProvider.getTimestamp(),
-                        lineId:    line.id,
-                        versionId: head.id
-                    }
-                }))
+        const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
+        const insertOnly          = oneLineModification && change.modifiedRange.startColumn === change.modifiedRange.endColumn
+
+        const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
+        const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
+
+        const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
+
+
+        const modifiedRange = {
+            startLine: change.modifiedRange.startLineNumber,
+            endLine:   change.modifiedRange.endLineNumber
+        }
+
+        let vcsLines: LineProxy[] = []
+        const modifiedLines = change.lineText.split(eol)
+
+        if (modifyStartLine) {
+            vcsLines = await this.getActiveLinesInRange(modifiedRange)
+        } else {
+            // TODO: pushStartDown case not handled well yet, line tracking is off
+            if (pushStartLineUp) { 
+                modifiedRange.startLine--
+                modifiedRange.endLine--
             }
         }
 
-        await prismaClient.$transaction(trackingCreations)
+        const block = this
+        const affectedLines:    LineProxy[]        = []
+        const prismaOperations: PrismaPromise<any>[] = []
+
+        function deleteLine(line: LineProxy): void {
+            const currentHead = heads.find(head => head.lineId === line.id)!
+
+            affectedLines.push(line)
+            prismaOperations.push(prismaClient.headList.update({
+                where: { id: headList.id },
+                data: {
+                    versions: {
+                        create: {
+                            lineId:        line.id,
+                            timestamp:     TimestampProvider.getTimestamp(),
+                            type:          VersionType.DELETION,
+                            isActive:      false,
+                            sourceBlockId: block.id,
+                            content:       ""
+                        },
+                        disconnect: { id: currentHead.id }
+                    }
+                }
+            }))
+        }
+
+        function updateLine(line: LineProxy, content: string): void {
+            const currentHead = heads.find(head => head.lineId === line.id)!
+
+            affectedLines.push(line)
+            prismaOperations.push(prismaClient.headList.update({
+                where: { id: headList.id },
+                data: {
+                    versions: {
+                        create: {
+                            lineId:        line.id,
+                            timestamp:     TimestampProvider.getTimestamp(),
+                            type:          VersionType.CHANGE,
+                            isActive:      true,
+                            sourceBlockId: block.id,
+                            content
+                        },
+                        disconnect: { id: currentHead.id }
+                    }
+                }
+            }))
+        }
+
+        async function insertLine(lineNumber: number, content: string): Promise<void> {
+            const line = await block.insertLineAt(lineNumber, content)
+            affectedLines.push(line)
+        }
+
+        for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
+        }
+
+        if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
+
+        for (let i = 1; i < Math.min(vcsLines.length, modifiedLines.length); i++) {
+            const line = vcsLines.at(i)
+            updateLine(line, modifiedLines[i])
+        }
+
+        await prismaClient.$transaction(prismaOperations)
+
+        for (let i = vcsLines.length; i < modifiedLines.length; i++) {
+            // TODO: merge all line insertions into a single operation for performance reasons!
+            await insertLine(modifiedRange.startLine + i, modifiedLines[i])
+        }
+
+        const affectedBlocks = new Set<string>()
+        for (const line of affectedLines) {
+            const blockIds = await line.getBlockIds()
+            blockIds.forEach(id => affectedBlocks.add(id))
+        }
+
+        return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
     }
 }

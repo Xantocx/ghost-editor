@@ -152,6 +152,18 @@ export class DBVCSServer extends BasicVCSServer {
         throw new Error("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
     }
 
+    /*
+    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+            const root  = session.getRootBlockFor(blockId)
+            const block = await session.getBlock(blockId)
+            const newHeads = await block.applyIndex(versionIndex)
+            await this.updatePreview(block)
+            return await root.getText()
+        })
+    }
+    */
+
     private headsToBeTracked: Version[] = []
     private trackHeads(heads: Version[]): void {
         const updatesHeads = this.headsToBeTracked.map(currentHead => {
@@ -181,7 +193,7 @@ export class DBVCSServer extends BasicVCSServer {
         }, async (session) => {
             console.log("Chain Broke: " + this.headsToBeTracked.length)
             const block = await session.getBlock(blockId)
-            await block.flushTrackedHeads(this.headsToBeTracked)
+            await block.cloneOutdatedHeads(this.headsToBeTracked)
             this.headsToBeTracked = []
         })
     }
@@ -263,7 +275,7 @@ export class DBVCSServer extends BasicVCSServer {
         }
 
         async function updateLine(line: LineProxy, newContent: string): Promise<void> {
-            await line.updateContent(newContent, block)
+            await line.updateContent(block, newContent)
             affectedLines.push(line)
         }
 

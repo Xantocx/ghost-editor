@@ -20,11 +20,6 @@ export class LineProxy extends FileDatabaseProxy {
         orderBy: { timestamp: "desc" }
     })
 
-    public readonly getLatestTracking = () => prismaClient.trackedVersion.findFirst({
-        where:   { lineId: this.id },
-        orderBy: { timestamp: "desc" }
-    })
-
     public async getBlockIds(): Promise<string[]> {
         const blocks = await this.getBlocks()
         return blocks.map(block => block.blockId)
@@ -50,41 +45,36 @@ export class LineProxy extends FileDatabaseProxy {
         await prismaClient.$transaction(updates)
     }
 
-    /*
-    public async updateHeadTrackingFor(block: BlockProxy): Promise<void> {
-        const [head, latestVersion, latestTracking] = await prismaClient.$transaction([
-            block.getHeadFor(this),
-            this.getLatestVersion(),
-            this.getLatestTracking()
+    private async createNewVersion(sourceBlock: BlockProxy, isActive: boolean, content: string): Promise<VersionProxy> {
+
+        const [headList, head, latestVersion] = await prismaClient.$transaction([
+            sourceBlock.getHeadList(),
+            sourceBlock.getHeadFor(this),
+            this.getLatestVersion()
         ])
 
-        if ((latestTracking && latestTracking.timestamp > head.timestamp) || latestVersion.id !== head.id) {
-            await prismaClient.trackedVersion.create({
-                data: {
-                    timestamp: TimestampProvider.getTimestamp(),
-                    lineId:    this.id,
-                    versionId: head.id
+        if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
+
+        const versionCreation: Prisma.PrismaPromise<Version>[] = []
+
+        if (latestVersion.id !== head.id) {
+            throw new Error("Should never happen!")
+            // clone of old head -> replaces head tracking concept
+            versionCreation.push(prismaClient.version.create({
+                data:  {
+                    lineId:        this.id,
+                    timestamp:     TimestampProvider.getTimestamp(),
+                    type:          VersionType.CLONE,
+                    isActive:      head.isActive,
+                    originId:      head.id,
+                    sourceBlockId: sourceBlock.id,
+                    content:       head.content
                 }
-            })
+            }))
         }
-    }
-    */
 
-    private async createNewVersion(isActive: boolean, content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
-       let version: Version
-
-        if (sourceBlock) {
-            const [headList, head, latestVersion] = await prismaClient.$transaction([
-                sourceBlock.getHeadList(),
-                sourceBlock.getHeadFor(this),
-                this.getLatestVersion()
-            ])
-
-            if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
-
-            //await sourceBlock.flushTrackedHeads()
-
-            const versionConfig: Prisma.VersionUncheckedCreateInput = {
+        versionCreation.push(prismaClient.version.create({
+            data: {
                 lineId:        this.id,
                 timestamp:     TimestampProvider.getTimestamp(),
                 type:          isActive ? VersionType.CHANGE : VersionType.DELETION,
@@ -92,39 +82,25 @@ export class LineProxy extends FileDatabaseProxy {
                 sourceBlockId: sourceBlock.id,
                 content
             }
+        }))
 
-            // TODO: experimental. expectation: should not revert to original timetravel state, but to timetravel state + 1 change
-            if (latestVersion.id !== head.id) {
-                versionConfig.originId = head.id
-            } 
+        const versions = await prismaClient.$transaction(versionCreation)
+        const newVersion = versions[versions.length - 1]
 
-            version = await prismaClient.version.create({ data: versionConfig })
-
-            await prismaClient.headList.update({
-                where: { id: headList.id },
-                data:  {
-                    versions: {
-                        connect:    { id: version.id },
-                        disconnect: { id: head.id }
-                    }
+        await prismaClient.headList.update({
+            where: { id: headList.id },
+            data:  {
+                versions: {
+                    connect:    { id: newVersion.id },
+                    disconnect: { id: head.id }
                 }
-            })
-        } else {
-            version = await prismaClient.version.create({
-                data: {
-                    lineId:    this.id,
-                    timestamp: TimestampProvider.getTimestamp(),
-                    type:      isActive ? VersionType.CHANGE : VersionType.DELETION,
-                    isActive:  isActive,
-                    content
-                }
-            })
-        }
+            }
+        })
 
-        return new VersionProxy(version.id)
+        return new VersionProxy(newVersion.id)
     }
 
-    public async updateContent(content: string, sourceBlock?: BlockProxy): Promise<VersionProxy> {
+    public async updateContent(sourceBlock: BlockProxy, content: string): Promise<VersionProxy> {
         let previousVersion: Version
         if (sourceBlock) { previousVersion = await sourceBlock.getHeadFor(this) }
         else             { previousVersion = await this.getLatestVersion() }
@@ -132,11 +108,11 @@ export class LineProxy extends FileDatabaseProxy {
         if (previousVersion.content.trimEnd() === content.trimEnd()) {
             return new VersionProxy(previousVersion.id)
         } else {
-            return await this.createNewVersion(true, content, sourceBlock)  
+            return await this.createNewVersion(sourceBlock, true, content)  
         }      
     }
 
-    public async delete(sourceBlock?: BlockProxy): Promise<VersionProxy> {
-        return await this.createNewVersion(false, "", sourceBlock)   
+    public async delete(sourceBlock: BlockProxy): Promise<VersionProxy> {
+        return await this.createNewVersion(sourceBlock, false, "")   
     }
 }

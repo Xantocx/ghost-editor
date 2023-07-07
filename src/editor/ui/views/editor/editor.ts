@@ -302,7 +302,7 @@ class GhostEditorInteractionManager extends SubscriptionManager {
         }
     }
 
-    public readEditorContent(event: MonacoChangeEvent):void {
+    public readEditorContent(event: MonacoChangeEvent): void {
         if (!this.disableVcsSync) {
             const changeSet = this.editor.createChangeSet(event)
             this.editor.applyChangeSet(changeSet)

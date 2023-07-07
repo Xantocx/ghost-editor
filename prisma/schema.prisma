@@ -63,8 +63,7 @@ model HeadList {
   ownerId Int?   @unique
   owner   Block? @relation("HeadListOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
-  blocks Block[] @relation("HeadListForBlocks")
-
+  blocks   Block[]   @relation("HeadListForBlocks")
   versions Version[] @relation("VersionsInHeadLists")
 }
 
@@ -82,10 +81,8 @@ model Line {
   order Float
   type  LineType
 
-  versions        Version[]        @relation("VersionsInLine")
-  trackedVersions TrackedVersion[] @relation("TrackedVersionsOfLine")
-
-  blocks Block[] @relation("LinesInBlocks")
+  versions Version[] @relation("VersionsInLine")
+  blocks   Block[]   @relation("LinesInBlocks")
 
   @@index([order(sort: Asc), fileId])
 }
@@ -94,6 +91,7 @@ enum VersionType {
   IMPORTED
   PRE_INSERTION
   INSERTION
+  CLONE
   CHANGE
   DELETION
 }
@@ -104,14 +102,10 @@ model Version {
   lineId Int
   line   Line @relation("VersionsInLine", fields: [lineId], references: [id], onDelete: Cascade)
 
-  type VersionType
-
-  timestamp Int              @unique
-  tracking  TrackedVersion[] @relation("TrackingOfVersion")
-
-  isActive Boolean
-
-  content String
+  type      VersionType
+  timestamp Int
+  isActive  Boolean
+  content   String
 
   originId Int?
   origin   Version?  @relation("ForksOfOrigin", fields: [originId], references: [id])
@@ -121,20 +115,6 @@ model Version {
   sourceBlock   Block? @relation("VersionsFromSourceBlock", fields: [sourceBlockId], references: [id])
 
   headLists HeadList[] @relation("VersionsInHeadLists")
-
-  @@index([timestamp(sort: Asc)])
-}
-
-model TrackedVersion {
-  id Int @id @default(autoincrement())
-
-  timestamp Int @unique
-
-  lineId Int
-  line   Line @relation("TrackedVersionsOfLine", fields: [lineId], references: [id], onDelete: Cascade)
-
-  versionId Int
-  version   Version @relation("TrackingOfVersion", fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([timestamp(sort: Asc)])
 }
