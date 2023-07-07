@@ -188,7 +188,7 @@ export class BlockProxy extends FileDatabaseProxy {
                     blocks: { some: { id: this.id } }
                 },
                 type:      { not: VersionType.CLONE },
-                timestamp: { gte: lastImportedLine.timestamp }
+                timestamp: lastImportedLine ? { gte: lastImportedLine.timestamp } : undefined
             },
             orderBy: {
                 timestamp: "asc"
@@ -375,8 +375,8 @@ export class BlockProxy extends FileDatabaseProxy {
         return BlockProxy.createFrom(block, this.file)
     }
 
-    private async insertLine(content: string, options?: { previous?: LineProxy, next?: LineProxy, blockReference?: BlockReference }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
-        const { line, v0, v1 } = await this.file.insertLine(content, { previous: options?.previous, next: options?.next, sourceBlock: this })
+    private async insertLines(lineContents: string[], options?: { previous?: LineProxy, next?: LineProxy, blockReference?: BlockReference }): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
+        const lines = await this.file.insertLines(lineContents, { previous: options?.previous, next: options?.next, sourceBlock: this })
 
         const blockReference = options?.blockReference
         if (blockReference !== undefined) {
@@ -386,39 +386,43 @@ export class BlockProxy extends FileDatabaseProxy {
             else if (blockReference === BlockReference.Next)     { blockReferenceLine = options?.next     ? options.next     : options.previous }
 
             if (blockReferenceLine) {
-                const blocks        = await blockReferenceLine.getBlocks()
-                const blockVersions = new Map(blocks.map(block => [BlockProxy.createFrom(block, this.file), block.id === this.id ? v1 : v0]))
-                await line.addBlocks(blockVersions)
+                const blocks = await blockReferenceLine.getBlocks()
+
+                for (const lineInfo of lines) {
+                    const { line, v0, v1 } = lineInfo
+                    const blockVersions = new Map(blocks.map(block => [BlockProxy.createFrom(block, this.file), block.id === this.id ? v1 : v0]))
+                    await line.addBlocks(blockVersions)
+                }
             }
         }
 
-        return { line, v0, v1 }
+        return lines
     }
 
     // TODO: TEST!!!
-    private async prependLine(content: string): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+    private async prependLines(lineContents: string[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  }, select: { id: true, order: true } })
         const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" }, select: { id: true              } })
         
-        return await this.insertLine(content, { previous:       previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
-                                                next:           nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined,
-                                                blockReference: BlockReference.Next })
+        return await this.insertLines(lineContents, { previous:       previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
+                                                     next:           nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined,
+                                                     blockReference: BlockReference.Next })
     }
 
     // TODO: TEST!!!
-    private async appendLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+    private async appendLines(lineContents: string[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" }, select: { id: true, order: true } })
         const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  }, select: { id: true              } })
         
-        return await this.insertLine(content, { previous:       previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
-                                                next:           nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined,
-                                                blockReference: BlockReference.Previous })
+        return await this.insertLines(lineContents, { previous:       previousLine ? new LineProxy(previousLine.id, this.file) : undefined,
+                                                     next:           nextLine     ? new LineProxy(nextLine.id, this.file)     : undefined,
+                                                     blockReference: BlockReference.Previous })
     }
 
-    public async insertLinesAt(lineNumber: number, contents: string[]): Promise<LineProxy> {
+    public async insertLinesAt(lineNumber: number, lineContents: string[]): Promise<LineProxy[]> {
         //this.resetVersionMerging()
 
-        const insertedLineCount   = contents.length
+        const insertedLineCount   = lineContents.length
         const lastLineNumber      = await this.getActiveLineCount()
         const newLastLine         = lastLineNumber + 1
         const insertionLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
@@ -428,14 +432,14 @@ export class BlockProxy extends FileDatabaseProxy {
         const expandedChildren = expandedLine.blocks
         */
 
-        let createdLine: LineProxy
+        let createdLines: LineProxy[]
 
         if (insertionLineNumber === 1) {
-            const { line, v0, v1 } = await this.prependLine(content) // TODO: could be optimized by getting previous line from file lines
-            createdLine = line
+            const lines = await this.prependLines(lineContents) // TODO: could be optimized by getting previous line from file lines
+            createdLines = lines.map(line => line.line)
         } else if (insertionLineNumber === newLastLine) {
-            const { line, v0, v1 } = await this.appendLine(content) // TODO: could be optimized by getting previous line from file lines
-            createdLine = line
+            const lines = await this.appendLines(lineContents) // TODO: could be optimized by getting previous line from file lines
+            createdLines = lines.map(line => line.line)
         } else {
             const activeLines = await this.getActiveLines()
 
@@ -445,8 +449,8 @@ export class BlockProxy extends FileDatabaseProxy {
             const previousLineProxy = new LineProxy(previousLine.id, this.file)
             const currentLineProxy  = new LineProxy(currentLine.id, this.file)
 
-            const { line, v0, v1 } = await this.insertLine(content, { previous: previousLineProxy, next: currentLineProxy, blockReference: BlockReference.Previous })
-            createdLine = line
+            const lines = await this.insertLines(lineContents, { previous: previousLineProxy, next: currentLineProxy, blockReference: BlockReference.Previous })
+            createdLines = lines.map(line => line.line)
         }
 
         /*
@@ -460,56 +464,12 @@ export class BlockProxy extends FileDatabaseProxy {
         })
         */
 
-        return createdLine
+        return createdLines
     }
 
     public async insertLineAt(lineNumber: number, content: string): Promise<LineProxy> {
-        //this.resetVersionMerging()
-
-        // const activeLines = await this.getActiveLines()
-
-        const lastLineNumber     = await this.getActiveLineCount()
-        const newLastLine        = lastLineNumber + 1
-        const adjustedLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
-
-        /*
-        const expandedLine     = activeLines[Math.min(adjustedLineNumber - 1, lastLineNumber) - 1]
-        const expandedChildren = expandedLine.blocks
-        */
-
-        let createdLine: LineProxy
-
-        if (adjustedLineNumber === 1) {
-            const { line, v0, v1 } = await this.prependLine(content) // TODO: could be optimized by getting previous line from file lines
-            createdLine = line
-        } else if (adjustedLineNumber === newLastLine) {
-            const { line, v0, v1 } = await this.appendLine(content) // TODO: could be optimized by getting previous line from file lines
-            createdLine = line
-        } else {
-            const activeLines = await this.getActiveLines()
-
-            const previousLine = activeLines[adjustedLineNumber - 2]
-            const currentLine  = activeLines[adjustedLineNumber - 1]
-
-            const previousLineProxy = new LineProxy(previousLine.id, this.file)
-            const currentLineProxy  = new LineProxy(currentLine.id, this.file)
-
-            const { line, v0, v1 } = await this.insertLine(content, { previous: previousLineProxy, next: currentLineProxy, blockReference: BlockReference.Previous })
-            createdLine = line
-        }
-
-        /*
-        expandedChildren.forEach(child => {
-            const snapshotData = child.compressForParent()
-            const lineNumber   = createdLine.getLineNumber()
-            if (snapshotData._endLine < lineNumber) {
-                snapshotData._endLine = lineNumber
-                child.updateInParent(snapshotData)
-            }
-        })
-        */
-
-        return createdLine
+        const lines = await this.insertLinesAt(lineNumber, [content])
+        return lines[0]
     }
 
     public async createChild(range: VCSBlockRange): Promise<BlockProxy | null> {
@@ -696,7 +656,7 @@ export class BlockProxy extends FileDatabaseProxy {
         })
     }
 
-    private async changeLines(change: MultiLineChange): Promise<VCSBlockId[]> {
+    public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const eol      = await this.file.getEol()
         const heads    = await this.getHeadVersions()
         const headList = await this.getHeadList()
@@ -807,10 +767,15 @@ export class BlockProxy extends FileDatabaseProxy {
 
         await prismaClient.$transaction(prismaOperations)
 
+        /*
         for (let i = vcsLines.length; i < modifiedLines.length; i++) {
             // TODO: merge all line insertions into a single operation for performance reasons!
             await insertLine(modifiedRange.startLine + i, modifiedLines[i])
         }
+        */
+
+        const linesToInsert = modifiedLines.filter((_, index) => index + 1 > vcsLines.length)
+        await this.insertLinesAt(modifiedRange.startLine + vcsLines.length, linesToInsert)
 
         const affectedBlocks = new Set<string>()
         for (const line of affectedLines) {
@@ -818,6 +783,6 @@ export class BlockProxy extends FileDatabaseProxy {
             blockIds.forEach(id => affectedBlocks.add(id))
         }
 
-        return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
+        return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(fileId, id))
     }
 }

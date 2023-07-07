@@ -226,6 +226,11 @@ export class DBVCSServer extends BasicVCSServer {
 
     private async changeLines(session: Session, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
+        const result = await block.changeLines(blockId, change)
+        this.updatePreview(block)
+        return result
+
+        /*
         const eol   = await block.file.getEol()
 
         const versions = await block.getActiveHeadVersions()
@@ -289,13 +294,13 @@ export class DBVCSServer extends BasicVCSServer {
             await deleteLine(line)
         }
 
-        /*
+        //
         // inverse deletion order
-        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
-            const line = vcsLines.at(i)
-            deleteLine(line)
-        }
-        */
+        //for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+        //    const line = vcsLines.at(i)
+        //    deleteLine(line)
+        //}
+        //
 
         if (modifyStartLine) { await updateLine(vcsLines.at(0), modifiedLines[0]) }
 
@@ -318,5 +323,6 @@ export class DBVCSServer extends BasicVCSServer {
         }
 
         return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
+        */
     }
 }

@@ -50,25 +50,38 @@ export class FileProxy extends DatabaseProxy {
         return { file: { filePath, file: fileProxy }, rootBlock: { blockId, block } }
     }
 
-    private async normalizeLineOrder(insertPosition?: LineProxy): Promise<number | null> {
+    private async normalizeLineOrder(insertOptions?: { insertPosition: LineProxy, insertCount?: number }): Promise<number[] | null> {
         const lines = await prismaClient.line.findMany({
             where:   { fileId: this.id },
             orderBy: { order: "asc" },
             select:  { id: true }
         })
 
+        const insertPosition = insertOptions?.insertPosition
+        const insertCount    = insertOptions?.insertCount ? insertOptions.insertCount : 1
+
         let insertionIndex: number | null = null
         const updates = lines.map((line, index) => {
             if (insertPosition !== undefined && line.id === insertPosition.id) { insertionIndex = index }
             return prismaClient.line.update({
                 where: { id: line.id },
-                data:  { order: insertionIndex ? index + 2 : index + 1 },
+                data:  { order: insertionIndex ? index + insertCount + 1 : index + 1 },
             });
         });
 
         await prismaClient.$transaction(updates)
 
-        return insertionIndex ? insertionIndex + 1 : null
+        if (insertionIndex) {
+            const orderNumbers = []
+
+            for (let i = 0; i < insertCount; i++) {
+                orderNumbers.push(insertionIndex + i)
+            }
+
+            return orderNumbers
+        } else {
+            return null
+        }
     }
 
     public readonly getFile = () => prismaClient.file.findUniqueOrThrow({ where: { id: this.id } })
@@ -78,63 +91,78 @@ export class FileProxy extends DatabaseProxy {
         return file.eol
     }
 
-    public async insertLine(content: string, relations?: { previous?: LineProxy, next?: LineProxy, sourceBlock?: BlockProxy }): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+    public async insertLines(lineContents: string[], relations?: { previous?: LineProxy, next?: LineProxy, sourceBlock?: BlockProxy }): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
+        const lineCount = lineContents.length
+        
         const previous = relations?.previous
         const next     = relations?.next
 
-        let order: number
+        let orderNumbers: number[]
         if (previous && next) {
             const lines        = await prismaClient.line.findMany({ where: { id: { in: [previous.id, next.id] } }, select: { id: true, order: true } })
             const previousLine = lines.find(line => line.id === previous.id)!
             const nextLine     = lines.find(line => line.id === next.id)!
-            order = (previousLine.order + nextLine.order) / 2
-            if (order === previousLine.order || order === nextLine.order) { order = (await this.normalizeLineOrder(next))! }
+
+            const orderSpace = nextLine.order - previousLine.order
+            if (orderSpace < 0.0000000001) {
+                orderNumbers = await this.normalizeLineOrder({ insertPosition: next, insertCount: lineCount })
+            } else {
+                orderNumbers = lineContents.map((_, index) => previousLine.order + (orderSpace * (index + 1) / (lineCount + 1)))
+            }
         } else if (previous) { 
             const previousLine = await prismaClient.line.findUniqueOrThrow({ where: { id: previous.id }, select: { order: true } })
-            order = previousLine.order + 1
+            orderNumbers = lineContents.map((_, index) => previousLine.order + index + 1)
         } else if (next) {
             const nextLine = await prismaClient.line.findUniqueOrThrow({ where: { id: next.id }, select: { order: true } })
-            order = nextLine.order / 2
-            if (order === nextLine.order) { order = (await this.normalizeLineOrder(next))! }
+
+            if (nextLine.order < 0.0000000001) {
+                orderNumbers = await this.normalizeLineOrder({ insertPosition: next, insertCount: lineCount })
+            } else {
+                orderNumbers = lineContents.map((_, index) => nextLine.order * ((index + 1) / (lineCount + 1)))
+            }
         } else {
-            order = 1
+            orderNumbers = lineContents.map((_, index) => index + 1)
         }
 
-        const versionData: Prisma.Enumerable<Prisma.VersionCreateManyLineInput> = [
-            { timestamp: TimestampProvider.getTimestamp(), type: VersionType.PRE_INSERTION, isActive: false, content: "" },
-            { timestamp: TimestampProvider.getTimestamp(), type: VersionType.INSERTION,     isActive: true,  content     }
-        ]
-
-        if (relations?.sourceBlock) { versionData.forEach(version => version.sourceBlockId = relations.sourceBlock!.id) }
-
-        const line = await prismaClient.line.create({
-            data: {
-                fileId: this.id,
-                order:  order,
-                type:   LineType.INSERTED,
-                versions: {
-                    createMany: {
-                        data: versionData
-                    }
-                }
-            },
-            include: {
-                versions: {
-                    orderBy: { timestamp: "asc" }
-                }
-            }
+        const versionData: Prisma.VersionCreateManyLineInput[][] = lineContents.map(content => {
+            return [
+                { timestamp: TimestampProvider.getTimestamp(), type: VersionType.PRE_INSERTION, isActive: false, content: "" },
+                { timestamp: TimestampProvider.getTimestamp(), type: VersionType.INSERTION,     isActive: true,  content     }
+            ]
         })
 
-        return { line: new LineProxy(line.id, this), v0: new VersionProxy(line.versions[0].id), v1: new VersionProxy(line.versions[1].id) }
+        if (relations?.sourceBlock) { versionData.forEach(versions => versions.forEach(version => version.sourceBlockId = relations.sourceBlock!.id)) }
+
+        const lines = await prismaClient.$transaction(versionData.map((versions, index) => {
+            return prismaClient.line.create({
+                data: {
+                    fileId: this.id,
+                    order:  orderNumbers[index],
+                    type:   LineType.INSERTED,
+                    versions: {
+                        createMany: {
+                            data: versions
+                        }
+                    }
+                },
+                include: {
+                    versions: {
+                        orderBy: { timestamp: "asc" }
+                    }
+                }
+            })
+        }))
+
+        return lines.map(line => { return { line: new LineProxy(line.id, this), v0: new VersionProxy(line.versions[0].id), v1: new VersionProxy(line.versions[1].id) }})
     }
 
-    public async prependLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+    public async prependLines(lineContents: string[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         const firstLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "asc" }, select: { id: true } })
-        return await this.insertLine(content, { next: firstLine ? new LineProxy(firstLine.id, this) : undefined })
+        return await this.insertLines(lineContents, { next: firstLine ? new LineProxy(firstLine.id, this) : undefined })
     }
 
-    public async appendLine(content: string): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }> {
+    public async appendLine(lineContents: string[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         const lastLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" }, select: { id: true } })
-        return await this.insertLine(content, { previous: lastLine ? new LineProxy(lastLine.id, this) : undefined })
+        return await this.insertLines(lineContents, { previous: lastLine ? new LineProxy(lastLine.id, this) : undefined })
     }
 }
