@@ -1,10 +1,9 @@
-import { Prisma, BlockType, Block, VersionType, Version, Line, PrismaPromise } from "@prisma/client"
+import { BlockType, Block, VersionType, Version, Line, PrismaPromise } from "@prisma/client"
 import { DatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client"
 import { FileProxy, LineProxy, VersionProxy } from "../../types"
 import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInfo, VCSUnwrappedText } from "../../../../../app/components/vcs/vcs-rework"
 import { TimestampProvider } from "../../../core/metadata/timestamps"
-import { throttle } from "../../../../../editor/utils/helpers"
 import { MultiLineChange } from "../../../../../app/components/data/change"
 import { ProxyCache } from "../proxy-cache"
 
@@ -677,7 +676,7 @@ export class BlockProxy extends DatabaseProxy {
 
     public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const eol   = await this.file.getEol()
-        const heads = await this.getHeadVersions()
+        const heads = await this.getHeadsWithLines()
 
         const activeHeads = heads.filter(head => head.isActive)
 
@@ -709,7 +708,8 @@ export class BlockProxy extends DatabaseProxy {
         const modifiedLines = change.lineText.split(eol)
 
         if (modifyStartLine) {
-            vcsLines = await this.getActiveLinesInRange(modifiedRange)
+            const activeLines = await Promise.all(activeHeads.map(async head => await LineProxy.getFor(head.line)))
+            vcsLines = activeLines.filter((_, index) => modifiedRange.startLine <= index + 1 && index + 1 <= modifiedRange.endLine)
         } else {
             // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
@@ -765,12 +765,7 @@ export class BlockProxy extends DatabaseProxy {
                 }
             }))
         }
-
-        async function insertLine(lineNumber: number, content: string): Promise<void> {
-            const line = await block.insertLineAt(lineNumber, content)
-            affectedLines.push(line)
-        }
-
+        
         for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
             const line = vcsLines.at(i)
             deleteLine(line)
@@ -784,13 +779,6 @@ export class BlockProxy extends DatabaseProxy {
         }
 
         await prismaClient.$transaction(prismaOperations)
-
-        /*
-        for (let i = vcsLines.length; i < modifiedLines.length; i++) {
-            // TODO: merge all line insertions into a single operation for performance reasons!
-            await insertLine(modifiedRange.startLine + i, modifiedLines[i])
-        }
-        */
 
         const linesToInsert = modifiedLines.filter((_, index) => index + 1 > vcsLines.length)
         await this.insertLinesAt(modifiedRange.startLine + vcsLines.length, linesToInsert)

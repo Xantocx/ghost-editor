@@ -41,15 +41,15 @@ export class LineProxy extends DatabaseProxy {
 
     public readonly getBlocks = () => prismaClient.block.findMany({ where: { lines: { some: { id: this.id } } } })
 
-    public readonly getLatestVersion = () => prismaClient.version.findFirstOrThrow({
-        where:   { lineId: this.id },
-        orderBy: { timestamp: "desc" }
-    })
-
     public async getBlockIds(): Promise<string[]> {
         const blocks = await this.getBlocks()
         return blocks.map(block => block.blockId)
     }
+
+    public readonly getLatestVersion = () => prismaClient.version.findFirstOrThrow({
+        where:   { lineId: this.id },
+        orderBy: { timestamp: "desc" }
+    })
 
     public async addBlocks(blockVersions: Map<BlockProxy, VersionProxy>): Promise<void> {
         const blocks = Array.from(blockVersions.keys())
