@@ -113,11 +113,11 @@ export class Session {
     }
 
     public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
-        return this.queries.executeQuery(request, queryType, query)
+        return this.queries.createQuery(request, queryType, query)
     }
 
     public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
-        return this.queries.executeQueryChain(chainId, request, queryType, query, onChainInterrupt)
+        return this.queries.createQueryChain(chainId, request, queryType, query, onChainInterrupt)
     }
 
     public async delete(blockId: VCSBlockId) {
@@ -139,6 +139,7 @@ export class Session {
 }
 
 export enum QueryType {
+    Silent,    // Queries that do not affect the database
     ReadOnly,
     ReadWrite
 }
@@ -233,11 +234,12 @@ class QueryManager {
         })
 
         if (this.ready.length > 0) {
-            if (this.ready[0].type === QueryType.ReadWrite) {
+            const firstType = this.ready[0].type 
+            if (firstType === QueryType.ReadWrite) {
                 this.ready[0].execute()
                 this.ready.splice(0, 1)
             } else {
-                while(this.ready.length > 0 && this.ready[0].type === QueryType.ReadOnly) {
+                while(this.ready.length > 0 && this.ready[0].type !== QueryType.ReadWrite) {
                     this.ready[0].execute()
                     this.ready.splice(0, 1)
                 }
@@ -267,13 +269,13 @@ class QueryManager {
         }
     }
 
-    public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         if (queryType === QueryType.ReadWrite) { await this.breakQueryChain() }
         return this.createNewQuery(request, queryType, query)
     }
 
     // WARNING: Right now, query chains are only interrupted by new chains of unchained readwrite queries, assuming that we can always read inbetween a chain!!!
-    public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
         if (this.currentQueryChain !== chainId) {
             console.log("Start Chain: " + chainId)
             await this.breakQueryChain()
@@ -333,7 +335,7 @@ export class ResourceManager {
         return session.executeQuery(request, queryType, query)
     }
 
-    public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
         let session: Session
 
         try {

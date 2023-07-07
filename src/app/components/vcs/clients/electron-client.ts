@@ -17,6 +17,10 @@ export const ElectronVCSClient: VCSClient = {
         return await invoke(ElectronVCSServer.closeSessionChannel, request)
     },
 
+    waitForCurrentRequests: async function (request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return await invoke(ElectronVCSServer.waitForCurrentRequestsChannel, request)
+    },
+
     loadFile: async function (request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
         return await invoke(ElectronVCSServer.loadFileChannel, request)
     },

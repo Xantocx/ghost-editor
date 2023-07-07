@@ -62,6 +62,10 @@ export class DBVCSServer extends BasicVCSServer {
         })
     }
 
+    public async waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return await this.resources.createQuery(request, QueryType.Silent, async () => {})
+    }
+
     public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
         return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { options }) => {
             return await session.loadFile(options)
@@ -183,7 +187,7 @@ export class DBVCSServer extends BasicVCSServer {
 
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
-        return await this.resources.executeQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+        return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
             const newHeads = await block.applyIndex(versionIndex)

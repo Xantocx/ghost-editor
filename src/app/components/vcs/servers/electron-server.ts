@@ -6,6 +6,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     public static readonly createSessionChannel           = "vcs-create-session"
     public static readonly closeSessionChannel            = "vcs-close-session"
+    public static readonly waitForCurrentRequestsChannel  = "vcs-wait-for-current-requests"
 
     public static readonly loadFileChannel                = "vcs-load-file"
     public static readonly unloadFileChannel              = "vcs-unload-file"
@@ -44,6 +45,10 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
         const closeSessionSubscription = ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, request: VCSSessionRequest<void>) => {
             return await this.closeSession(request)
+        })
+
+        const waitForCurrentRequestsSubscription = ipcMain.handle(ElectronVCSServer.waitForCurrentRequestsChannel, async (event, request: VCSSessionRequest<void>) => {
+            return await this.waitForCurrentRequests(request)
         })
 
         const loadFileSubscription = ipcMain.handle(ElectronVCSServer.loadFileChannel, async (event, request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>) => {

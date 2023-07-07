@@ -49,7 +49,6 @@ export class GhostSnapshotHeader extends InlineEditorBanner {
         const addButton = Button.addButton(addButtonDiv, async () => { 
             const version = await this.editor.getSession().saveChildBlockVersion(this.snapshot.vcsId)
             this.versionList.addVersion(new VCSVersion(this.snapshot, version))
-            //this.snapshot.updateVersions(this.versionList.versions)
         })
     }
 
@@ -59,7 +58,6 @@ export class GhostSnapshotHeader extends InlineEditorBanner {
         versionDiv.style.overflow = "hidden"
         versionDiv.style.height = "100%"
         container.appendChild(versionDiv)
-
 
         const list   = new SideScrollVersionList(versionDiv, elements)
         const height = this.computedHeaderHeight - 20

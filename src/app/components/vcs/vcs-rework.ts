@@ -163,6 +163,7 @@ export interface VCSProvider {
     // creating and closing a session
     createSession(request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>>
     closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>>
+    waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>>
 
     // operation on session: loading and unloading a file, making it available for operations
     loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>>  // always returns ID to root block so that editing is immediately possible
@@ -201,6 +202,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
     // creating and closing a session
     public abstract createSession(request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>>
     public abstract closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>>
+    public abstract waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>>
 
     // operation on session: loading and unloading a file, making it available for operations
     public abstract loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>>  // always returns ID to root block so that editing is immediately possible
@@ -322,6 +324,11 @@ export class VCSUnwrappedClient {
         return await this.unwrapResponse(this.client.closeSession(request))
     }
 
+    public async waitForCurrentRequests(sessionId: VCSSessionId): Promise<void> {
+        const request = this.createSessionRequest(sessionId, null)
+        return await this.unwrapResponse(this.client.waitForCurrentRequests(request))
+    }
+
     public async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         const request = this.createSessionRequest(sessionId, { options })
         return await this.unwrapResponse(this.client.loadFile(request))
@@ -433,6 +440,10 @@ export class VCSSession {
         return VCSBlockSession.createFileSession(this, blockInfo)
     }
 
+    public async waitForCurrentRequests(): Promise<void> {
+        await this.client.waitForCurrentRequests(this.session)
+    }
+
     // WARNING: This will also close all active block sessions belonging to this session! Any further operation on them will fail!
     public async close(): Promise<void> {
         await this.client.closeSession(this.session)
@@ -460,6 +471,10 @@ export class VCSBlockSession {
 
     public createChildIdFrom(blockId: string): VCSBlockId {
         return VCSBlockId.createFrom(this.block, blockId)
+    }
+
+    public async waitForCurrentRequests(): Promise<void> {
+        await this.session.waitForCurrentRequests()
     }
 
     public async getText(): Promise<string> {
@@ -576,6 +591,10 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSServ
 
     public async closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
         return await this.adapter.closeSession(request)
+    }
+
+    public async waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return await this.adapter.waitForCurrentRequests(request)
     }
 
     public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
