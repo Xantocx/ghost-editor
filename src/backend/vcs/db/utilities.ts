@@ -1,24 +1,73 @@
-import { BlockProxy, FileProxy, TagProxy } from "../db/types"
+import { BlockProxy, FileProxy, LineProxy, TagProxy, VersionProxy } from "../db/types"
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { VCSBlockData, VCSBlockId, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
+import { VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSUnwrappedText, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
+import { MultiLineChange } from "../../../app/components/data/change"
 
-export class Session {
+export interface ISessionFile {}
+
+export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>> {
+    blockId: string
+    file:    SessionFile
+    type:    BlockType
+
+    asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo>
+    getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]>
+
+    getText(): Promise<string>
+    getUnwrappedText(): Promise<VCSUnwrappedText>
+
+    updateLine(lineNumber: number, change: string): Promise<SessionLine>
+    updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
+
+    applyIndex(index: number): Promise<SessionVersion[]>
+    applyTimestamp(timestamp: number): Promise<SessionVersion[]>
+    cloneOutdatedHeads(heads: SessionVersion[]): Promise<void>
+
+    copy(): Promise<this>
+    createChild(range: VCSBlockRange): Promise<this>
+}
+
+export interface ISessionLine {
+    getBlockIds(): Promise<string[]>
+}
+
+export interface ISessionVersion<SessionLine extends ISessionLine> {
+    line: SessionLine
+}
+
+export interface ISessionTag {
+    timestamp: number
+}
+
+export type NewFileInfo<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>> = { file: { filePath: string; file: SessionFile }; rootBlock: { blockId: string; block: SessionBlock } }
+
+export abstract class Session<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag> {
 
     public readonly id = randomUUID()
-    public readonly resources: ResourceManager
-    public readonly queries:   QueryManager   // TODO: Move query manager to ResourceManager? How to handle the inaccessibility of request data otherwise... -> slower: every operation handled by the same queue
+    public readonly resources: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>>
+    public readonly queries:   QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, this>   // TODO: Move query manager to ResourceManager? How to handle the inaccessibility of request data otherwise... -> slower: every operation handled by the same queue
 
-    private readonly files  = new Map<string, BlockProxy>() // this may be called files, but refers to the root block for each file - due to the implementation, this name makes most sense though
-    private readonly blocks = new Map<string, BlockProxy>() // a cache for previously loaded blocks to speed up performance
-    private readonly tags   = new Map<string, TagProxy>()
+    private readonly files  = new Map<string, SessionBlock>() // this may be called files, but refers to the root block for each file - due to the implementation, this name makes most sense though
+    private readonly blocks = new Map<string, SessionBlock>() // a cache for previously loaded blocks to speed up performance
+    private readonly tags   = new Map<string, SessionTag>()
 
-    public constructor(resourceManager: ResourceManager) {
+    public constructor(resourceManager: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>>) {
         this.resources = resourceManager
         this.queries   = new QueryManager(this)
     }
+
+    protected abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock>>
+    protected abstract getRootSessionBlockFor(filePath: string):                                       Promise<SessionBlock | undefined>
+    protected abstract getSessionBlockFrom(block: Block):                                              Promise<SessionBlock>
+    protected abstract getSessionBlockFor(blockId: string):                                            Promise<SessionBlock>
+    protected abstract getSessionTagFrom(tag: Tag):                                                    Promise<SessionTag>
+    protected abstract getSessionTagFor(tagId: string):                                                Promise<SessionTag>
+    protected abstract deleteSessionBlock(block: SessionBlock):                                        Promise<void>
+
+    public abstract getFileData(fileId: VCSFileId): Promise<VCSFileData>
 
     public async loadFile(options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         const sessionId = this.asId()
@@ -31,33 +80,138 @@ export class Session {
                 return await this.files.get(filePath)!.asBlockInfo(fileId)
             } else {
                 const sessions = this.resources.getSessions()
-                if (sessions.some(session => session !== this && session.files.has(filePath))) {
+                if (sessions.some((session: Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>) => session.id !== this.id && session.files.has(filePath))) {
                     throw new Error(`Cannot load file ${filePath}! Currently in use by another session.`)
                 }
 
-                const rootBlock = await prismaClient.block.findFirst({
-                    where: {
-                        file: { filePath },
-                        type: BlockType.ROOT
-                    },
-                })
+                const rootBlock = await this.getRootSessionBlockFor(filePath)
 
                 if (rootBlock) {
-                    const block = await BlockProxy.getFor(rootBlock)
-                    this.files.set(filePath, block)
-                    this.blocks.set(rootBlock.blockId, block)
-                    return await block.asBlockInfo(fileId)
+                    this.files.set(filePath, rootBlock)
+                    this.blocks.set(rootBlock.blockId, rootBlock)
+                    return await rootBlock.asBlockInfo(fileId)
                 }
             }
         }
         
         // in every other case:
-        const { file, rootBlock } = await FileProxy.create(options.filePath, options.eol, options.content)
+        const { file, rootBlock } = await this.createSessionFile(options.filePath, options.eol, options.content)
         this.files.set(file.filePath, rootBlock.block)
         this.blocks.set(rootBlock.blockId, rootBlock.block)
 
         const fileId = VCSFileId.createFrom(sessionId, file.filePath)
         return await rootBlock.block.asBlockInfo(fileId)
+    }
+
+    public unloadFile(fileId: VCSFileId): void {
+        this.files.delete(fileId.filePath)
+    }
+
+    public getFile(fileId: VCSFileId): SessionFile {
+        const filePath = fileId.filePath
+        if (this.files.has(filePath)) {
+            return this.files.get(filePath)!.file
+        } else {
+            throw new Error("File appears to not have been loaded!")
+        }
+    }
+
+    public async getBlock(blockId: VCSBlockId): Promise<SessionBlock> {
+        const id = blockId.blockId
+        if (this.blocks.has(id)) {
+            return this.blocks.get(id)!
+        } else {
+            const block = await this.getSessionBlockFor(id)
+            this.blocks.set(id, block)
+            return block
+        }
+    }
+
+    public async getTag(tagId: VCSTagId): Promise<SessionTag> {
+        const id = tagId.tagId
+        if (this.tags.has(id)) {
+            return this.tags.get(id)!
+        } else {
+            const tag = await this.getSessionTagFor(id)
+            this.tags.set(id, tag)
+            return tag
+        }
+    }
+
+    public getRootBlockFor(fileId: VCSFileId): SessionBlock {
+        const filePath = fileId.filePath
+        if (this.files.has(filePath)) {
+            return this.files.get(filePath)!
+        } else {
+            throw new Error(`Cannot return root block for unloaded file ${filePath}!`)
+        }
+    }
+
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: this, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        return this.queries.createQuery(request, queryType, query)
+    }
+
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: this, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: this) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+        return this.queries.createQueryChain(chainId, request, queryType, query, onChainInterrupt)
+    }
+
+    public async delete(blockId: VCSBlockId): Promise<void> {
+        const block = await this.getBlock(blockId)
+        if (block.type === BlockType.ROOT) {
+            this.unloadFile(blockId)
+        } else {
+            await this.deleteSessionBlock(block)
+        }
+    }
+
+    public asId(): VCSSessionId {
+        return new VCSSessionId(this.id)
+    }
+
+    public close(): void {
+        this.resources.closeSession(this.asId())
+    }
+}
+
+export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy> {
+
+    protected async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, VersionProxy, BlockProxy>> {
+        return await FileProxy.create(filePath, eol, content)
+    }
+
+    protected async getRootSessionBlockFor(filePath: string): Promise<BlockProxy> {
+        const rootBlock = await prismaClient.block.findFirst({
+            where: {
+                file: { filePath },
+                type: BlockType.ROOT
+            },
+        })
+
+        return rootBlock ? await this.getSessionBlockFrom(rootBlock) : undefined
+    }
+
+    protected async getSessionBlockFrom(block: Block): Promise<BlockProxy> {
+        return await BlockProxy.getFor(block)
+    }
+
+    protected async getSessionBlockFor(blockId: string): Promise<BlockProxy> {
+        const block = await prismaClient.block.findFirst({ where: { blockId } })
+        if (!block) { throw new Error(`Cannot find block for provided block id "${blockId}"`) }
+        return await this.getSessionBlockFrom(block)
+    }
+
+    protected async getSessionTagFrom(tag: Tag): Promise<TagProxy> {
+        return await TagProxy.getFor(tag)
+    }
+
+    protected async getSessionTagFor(tagId: string): Promise<TagProxy> {
+        const tag = await prismaClient.tag.findFirst({ where: { tagId } })
+        if (!tag) { throw new Error(`Cannot find tag for provided tag id "${tagId}"`) }
+        return await this.getSessionTagFrom(tag)
+    }
+
+    protected async deleteSessionBlock(block: BlockProxy): Promise<void> {
+        await prismaClient.block.delete({ where: { id: block.id }})
     }
 
     public async getFileData(fileId: VCSFileId): Promise<VCSFileData> {
@@ -155,83 +309,6 @@ export class Session {
         // return complete file data
         return fileData
     }
-
-    public unloadFile(fileId: VCSFileId): void {
-        this.files.delete(fileId.filePath)
-    }
-
-    public getFile(fileId: VCSFileId): FileProxy {
-        const filePath = fileId.filePath
-        if (this.files.has(filePath)) {
-            return this.files.get(filePath)!.file
-        } else {
-            throw new Error("File appears to not have been loaded!")
-        }
-    }
-
-    public async getBlock(blockId: VCSBlockId): Promise<BlockProxy> {
-        const id = blockId.blockId
-        if (this.blocks.has(id)) {
-            return this.blocks.get(id)!
-        } else {
-            const block = await prismaClient.block.findFirst({ where: { blockId: id } })
-            if (!block) { throw new Error(`Cannot find block for provided block id "${id}"`) }
-
-            const blockProxy = await BlockProxy.getFor(block)
-            this.blocks.set(id, blockProxy)
-
-            return blockProxy
-        }
-    }
-
-    public async getTag(tagId: VCSTagId): Promise<TagProxy> {
-        const id = tagId.tagId
-        if (this.tags.has(id)) {
-            return this.tags.get(id)!
-        } else {
-            const tag = await prismaClient.tag.findFirst({ where: { tagId: id } })
-            if (!tag) { throw new Error(`Cannot find tag for provided tag id "${id}"`) }
-
-            const tagProxy = await TagProxy.getFor(tag)
-            this.tags.set(id, tagProxy)
-
-            return tagProxy
-        }
-    }
-
-    public getRootBlockFor(fileId: VCSFileId): BlockProxy {
-        const filePath = fileId.filePath
-        if (this.files.has(filePath)) {
-            return this.files.get(filePath)!
-        } else {
-            throw new Error(`Cannot return root block for unloaded file ${filePath}!`)
-        }
-    }
-
-    public async executeQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
-        return this.queries.createQuery(request, queryType, query)
-    }
-
-    public async executeQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
-        return this.queries.createQueryChain(chainId, request, queryType, query, onChainInterrupt)
-    }
-
-    public async delete(blockId: VCSBlockId) {
-        const block = await this.getBlock(blockId)
-        if (block.type === BlockType.ROOT) {
-            this.unloadFile(blockId)
-        } else {
-            await prismaClient.block.delete({ where: { id: block.id }})
-        }
-    }
-
-    public asId(): VCSSessionId {
-        return new VCSSessionId(this.id)
-    }
-
-    public close(): void {
-        this.resources.closeSession(this.asId())
-    }
 }
 
 export enum QueryType {
@@ -240,23 +317,23 @@ export enum QueryType {
     ReadWrite
 }
 
-class Query<QueryData, QueryResult> {
+class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> {
 
     public readonly request:   VCSSessionRequest<QueryData>
     public readonly type:      QueryType
 
-    private readonly manager: QueryManager
-    private readonly query:   (session: Session, data: QueryData) => Promise<QueryResult>
+    private readonly manager: Manager
+    private readonly query:   (session: QuerySession, data: QueryData) => Promise<QueryResult>
 
     private readonly promise: Promise<VCSResponse<QueryResult>>
     private          resolve: (value: VCSResponse<QueryResult> | PromiseLike<VCSResponse<QueryResult>>) => void
     private          reject:  (reason?: any) => void
 
-    public get session():   Session   { return this.manager.session }
-    public get requestId(): string    { return this.request.requestId }
-    public get data():      QueryData { return this.request.data }
+    public get session():   QuerySession { return this.manager.session }
+    public get requestId(): string       { return this.request.requestId }
+    public get data():      QueryData    { return this.request.data }
 
-    public constructor(manager: QueryManager, request: VCSSessionRequest<QueryData>, type: QueryType, query: (session: Session, data: QueryData) => Promise<QueryResult>) {
+    public constructor(manager: Manager, request: VCSSessionRequest<QueryData>, type: QueryType, query: (session: QuerySession, data: QueryData) => Promise<QueryResult>) {
         this.manager = manager
         this.request = request
         this.type    = type
@@ -290,31 +367,32 @@ class Query<QueryData, QueryResult> {
     }
 }
 
-type AnyQuery = Query<any, any>
+type AnyQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>>        = Query<any, any, SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager>
+type AnyWaitingQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> = { requiredRequestId: string, query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager> }
 
-class QueryManager {
+class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
 
-    public readonly session: Session
+    public readonly session: QuerySession
 
-    private readonly waiting           = new Map<string, { requiredRequestId: string, query: AnyQuery }>
-    private readonly ready: AnyQuery[] = []
-    private readonly running           = new Map<string, AnyQuery>
+    private readonly waiting                                                                                                   = new Map<string, AnyWaitingQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>>()
+    private readonly ready: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>[] = []
+    private readonly running                                                                                                   = new Map<string, AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>>()
 
     private readonly finishedRequestIds: string[] = []
 
     private currentQueryChain?:     string                              = undefined
-    private breakingChainCallback?: (session: Session) => Promise<void> = undefined
+    private breakingChainCallback?: (session: QuerySession) => Promise<void> = undefined
 
-    public constructor(session: Session) {
+    public constructor(session: QuerySession) {
         this.session = session
     }
 
-    private setWaiting(query: AnyQuery, requiredRequestId?: string): void {
+    private setWaiting(query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>, requiredRequestId?: string): void {
         if (requiredRequestId) { this.waiting.set(query.requestId, { requiredRequestId, query }) }
         else                   { this.setReady(query) }
     }
 
-    private setReady(query: AnyQuery): void {
+    private setReady(query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>): void {
         this.waiting.delete(query.requestId)
         this.ready.push(query)
     }
@@ -343,7 +421,7 @@ class QueryManager {
         }
     }
 
-    public createNewQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public createNewQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         const newQuery = new Query(this, request, queryType, query)
 
         this.setWaiting(newQuery, request.previousRequestId)
@@ -352,7 +430,7 @@ class QueryManager {
         return newQuery.getPromise()
     }
 
-    private startQueryChain(chainId: string, onChainInterrupt: (session: Session) => Promise<void>): void {
+    private startQueryChain(chainId: string, onChainInterrupt: (session: QuerySession) => Promise<void>): void {
         this.currentQueryChain     = chainId
         this.breakingChainCallback = onChainInterrupt
     }
@@ -365,13 +443,13 @@ class QueryManager {
         }
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         if (queryType === QueryType.ReadWrite) { await this.breakQueryChain() }
         return this.createNewQuery(request, queryType, query)
     }
 
     // WARNING: Right now, query chains are only interrupted by new chains of unchained readwrite queries, assuming that we can always read inbetween a chain!!!
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
         if (this.currentQueryChain !== chainId) {
             console.log("Start Chain: " + chainId)
             await this.breakQueryChain()
@@ -381,26 +459,31 @@ class QueryManager {
         return this.createNewQuery(request, queryType, query)
     }
 
-    public queryRunning(query: AnyQuery): void {
+    public queryRunning(query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>): void {
         this.waiting.delete(query.requestId)
         const index = this.ready.indexOf(query, 0)
         if (index >= 0) { this.ready.splice(index, 1) }
         this.running.set(query.requestId, query)
     }
 
-    public queryFinished(query: AnyQuery): void {
+    public queryFinished(query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, this>): void {
         this.running.delete(query.requestId)
         this.finishedRequestIds.push(query.requestId)
         this.tryQueries()
     }
 }
 
-export class ResourceManager {
+export class ResourceManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
 
-    private readonly sessions = new Map<string, Session>()
+    private readonly sessionConstructor: new (manager: this) => QuerySession
+    private readonly sessions = new Map<string, QuerySession>()
+
+    public constructor(sessionConstructor: new (manager: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>) => QuerySession) {
+        this.sessionConstructor = sessionConstructor
+    }
 
     public createSession(): VCSSessionId {
-        const session = new Session(this)
+        const session = new this.sessionConstructor(this)
         this.sessions.set(session.id, session)
         return session.asId()
     }
@@ -412,12 +495,12 @@ export class ResourceManager {
     }
 
 
-    public getSessions(): Session[] {
+    public getSessions(): QuerySession[] {
         return Array.from(this.sessions.values())
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
-        let session: Session
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        let session: QuerySession
 
         try {
             session = this.getSession(request.sessionId)
@@ -428,11 +511,11 @@ export class ResourceManager {
             return { requestId: request.requestId, error: message }
         }
 
-        return session.executeQuery(request, queryType, query)
+        return session.createQuery(request, queryType, query)
     }
 
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: Session, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: Session) => Promise<void>): Promise<VCSResponse<QueryResult>> {
-        let session: Session
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+        let session: QuerySession
 
         try {
             session = this.getSession(request.sessionId)
@@ -443,10 +526,10 @@ export class ResourceManager {
             return { requestId: request.requestId, error: message }
         }
 
-        return session.executeQueryChain(chainId, request, queryType, query, onChainInterrupt)
+        return session.createQueryChain(chainId, request, queryType, query, onChainInterrupt)
     }
 
-    private getSession(sessionId: VCSSessionId): Session {
+    private getSession(sessionId: VCSSessionId): QuerySession {
         const id = sessionId.sessionId
         if (this.sessions.has(id)) {
             return this.sessions.get(id)!

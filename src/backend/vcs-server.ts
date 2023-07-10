@@ -1,52 +1,46 @@
 import { BrowserWindow } from "electron"
 
-import { VCSSuccess, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
+import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
 import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
-import { QueryType, ResourceManager, Session } from "./vcs/db/utilities"
-
-import { BlockProxy, FileProxy, LineProxy, TagProxy } from "./vcs/db/types"
+import { QueryType, ResourceManager, ISessionFile, ISessionBlock, ISessionTag, Session, ISessionLine, ISessionVersion, DBSession } from "./vcs/db/utilities"
 import { prismaClient } from "./vcs/db/client"
-import { Version } from "@prisma/client"
+import { FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy } from "./vcs/db/types"
 
-export class VCSServer extends BasicVCSServer {
+/*
+USAGE:
+    - DB: const server = new VCSServer<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy, DBSession>(DBSession)
+*/
 
-    // helper for preview update
-    private browserWindow: BrowserWindow | undefined
+export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> extends BasicVCSServer {
 
-    private resources = new ResourceManager()
+    private readonly resources: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>
 
-    public constructor(browserWindow?: BrowserWindow) {
+    public constructor(sessionConstructor: new (manager: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>) => QuerySession, browserWindow?: BrowserWindow) {
         super()
+        this.resources     = new ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>(sessionConstructor)
         this.browserWindow = browserWindow
     }
 
-    private async updatePreview(block: BlockProxy): Promise<void> {
-        if (this.browserWindow) {
-            const lines = await prismaClient.line.findMany({
-                where: {
-                    fileId:   block.file.id,
-                    blocks:   { some: { id: block.id } },
-                    versions: {
-                        some: {
-                            headLists: { some: { blocks: { some: { id: block.id } } } },
-                            isActive:  true
-                        }
-                    }
-                },
-                orderBy: {
-                    order: "asc"
-                },
-                include: {
-                    versions: true
-                }
-            })
+    // helper for preview update
+    protected readonly browserWindow: BrowserWindow | undefined
+    protected abstract updatePreview(block: SessionBlock): Promise<void>
 
-            const versionCounts = lines.map(line => line.versions.length)
-            const text          = await block.getText()
-            
-            this.browserWindow!.webContents.send("update-vcs-preview", block.id, text, versionCounts)
-        }
+    private async changeLine(session: QuerySession, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
+        const block = await session.getBlock(blockId)
+        const line  = await block.updateLine(change.lineNumber, change.lineText)
+        
+        await this.updatePreview(block)
+
+        const ids = await line.getBlockIds()
+        return ids.map(id => VCSBlockId.createFrom(blockId, id))
+    }
+
+    private async changeLines(session: QuerySession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
+        const block = await session.getBlock(blockId)
+        const result = await block.updateLines(blockId, change)
+        this.updatePreview(block)
+        return result
     }
 
 
@@ -174,22 +168,8 @@ export class VCSServer extends BasicVCSServer {
     }
     */
 
-    private headsToBeTracked: Version[] = []
-    private trackHeads(heads: Version[]): void {
-        const updatesHeads = this.headsToBeTracked.map(currentHead => {
-            const newHeadIndex = heads.findIndex(newHead => newHead.lineId === currentHead.lineId)
-            if (newHeadIndex >= 0) {
-                const head = heads[newHeadIndex]
-                heads.splice(newHeadIndex, 1)
-                return head
-            } else {
-                return currentHead
-            }
-        })
-
-        // attach any heads for lines that were previously not changed
-        this.headsToBeTracked = updatesHeads.concat(heads)
-    }
+    protected headsToBeTracked: SessionVersion[] = []
+    protected abstract trackHeads(heads: SessionVersion[]): void
 
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
@@ -221,118 +201,55 @@ export class VCSServer extends BasicVCSServer {
             return await block.asBlockInfo(blockId)
         })
     }
+}
 
+export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy, DBSession> {
 
-
-    private async changeLine(session: Session, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
-        const block = await session.getBlock(blockId)
-        const line  = await block.updateLine(change.lineNumber, change.lineText)
-        
-        await this.updatePreview(block)
-
-        const ids = await line.getBlockIds()
-        return ids.map(id => VCSBlockId.createFrom(blockId, id))
+    public constructor(browserWindow?: BrowserWindow) {
+        super(DBSession, browserWindow)
     }
 
-    private async changeLines(session: Session, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
-        const block = await session.getBlock(blockId)
-        const result = await block.changeLines(blockId, change)
-        this.updatePreview(block)
-        return result
+    protected async updatePreview(block: BlockProxy): Promise<void> {
+        if (this.browserWindow) {
+            const lines = await prismaClient.line.findMany({
+                where: {
+                    fileId:   block.file.id,
+                    blocks:   { some: { id: block.id } },
+                    versions: {
+                        some: {
+                            headLists: { some: { blocks: { some: { id: block.id } } } },
+                            isActive:  true
+                        }
+                    }
+                },
+                orderBy: {
+                    order: "asc"
+                },
+                include: {
+                    versions: true
+                }
+            })
 
-        /*
-        const eol   = await block.file.getEol()
-
-        const versions = await block.getActiveHeadVersions()
-
-        //block.resetVersionMerging()
-
-        const startsWithEol = change.insertedText[0] === eol
-        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === eol
-
-        const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > versions[change.modifiedRange.startLineNumber - 1].content.length
-
-        const insertedAtEnd   = change.modifiedRange.endColumn > versions[change.modifiedRange.endLineNumber - 1].content.length
-
-        const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
-        const insertOnly          = oneLineModification && change.modifiedRange.startColumn === change.modifiedRange.endColumn
-
-        const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
-        const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
-
-        const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
-
-
-        const modifiedRange = {
-            startLine: change.modifiedRange.startLineNumber,
-            endLine:   change.modifiedRange.endLineNumber
+            const versionCounts = lines.map(line => line.versions.length)
+            const text          = await block.getText()
+            
+            this.browserWindow!.webContents.send("update-vcs-preview", block.id, text, versionCounts)
         }
+    }
 
-        let vcsLines: LineProxy[] = []
-        const modifiedLines = change.lineText.split(eol)
-
-        if (modifyStartLine) {
-            vcsLines = await block.getActiveLinesInRange(modifiedRange)
-        } else {
-            // TODO: pushStartDown case not handled well yet, line tracking is off
-            if (pushStartLineUp) { 
-                modifiedRange.startLine--
-                modifiedRange.endLine--
-            }
-        }
-
-        let affectedLines: LineProxy[] = []
-
-        async function deleteLine(line: LineProxy): Promise<void> {
-            await line.delete(block)
-            affectedLines.push(line)
-        }
-
-        async function updateLine(line: LineProxy, newContent: string): Promise<void> {
-            await line.updateContent(block, newContent)
-            affectedLines.push(line)
-        }
-
-        async function insertLine(lineNumber: number, content: string): Promise<void> {
-            const line = await block.insertLineAt(lineNumber, content)
-            affectedLines.push(line)
-        }
-
-        for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
-            const line = vcsLines.at(i)
-            await deleteLine(line)
-        }
-
-        //
-        // inverse deletion order
-        //for (let i = modifiedLines.length; i < vcsLines.length; i++) {
-        //    const line = vcsLines.at(i)
-        //    deleteLine(line)
-        //}
-        //
-
-        if (modifyStartLine) { await updateLine(vcsLines.at(0), modifiedLines[0]) }
-
-        for (let i = 1; i < modifiedLines.length; i++) {
-            if (i < vcsLines.length) {
-                const line = vcsLines.at(i)
-                await updateLine(line, modifiedLines[i])
+    protected trackHeads(heads: VersionProxy[]): void {
+        const updatesHeads = this.headsToBeTracked.map(currentHead => {
+            const newHeadIndex = heads.findIndex(newHead => newHead.line.id === currentHead.line.id)
+            if (newHeadIndex >= 0) {
+                const head = heads[newHeadIndex]
+                heads.splice(newHeadIndex, 1)
+                return head
             } else {
-                // TODO: merge all line insertions into a single operation for performance reasons!
-                await insertLine(modifiedRange.startLine + i, modifiedLines[i])
+                return currentHead
             }
-        }
+        })
 
-        await this.updatePreview(block)
-
-        const affectedBlocks = new Set<string>()
-        for (const line of affectedLines) {
-            const blockIds = await line.getBlockIds()
-            blockIds.forEach(id => affectedBlocks.add(id))
-        }
-
-        return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
-        */
+        // attach any heads for lines that were previously not changed
+        this.headsToBeTracked = updatesHeads.concat(heads)
     }
 }

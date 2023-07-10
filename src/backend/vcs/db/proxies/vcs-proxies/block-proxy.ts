@@ -589,7 +589,7 @@ export class BlockProxy extends DatabaseProxy {
         return line
     }
 
-    public async applyIndex(targetIndex: number): Promise<Version[]> {
+    public async applyIndex(targetIndex: number): Promise<VersionProxy[]> {
         //this.resetVersionMerging()
 
         const timeline = await this.getTimeline()
@@ -601,7 +601,7 @@ export class BlockProxy extends DatabaseProxy {
         return await this.applyTimestamp(selectedVersion.timestamp)
     }
 
-    public async applyTimestamp(timestamp: number): Promise<Version[]> {
+    public async applyTimestamp(timestamp: number): Promise<VersionProxy[]> {
         const heads = await this.getHeadsWithLines()
         const lines = heads.map(head => head.line)
         
@@ -645,12 +645,10 @@ export class BlockProxy extends DatabaseProxy {
             }
         })
 
-        return selected
+        return await Promise.all(selected.map(async version => await VersionProxy.getFor(version)))
     }
 
-    public async cloneOutdatedHeads(heads: Version[]): Promise<void> {
-        const lines = await Promise.all(heads.map(async head => await LineProxy.get(head.lineId, this.file.id)))
-
+    public async cloneOutdatedHeads(heads: VersionProxy[]): Promise<void> {
         const timestamp = TimestampProvider.getTimestamp()
 
         await prismaClient.headList.update({
@@ -659,7 +657,7 @@ export class BlockProxy extends DatabaseProxy {
                 versions: {
                     create: heads.map(head => {
                         return {
-                            lineId:        head.lineId,
+                            lineId:        head.line.id,
                             timestamp:     timestamp,
                             type:          VersionType.CLONE,
                             isActive:      head.isActive,
@@ -674,7 +672,7 @@ export class BlockProxy extends DatabaseProxy {
         })
     }
 
-    public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    public async updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const eol   = await this.file.getEol()
         const heads = await this.getHeadsWithLines()
 

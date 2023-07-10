@@ -5,8 +5,9 @@ import { Line } from "./line"
 import { LineNodeVersion } from "./version"
 import { Timestamp } from "./metadata/timestamps"
 import { VCSTag } from "../../../app/components/vcs/vcs-provider-old"
+import { ISessionTag } from "../db/utilities"
 
-export class Tag implements Resource {
+export class Tag implements Resource, ISessionTag {
 
     public readonly id:    TagId
     public readonly block: Block

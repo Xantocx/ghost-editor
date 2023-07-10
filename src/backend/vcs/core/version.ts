@@ -3,6 +3,7 @@ import { Timestamp } from "./metadata/timestamps"
 import { Block } from "./block"
 import { LineNode, Line } from "./line"
 import { LineHistory, LineNodeHistory } from "./history"
+import { ISessionVersion } from "../db/utilities"
 
 export type LineContent = string
 
@@ -20,9 +21,10 @@ interface LineNodeVersionRelations {
     next?:     LineNodeVersion | undefined
 }
 
-export class LineNodeVersion extends LinkedListNode<LineNodeVersion> {
+export class LineNodeVersion extends LinkedListNode<LineNodeVersion> implements ISessionVersion<LineNode> {
 
     public readonly node: LineNode
+    public get line(): LineNode { return this.node } // magic VCS interface
 
     public readonly timestamp: Timestamp
     public readonly isActive:  boolean

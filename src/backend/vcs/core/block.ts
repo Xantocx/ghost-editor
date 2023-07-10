@@ -9,6 +9,8 @@ import { InsertionState, LineContent, LineNodeVersion } from "./version"
 import { Tag } from "./tag"
 import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
+import { ISessionBlock } from "../db/utilities"
+import { File } from "./session"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -22,7 +24,7 @@ interface LineRange {
     endLine: number
 }
 
-export abstract class Block extends LinkedList<Line> implements Resource {
+export abstract class Block extends LinkedList<Line> implements Resource, ISessionBlock<File, LineNode, LineNodeVersion> {
 
     public     manager:    ResourceManager
     public     id:         BlockId

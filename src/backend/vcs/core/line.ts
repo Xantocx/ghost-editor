@@ -4,6 +4,7 @@ import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { LineContent, LineNodeVersion } from "./version"
 import { LineNodeHistory, LineHistory } from "./history"
 import { LinePosition, LineNumber, Block, InlineBlock, ForkBlock } from "./block"
+import { ISessionLine } from "../db/utilities"
 
 export enum LineType { 
     Original,
@@ -18,7 +19,7 @@ interface LineNodeRelations {
 
 // TODO: FIND WAY TO ALLOW FOR INDIVIDUAL TIMETRAVEL + EDITS WITH WORKING FUNCTIONALITY
 // This most likely requires merging the headTracking property somehow across all Lines of a LineNode, or reapplying old changes if they do not match the head anymore
-export class LineNode extends LinkedListNode<LineNode> {
+export class LineNode extends LinkedListNode<LineNode> implements ISessionLine {
 
     public          originBlock: Block
     public readonly lineType:    LineType
@@ -69,8 +70,11 @@ export class LineNode extends LinkedListNode<LineNode> {
     public getLine(block: Block):    Line | undefined        { return this.lines.get(block) }
     public getHistory(block: Block): LineHistory | undefined { return this.getLine(block)?.history }
 
-    public getBlocks():   Block[]   { return Array.from(this.lines.keys()) }
-    public getBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
+    public getBlocks():   Block[]           { return Array.from(this.lines.keys()) }
+    public getAffectedBlockIds(): BlockId[] { return this.getBlocks().map(block => block.id) }
+
+    // magic for VCS interface
+    public async getBlockIds(): Promise<string[]> { return this.getAffectedBlockIds() }
 
     public getVersions(): LineNodeVersion[] { return this.versions.getVersions() }
 
@@ -175,7 +179,7 @@ export class Line extends LinkedListNode<Line>  {
 
     public getPosition():         LinePosition { return this.node.getPosition() }
     public getVersionCount():     number       { return this.history.getVersionCount() }
-    public getAffectedBlockIds(): BlockId[]    { return this.node.getBlockIds() }
+    public getAffectedBlockIds(): BlockId[]    { return this.node.getAffectedBlockIds() }
 
     public getPreviousActiveLine(): Line | undefined { return this.findPreviousIn(this.block, line => line.isActive) }
     public getNextActiveLine():     Line | undefined { return this.findNextIn    (this.block, line => line.isActive) }

@@ -3,9 +3,9 @@ import { BrowserWindow } from "electron"
 import { VCSSuccess, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
 import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
-import { QueryType, ResourceManager, Session } from "./vcs/db/utilities"
+import { QueryType, ResourceManager, DBSession } from "./vcs/db/utilities"
 
-import { BlockProxy, FileProxy, LineProxy, TagProxy } from "./vcs/db/types"
+import { BlockProxy, FileProxy, LineProxy, TagProxy, VersionProxy } from "./vcs/db/types"
 import { prismaClient } from "./vcs/db/client"
 import { Version } from "@prisma/client"
 
@@ -14,7 +14,7 @@ export class DBVCSServer extends BasicVCSServer {
     // helper for preview update
     private browserWindow: BrowserWindow | undefined
 
-    private resources = new ResourceManager()
+    private resources = new ResourceManager<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy, DBSession>(DBSession)
 
     public constructor(browserWindow?: BrowserWindow) {
         super()
@@ -174,10 +174,10 @@ export class DBVCSServer extends BasicVCSServer {
     }
     */
 
-    private headsToBeTracked: Version[] = []
-    private trackHeads(heads: Version[]): void {
+    private headsToBeTracked: VersionProxy[] = []
+    private trackHeads(heads: VersionProxy[]): void {
         const updatesHeads = this.headsToBeTracked.map(currentHead => {
-            const newHeadIndex = heads.findIndex(newHead => newHead.lineId === currentHead.lineId)
+            const newHeadIndex = heads.findIndex(newHead => newHead.line.id === currentHead.line.id)
             if (newHeadIndex >= 0) {
                 const head = heads[newHeadIndex]
                 heads.splice(newHeadIndex, 1)
@@ -224,7 +224,7 @@ export class DBVCSServer extends BasicVCSServer {
 
 
 
-    private async changeLine(session: Session, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
+    private async changeLine(session: DBSession, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
         const line  = await block.updateLine(change.lineNumber, change.lineText)
         
@@ -234,9 +234,9 @@ export class DBVCSServer extends BasicVCSServer {
         return ids.map(id => VCSBlockId.createFrom(blockId, id))
     }
 
-    private async changeLines(session: Session, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    private async changeLines(session: DBSession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
-        const result = await block.changeLines(blockId, change)
+        const result = await block.updateLines(blockId, change)
         this.updatePreview(block)
         return result
 
