@@ -2,7 +2,7 @@ import { BlockProxy, FileProxy, TagProxy } from "../db/types"
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { VCSBlockId, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagId } from "../../../app/components/vcs/vcs-rework"
+import { VCSBlockData, VCSBlockId, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 
 export class Session {
@@ -58,6 +58,102 @@ export class Session {
 
         const fileId = VCSFileId.createFrom(sessionId, file.filePath)
         return await rootBlock.block.asBlockInfo(fileId)
+    }
+
+    public async getFileData(fileId: VCSFileId): Promise<VCSFileData> {
+        const fileProxy = this.getFile(fileId)
+        const file      = await prismaClient.file.findUniqueOrThrow({
+            where:   { id: fileProxy.id },
+            include: {
+                lines: {
+                    include: {
+                        versions: {
+                            orderBy: {
+                                timestamp: "asc"
+                            }
+                        }
+                    },
+                    orderBy: {
+                        order: "asc"
+                    }
+                },
+                blocks: {
+                    include: {
+                        lines: {
+                            select: {
+                                id: true
+                            },
+                            orderBy: {
+                                order: "asc"
+                            }
+                        },
+                        headList: {
+                            include: {
+                                versions: {
+                                    select:{
+                                        id: true,
+                                        lineId: true
+                                    },
+                                    orderBy: {
+                                        timestamp: "asc"
+                                    }
+                                }
+                            }
+                        },
+                        tags: {
+                            orderBy: {
+                                timestamp: "asc"
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        const fileData = new VCSFileData(fileId, file.eol, file.id)
+
+        // map lines, add to file
+        const lineData = new Map(file.lines.map((line, index) => [line.id, new VCSLineData(fileData, line.type, index, line.id)]))
+        fileData.lines = Array.from(lineData.values())
+
+        // map blocks, add to file -> lacks heads, parent, origin, tags
+        const blockData = new Map(file.blocks.map(block => [block.id, new VCSBlockData(block.blockId, fileData, block.type, block.id)]))
+        fileData.blocks = Array.from(blockData.values())
+
+        // map versions, add to line -> lacks origin
+        const versions = file.lines.flatMap(line => {
+            const lineInfo    = lineData.get(line.id)
+            lineInfo.versions = line.versions.map(version => {
+                const sourceBlock = version.sourceBlockId ? blockData.get(version.sourceBlockId)! : undefined
+                return new VCSVersionData(lineInfo, version.type, version.timestamp, version.isActive, version.content, sourceBlock, undefined, version.id)
+            })
+            return lineInfo.versions
+        })
+        const versionData = new Map(versions.map(version => [version.databaseId, version]))
+
+        // complete versions with origin
+        file.lines.forEach(line => line.versions.forEach(version => {
+            if (version.originId) { versionData.get(version.id)!.origin = versionData.get(version.originId)! }
+        }))
+
+        // complete blocks with heads, origin, parent, and tags
+        file.blocks.forEach(block => {
+            const blockInfo = blockData.get(block.id)!
+
+            blockInfo.heads = new Map(block.lines.map(line => {
+                const lineInfo = lineData.get(line.id)!
+                const version  = block.headList.versions.find(version => version.lineId === line.id)!
+                return [lineInfo, versionData.get(version.id)!]
+            }))
+
+            if (block.parentId) { blockInfo.parent = blockData.get(block.parentId)! }
+            if (block.originId) { blockInfo.origin = blockData.get(block.originId)! }
+
+            blockInfo.tags = block.tags.map(tag => new VCSTagData(tag.tagId, blockInfo, tag.name, tag.timestamp, tag.code, tag.id))
+        })
+
+        // return complete file data
+        return fileData
     }
 
     public unloadFile(fileId: VCSFileId): void {

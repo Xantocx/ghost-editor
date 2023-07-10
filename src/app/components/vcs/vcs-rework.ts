@@ -3,11 +3,27 @@ import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } fr
 
 // avoid prisma import -> types from this class are used in definition of ELectron Preload file, which cannot include an import to prisma for security reasons
 let BlockType: {
-    ROOT: 'ROOT',
+    ROOT:   'ROOT',
     INLINE: 'INLINE',
-    CLONE: 'CLONE'
+    CLONE:  'CLONE'
 };
-type BlockType = (typeof BlockType)[keyof typeof BlockType]
+export type BlockType = (typeof BlockType)[keyof typeof BlockType]
+
+let LineType: {
+    ORIGINAL: 'ORIGINAL',
+    INSERTED: 'INSERTED'
+}; 
+export type LineType = (typeof LineType)[keyof typeof LineType]
+
+let VersionType: {
+    IMPORTED:      'IMPORTED',
+    PRE_INSERTION: 'PRE_INSERTION',
+    INSERTION:     'INSERTION',
+    CLONE:         'CLONE',
+    CHANGE:        'CHANGE',
+    DELETION:      'DELETION'
+};
+export type VersionType = (typeof VersionType)[keyof typeof VersionType]
 
 export class VCSSessionId {
 
@@ -111,6 +127,111 @@ export class VCSTagInfo extends VCSTagId {
         this.name                = name
         this.text                = text
         this.automaticSuggestion = automaticSuggestion
+    }
+}
+
+export interface VCSDatabaseData {
+    databaseId?: number
+}
+
+export class VCSFileData extends VCSFileId implements VCSDatabaseData {
+
+    public readonly databaseId?: number
+
+    public readonly eol:    string
+
+    public lines:  VCSLineData[]  = []
+    public blocks: VCSBlockData[] = []
+
+    public constructor(fileId: VCSFileId, eol: string, databaseId?: number) {
+        super(fileId.sessionId, fileId.filePath)
+        this.databaseId = databaseId
+        this.eol        = eol
+    }
+}
+
+export class VCSBlockData extends VCSBlockId implements VCSDatabaseData {
+
+    public readonly databaseId?: number
+
+    public readonly file:  VCSFileData
+    public readonly type:  BlockType
+
+    public heads:   Map<VCSLineData, VCSVersionData>
+    public parent?: VCSBlockData
+    public origin?: VCSBlockData
+
+    public tags: VCSTagData[] = []
+
+    public constructor(blockId: string, file: VCSFileData, type: BlockType, databaseId?: number) {
+        super(file.sessionId, file.filePath, blockId)
+        this.databaseId = databaseId
+        this.file       = file
+        this.type       = type
+    }
+}
+
+export class VCSLineData extends VCSFileId implements VCSDatabaseData {
+
+    public readonly databaseId?: number
+
+    public readonly file:     VCSFileData
+    public readonly type:     LineType
+    public readonly position: number
+
+    public versions: VCSVersionData[] = []
+
+    public constructor(file: VCSFileData, type: LineType, position: number, databaseId?: number) {
+        super(file.sessionId, file.filePath)
+        this.databaseId = databaseId
+        this.type       = type
+        this.file       = file
+        this.position   = position
+    }
+}
+
+export class VCSVersionData extends VCSFileId implements VCSDatabaseData {
+
+    public readonly databaseId?: number
+
+    public readonly line:      VCSLineData
+    public readonly type:      VersionType
+    public readonly timestamp: number
+    public readonly isActive:  boolean
+    public readonly content:   string
+
+    public sourceBlock?: VCSBlockData
+    public origin?:      VCSVersionData
+
+    public constructor(line: VCSLineData, type: VersionType, timestamp: number, isActive: boolean, content: string, sourceBlock: VCSBlockData | undefined, origin: VCSVersionData | undefined, databaseId?: number) {
+        super(line.sessionId, line.filePath)
+        this.databaseId  = databaseId
+        this.line        = line
+        this.type        = type
+        this.isActive    = isActive
+        this.timestamp   = timestamp
+        this.content     = content
+        this.sourceBlock = sourceBlock
+        this.origin      = origin
+    }
+}
+
+export class VCSTagData extends VCSTagId implements VCSDatabaseData {
+
+    public readonly databaseId?: number
+
+    public readonly block:     VCSBlockData
+    public readonly name:      string
+    public readonly timestamp: number
+    public readonly code:      string
+
+    public constructor(tagId: string, block: VCSBlockData, name: string, timestamp: number, code: string, databaseId?: number) {
+        super(block.sessionId, block.filePath, block.blockId, tagId)
+        this.databaseId = databaseId
+        this.block      = block
+        this.name       = name
+        this.timestamp  = timestamp
+        this.code       = code
     }
 }
 

@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron"
 
-import { VCSSuccess, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest } from "../app/components/vcs/vcs-rework"
+import { VCSSuccess, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
 import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { QueryType, ResourceManager, Session } from "./vcs/db/utilities"
@@ -69,6 +69,12 @@ export class DBVCSServer extends BasicVCSServer {
     public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
         return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { options }) => {
             return await session.loadFile(options)
+        })
+    }
+
+    public async getFileData(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<VCSFileData>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { fileId }) => {
+            return await session.getFileData(fileId)
         })
     }
 

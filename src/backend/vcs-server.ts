@@ -1,16 +1,15 @@
 import { BrowserWindow } from "electron"
 
-import { IRange } from "../app/components/utils/range"
-import { BasicVCSServer, SessionData, SessionId, SessionOptions, SnapshotUUID, VCSSnapshotData, VCSTag } from "../app/components/vcs/vcs-provider-old"
-import { LineChange, MultiLineChange } from "../app/components/data/change"
+import { VCSSuccess, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
+import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
-import { ResourceManager } from "./vcs/utils/resource-manager"
-import { SessionInfo, Session } from "./vcs/utils/session"
-import { Block } from "./vcs/core/block"
-import { Line } from "./vcs/core/line"
-import { BlockProxy } from "./vcs/db/types"
+import { QueryType, ResourceManager, Session } from "./vcs/db/utilities"
 
-export class GhostVCSServer extends BasicVCSServer {
+import { BlockProxy, FileProxy, LineProxy, TagProxy } from "./vcs/db/types"
+import { prismaClient } from "./vcs/db/client"
+import { Version } from "@prisma/client"
+
+export class VCSServer extends BasicVCSServer {
 
     // helper for preview update
     private browserWindow: BrowserWindow | undefined
@@ -22,132 +21,242 @@ export class GhostVCSServer extends BasicVCSServer {
         this.browserWindow = browserWindow
     }
 
-    private getSession(sessionId: SessionId): Session {
-        if (this.resources.hasSession(sessionId)) { return this.resources.getSession(sessionId)! }
-        else                                      { throw new Error("This session ID is unknown!") }
-    }
+    private async updatePreview(block: BlockProxy): Promise<void> {
+        if (this.browserWindow) {
+            const lines = await prismaClient.line.findMany({
+                where: {
+                    fileId:   block.file.id,
+                    blocks:   { some: { id: block.id } },
+                    versions: {
+                        some: {
+                            headLists: { some: { blocks: { some: { id: block.id } } } },
+                            isActive:  true
+                        }
+                    }
+                },
+                orderBy: {
+                    order: "asc"
+                },
+                include: {
+                    versions: true
+                }
+            })
 
-    private getBlock(sessionId: SessionId): Block { return this.getSession(sessionId).block }
-
-    private updatePreview(block: Block) {
-        const versionCounts = block.getActiveLines().map(line => { return line.getVersionCount() })
-        this.browserWindow?.webContents.send("update-vcs-preview", block.id, block.getCurrentText(), versionCounts)
-    }
-
-    public async startSession(options?: SessionOptions): Promise<SessionInfo> {
-        const filePath   = options?.filePath
-        const filePathId = this.resources.getBlockIdForFilePath(filePath)
-        const blockId    = options?.blockId
-        const tagId      = options?.tagId
-        const eol        = options?.eol
-        const content    = options?.content
-
-        const tag = tagId ? this.resources.getTag(tagId) : undefined
-        if (tagId && !tag)   { throw new Error(`Could not find a Tag for the selected Tag ID "${tagId}"!`) }
-
-        // TODO: currently, I will always choose the TagId with highest prio -> in the future, the BlockId might be higher, when the Tags can be applied to different blocks 
-        const selectedBlockId = tag ? tag.blockId : (blockId ? blockId : (filePath ? filePathId : undefined))
-
-        // parameter validation (TODO: eventually, the first check might not be needed anymore, if we can apply tags to other blocks)
-        if      (tag        && tag.blockId !== selectedBlockId) { throw new Error(`Tag with Block ID "${tag.blockId}" was provided, but was not selected for this session! If you wanted to apply the Tag to another child/parent Block, then this is currently not supported.`) }
-        else if (blockId    && blockId     !== selectedBlockId) { throw new Error(`Block ID "${blockId}" incompatible with Tag ID! If you try to apply a Tag to a different parent/child Block, then this is unfortunately currently not supported.`) }
-        else if (filePathId && filePathId  !== selectedBlockId) { throw new Error(`ID "${filePathId}" exists for the provided file path, but it is incompatiple withe either the Tag or Block ID provided!`) }
-        else if (filePath   && !filePathId  && selectedBlockId) { throw new Error("A file path without existing ID was provided alonside a Tag or Block ID! This cannot be resolved!") }
-
-        // TODO: might be used later when tag is applied on block
-        const block = this.resources.getBlock(selectedBlockId)
-        if (selectedBlockId && !block) { throw new Error(`Could not find a Block for the selected Block ID "${selectedBlockId}"!`) }
-
-        let session: Session
-        if (tag && tag.blockId === block.id) {
-            if (content) { console.warn("Right now, we do not support updating the content of an existing tag based on provided content. This will be ignored.") }
-            session = Session.createFromTag(tag)
-        } else if (block) {
-            if (content) { console.warn("Right now, we do not support updating the content of an existing block based on provided content. This will be ignored.") }
-            session = Session.createFromBlock(block)
-            if (tag) { tag.applyTo(block) }
-        } else {
-            if (!eol) { throw new Error("The provided options do not allow for the retrieval of an existing Block. To create a new Block, please also provide the EOL sequence!") }
-            if (tag)  { console.warn("A Tag cannot be applied on a newly created block, as they are likely unrelated. As such, the Tag will be ignored.") }
-            session = Session.createFromOptions({ manager: this.resources, eol, filePath, content })
+            const versionCounts = lines.map(line => line.versions.length)
+            const text          = await block.getText()
+            
+            this.browserWindow!.webContents.send("update-vcs-preview", block.id, text, versionCounts)
         }
-
-        return session.getInfo()
     }
 
-    public async closeSession(sessionId: SessionId): Promise<void> {
-        this.resources.closeSession(sessionId)
+
+
+    public async createSession(request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>> {
+        const sessionId = this.resources.createSession()
+        return { requestId: request.requestId, response: sessionId }
     }
 
-    public async updatePath(sessionId: SessionId, filePath: string): Promise<void> {
-        console.warn("UPDATING FILE PATH IS NOT IMPLEMNETED")
-        //this.file.filePath = filePath
+    public async closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session) => {
+            session.close()
+        })
     }
 
-    public async cloneToPath(sessionId: SessionId, filePath: string): Promise<void> {
-        console.warn("CLONE TO PATH NOT IMPLEMENTED")
+    public async waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return await this.resources.createQuery(request, QueryType.Silent, async () => {})
     }
 
-    public async reloadSessionData(sessionId: string): Promise<SessionData> {
-        this.updatePreview(this.getBlock(sessionId))
-        return this.getSession(sessionId).getData()
+    public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { options }) => {
+            return await session.loadFile(options)
+        })
     }
 
-    public async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {
-        const block = this.getBlock(sessionId)
-        return block.createChild(range)?.compressForParent()
+    public async getFileData(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<VCSFileData>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { fileId }) => {
+            return await session.getFileData(fileId)
+        })
     }
 
-    public async deleteSnapshot(sessionId: SessionId, uuid: string): Promise<void> {
-        const block = this.getBlock(sessionId)
-        block.deleteChild(uuid)
+    public async unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { fileId }) => {
+            session.unloadFile(fileId)
+        })
     }
 
-    public async getSnapshot(sessionId: SessionId, uuid: string): Promise<VCSSnapshotData> {
-        const block = this.getBlock(sessionId)
-        return block.getChild(uuid).compressForParent()
+    public async getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+            const block = await session.getBlock(blockId)
+            return await block.getText()
+        })
     }
 
-    public async getSnapshots(sessionId: SessionId): Promise<VCSSnapshotData[]> {
-        const block = this.getBlock(sessionId)
-        return block.getCompressedChildren()
+    public async getUnwrappedText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSUnwrappedText>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+            const block = await session.getBlock(blockId)
+            return await block.getUnwrappedText()
+        })
     }
 
-    public async updateSnapshot(sessionId: SessionId, snapshot: VCSSnapshotData): Promise<void> {
-        const block = this.getBlock(sessionId)
-        block.updateChild(snapshot)
+    public async lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, change }) => {
+            return await this.changeLine(session, blockId, change)
+        })
     }
 
-    public async applySnapshotVersionIndex(sessionId: SessionId, uuid: SnapshotUUID, versionIndex: number): Promise<string> {
-        const block = this.getBlock(sessionId)
-        block.getChild(uuid).applyIndex(versionIndex)
+    public async linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, change }) => {
+            return await this.changeLines(session, blockId, change)
+        })
+    }
+
+    public override async applyChanges(request: VCSSessionRequest<{ blockId: VCSBlockId; changes: ChangeSet; }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, changes }) => {
+            const blockIds = []
+            for (const change of changes) {
+                if      (change instanceof LineChange)      { blockIds.push(await this.changeLine(session, blockId, change)) }
+                else if (change instanceof MultiLineChange) { blockIds.push(await this.changeLines(session, blockId, change)) }
+                else                                        { throw new Error("Provided change is not in known format!") }
+            }
+            return blockIds.flat()
+        })
+    }
+
+    public async copyBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId }) => {
+            const block = await session.getBlock(blockId)
+            const copy  = await block.copy()
+            return await copy.asBlockInfo(blockId)
+        })
+    }
+
+    public async createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { parentBlockId, range }) => {
+            const block = await session.getBlock(parentBlockId)
+            const child  = await block.createChild(range)
+            return await child.asBlockInfo(parentBlockId)
+        })
+    }
+
+    public async deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId }) => {
+            await session.delete(blockId)
+        })
+    }
+
+    public async getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+            const block = await session.getBlock(blockId)
+            return await block.asBlockInfo(blockId)
+        })
+    }
+
+    public async getChildrenInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
+        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+            const block = await session.getBlock(blockId)
+            return await block.getChildrenInfo(blockId)
+        })
+    }
+
+    public async updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
+        throw new Error("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
+    }
+
+    /*
+    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+            const root  = session.getRootBlockFor(blockId)
+            const block = await session.getBlock(blockId)
+            const newHeads = await block.applyIndex(versionIndex)
+            await this.updatePreview(block)
+            return await root.getText()
+        })
+    }
+    */
+
+    private headsToBeTracked: Version[] = []
+    private trackHeads(heads: Version[]): void {
+        const updatesHeads = this.headsToBeTracked.map(currentHead => {
+            const newHeadIndex = heads.findIndex(newHead => newHead.lineId === currentHead.lineId)
+            if (newHeadIndex >= 0) {
+                const head = heads[newHeadIndex]
+                heads.splice(newHeadIndex, 1)
+                return head
+            } else {
+                return currentHead
+            }
+        })
+
+        // attach any heads for lines that were previously not changed
+        this.headsToBeTracked = updatesHeads.concat(heads)
+    }
+
+    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+        const blockId = request.data.blockId
+        return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+            const root  = session.getRootBlockFor(blockId)
+            const block = await session.getBlock(blockId)
+            const newHeads = await block.applyIndex(versionIndex)
+            this.trackHeads(newHeads)
+            await this.updatePreview(block)
+            return await root.getText()
+        }, async (session) => {
+            console.log("Chain Broke: " + this.headsToBeTracked.length)
+            const block = await session.getBlock(blockId)
+            await block.cloneOutdatedHeads(this.headsToBeTracked)
+            this.headsToBeTracked = []
+        })
+    }
+
+    public async saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>> {
+        throw new Error("Currently, block versions cannot be saved. I will implement that as soon as I can verify that the rest works!")
+    }
+
+    public async applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        // TODO: Should the frontend or backend evaluate that blocks and tags fit together? Or do we assume I can apply any tag to any block?
+        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { tagId, blockId }) => {
+            const tag   = await session.getTag(tagId)
+            const block = await session.getBlock(blockId)
+            await block.applyTimestamp(tag.timestamp)
+            return await block.asBlockInfo(blockId)
+        })
+    }
+
+
+
+    private async changeLine(session: Session, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
+        const block = await session.getBlock(blockId)
+        const line  = await block.updateLine(change.lineNumber, change.lineText)
+        
+        await this.updatePreview(block)
+
+        const ids = await line.getBlockIds()
+        return ids.map(id => VCSBlockId.createFrom(blockId, id))
+    }
+
+    private async changeLines(session: Session, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
+        const block = await session.getBlock(blockId)
+        const result = await block.changeLines(blockId, change)
         this.updatePreview(block)
-        return block.getCurrentText()
-    }
+        return result
 
-    public async lineChanged(sessionId: SessionId, change: LineChange): Promise<SnapshotUUID[]> {
-        const block = this.getBlock(sessionId)
-        const line = block.updateLine(change.lineNumber, change.lineText)
-        this.updatePreview(block)
-        return line.getAffectedBlockIds()
-    }
+        /*
+        const eol   = await block.file.getEol()
 
-    public async linesChanged(sessionId: SessionId, change: MultiLineChange): Promise<SnapshotUUID[]> {
-        const block = this.getBlock(sessionId)
+        const versions = await block.getActiveHeadVersions()
 
-        block.resetVersionMerging()
+        //block.resetVersionMerging()
 
-
-        const startsWithEol = change.insertedText[0] === block.eol
-        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === block.eol
+        const startsWithEol = change.insertedText[0] === eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === eol
 
         const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > block.getLineByLineNumber(change.modifiedRange.startLineNumber).currentContent.length
+        const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > versions[change.modifiedRange.startLineNumber - 1].content.length
 
-        const insertedAtEnd   = change.modifiedRange.endColumn > block.getLineByLineNumber(change.modifiedRange.endLineNumber).currentContent.length
+        const insertedAtEnd   = change.modifiedRange.endColumn > versions[change.modifiedRange.endLineNumber - 1].content.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
-        const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
+        const insertOnly          = oneLineModification && change.modifiedRange.startColumn === change.modifiedRange.endColumn
 
         const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
         const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
@@ -160,11 +269,11 @@ export class GhostVCSServer extends BasicVCSServer {
             endLine:   change.modifiedRange.endLineNumber
         }
 
-        let vcsLines: Line[] = []
-        const modifiedLines = change.lineText.split(block.eol)
+        let vcsLines: LineProxy[] = []
+        const modifiedLines = change.lineText.split(eol)
 
         if (modifyStartLine) {
-            vcsLines = block.getLineRange(modifiedRange)
+            vcsLines = await block.getActiveLinesInRange(modifiedRange)
         } else {
             // TODO: pushStartDown case not handled well yet, line tracking is off
             if (pushStartLineUp) { 
@@ -172,59 +281,58 @@ export class GhostVCSServer extends BasicVCSServer {
                 modifiedRange.endLine--
             }
         }
-        
 
+        let affectedLines: LineProxy[] = []
 
-        let affectedLines: Line[] = []
-        function deleteLine(line: Line): void {
-            line.delete()
+        async function deleteLine(line: LineProxy): Promise<void> {
+            await line.delete(block)
             affectedLines.push(line)
         }
 
-        function updateLine(line: Line, newContent: string): void {
-            line.update(newContent)
+        async function updateLine(line: LineProxy, newContent: string): Promise<void> {
+            await line.updateContent(block, newContent)
             affectedLines.push(line)
         }
 
-        function insertLine(lineNumber: number, content: string): void {
-            const line = block.insertLine(lineNumber, content)
+        async function insertLine(lineNumber: number, content: string): Promise<void> {
+            const line = await block.insertLineAt(lineNumber, content)
             affectedLines.push(line)
         }
-
-
 
         for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
             const line = vcsLines.at(i)
-            deleteLine(line)
+            await deleteLine(line)
         }
 
-        /*
+        //
         // inverse deletion order
-        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
-            const line = vcsLines.at(i)
-            deleteLine(line)
-        }
-        */
+        //for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+        //    const line = vcsLines.at(i)
+        //    deleteLine(line)
+        //}
+        //
 
-        if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
+        if (modifyStartLine) { await updateLine(vcsLines.at(0), modifiedLines[0]) }
 
         for (let i = 1; i < modifiedLines.length; i++) {
             if (i < vcsLines.length) {
                 const line = vcsLines.at(i)
-                updateLine(line, modifiedLines[i])
+                await updateLine(line, modifiedLines[i])
             } else {
-                insertLine(modifiedRange.startLine + i, modifiedLines[i])
+                // TODO: merge all line insertions into a single operation for performance reasons!
+                await insertLine(modifiedRange.startLine + i, modifiedLines[i])
             }
         }
 
-        this.updatePreview(block)
+        await this.updatePreview(block)
 
-        return affectedLines.map(line => line.getAffectedBlockIds()).flat()
-    }
+        const affectedBlocks = new Set<string>()
+        for (const line of affectedLines) {
+            const blockIds = await line.getBlockIds()
+            blockIds.forEach(id => affectedBlocks.add(id))
+        }
 
-    public async saveCurrentVersion(sessionId: SessionId, uuid: SnapshotUUID): Promise<VCSTag> {
-        const block = this.getBlock(sessionId)
-        const snapshot = block.getChild(uuid)
-        return snapshot.createTag()
+        return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
+        */
     }
 }
