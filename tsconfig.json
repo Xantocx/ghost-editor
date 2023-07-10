@@ -8,9 +8,10 @@
 		"lib": ["dom", "es5", "es6", "es2015.collection", "es2015.promise"],
 		"types": [],
 		"baseUrl": "./node_modules",
-		"jsx": "preserve",
+		"jsx": "react",
 		"typeRoots": ["node_modules/@types"],
 		"downlevelIteration": true,
+		"esModuleInterop": true,
 		//"emitDecoratorMetadata": true,
       	//"experimentalDecorators": true
 	},

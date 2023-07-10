@@ -1,16 +1,49 @@
 import { InlineEditorBanner } from "../widgets/inline-editor-banner";
 import { Disposable, IRange } from "../../utils/types";
 import { Range } from "monaco-editor";
-import { Slider } from "../components/slider";
+import { Slider as OldSlider } from "../components/slider-old";
 import { Button } from "../components/button";
 
-import { Spinner } from "../views/utils/spinner"
-import ReactDOM from "react-dom/client"
+import React from "react"
+import LoadingView from "../views/utils/spinner"
+import { createRoot } from "react-dom/client"
+import { sleep } from "../../utils/helpers";
+
+import TextButton, { TextButtonProps } from "../components/react-button"
+import Slider, { SliderProps } from "../components/slider"
+import { VCSBlockSession } from "../../../app/components/vcs/vcs-rework";
+
+
+interface FooterContentProps {
+    buttonProps?: TextButtonProps
+    sliderProps:  SliderProps
+}
+
+const FooterContent: React.FC<FooterContentProps> = ({ buttonProps, sliderProps }: FooterContentProps) => {
+
+    buttonProps.text                  = "+"
+    buttonProps.style.backgroundColor = "green"
+    buttonProps.style.color           = "white"
+    buttonProps.style.padding         = "5px 10px"
+    buttonProps.style.margin          = "5px"
+
+    return (
+        <div>
+            <div className="button-container">
+                <TextButton {...buttonProps} />
+            </div>
+            <Slider {...sliderProps} />
+        </div>
+    )
+};
+
 
 export class GhostSnapshotFooter extends InlineEditorBanner {
 
     private addButton: Button
-    private slider: Slider
+    private slider: OldSlider
+
+    private get session(): VCSBlockSession { return this.snapshot.session }
 
     private get versionCount(): number { return this.snapshot.snapshot.versionCount }
     private get versionIndex(): number { return this.snapshot.snapshot.versionIndex }
@@ -42,13 +75,26 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
 
     protected override setupContent(container: HTMLElement): void {
 
-        ReactDOM
+        container.style.display  = "inline-flex"
+        container.style.width    = "100%"
+        container.style.height   = "100%"
+        container.style.border   = "1px solid black" 
+        container.style.overflow = "hidden"
 
         /*
-        container.style.display = "inline-flex"
-        container.style.width   = "100%"
-        container.style.height  = "100%"
-        container.style.border  = "1px solid black" 
+        const root = createRoot(container)
+        root.render(<LoadingView loadData={async () => {
+            await this.session.waitForCurrentRequests();
+            return {
+                sliderProps: {
+                    uuid: this.snapshot.blockId,
+                    min: 0,
+                    max: this.versionCount - 1,
+                    defaultValue: this.versionIndex
+                }
+            } as FooterContentProps
+        }} ContentView={FooterContent} />)
+        */
 
         const buttonContainer = document.createElement("div")
         buttonContainer.style.height      = "100%"
@@ -63,8 +109,7 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
             this.editor.activeSnapshot = this.snapshot
         })
 
-        this.slider = new Slider(container, this.snapshot.snapshot.blockId, 0, this.versionCount - 1, this.versionIndex)
-        */
+        this.slider = new OldSlider(container, this.snapshot.snapshot.blockId, 0, this.versionCount - 1, this.versionIndex)
     }
 
     public updateSlider(): void {
