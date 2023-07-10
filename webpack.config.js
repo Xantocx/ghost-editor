@@ -68,7 +68,7 @@ const rendererConfig = {
 		'ts.worker': 'monaco-editor/esm/vs/language/typescript/ts.worker'
 	},
 	resolve: {
-		extensions: ['.ts', '.js']
+		extensions: ['.ts', '.tsx', '.js', '.jsx']
 	},
 	output: {
 		globalObject: 'self',
@@ -78,7 +78,7 @@ const rendererConfig = {
 	module: {
 		rules: [
 			{
-				test: /\.ts?$/,
+				test: /\.(ts|tsx|js|jsx)$/,
 				use: 'ts-loader',
 				exclude: /node_modules/
 			},

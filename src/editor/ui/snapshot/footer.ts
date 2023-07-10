@@ -4,6 +4,9 @@ import { Range } from "monaco-editor";
 import { Slider } from "../components/slider";
 import { Button } from "../components/button";
 
+import { Spinner } from "../views/utils/spinner"
+import ReactDOM from "react-dom/client"
+
 export class GhostSnapshotFooter extends InlineEditorBanner {
 
     private addButton: Button
@@ -38,6 +41,10 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
     }
 
     protected override setupContent(container: HTMLElement): void {
+
+        ReactDOM
+
+        /*
         container.style.display = "inline-flex"
         container.style.width   = "100%"
         container.style.height  = "100%"
@@ -57,6 +64,7 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
         })
 
         this.slider = new Slider(container, this.snapshot.snapshot.blockId, 0, this.versionCount - 1, this.versionIndex)
+        */
     }
 
     public updateSlider(): void {
