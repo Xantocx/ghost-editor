@@ -6,6 +6,7 @@ import { LineNodeVersion } from "./version"
 import { Timestamp } from "./metadata/timestamps"
 import { VCSTag } from "../../../app/components/vcs/vcs-provider-old"
 import { ISessionTag } from "../db/utilities"
+import { VCSBlockId, VCSTagId, VCSTagInfo } from "../../../app/components/vcs/vcs-rework"
 
 export class Tag implements Resource, ISessionTag {
 
@@ -34,14 +35,7 @@ export class Tag implements Resource, ISessionTag {
         block.forEach(line => { line.loadTimestamp(this.timestamp) })
     }
 
-    public asTagData(): VCSTag {
-        const parent = this
-        return {
-            blockId:             parent.blockId,
-            id:                  parent.id,
-            name:                parent.name,
-            text:                parent.code,
-            automaticSuggestion: false
-        }
+    public asTagInfo(blockId: VCSBlockId): VCSTagInfo {
+        return new VCSTagInfo(VCSTagId.createFrom(blockId, this.id), this.name, this.code, false)
     }
 }

@@ -9,9 +9,8 @@ import { InsertionState, LineContent, LineNodeVersion } from "./version"
 import { Tag } from "./tag"
 import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
-import { ISessionBlock } from "../db/utilities"
-import { File } from "./session"
-import { BlockType, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSUnwrappedText } from "../../../app/components/vcs/vcs-rework"
+import { ISessionBlock, ISessionFile } from "../db/utilities"
+import { BlockType, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSTagInfo, VCSUnwrappedText } from "../../../app/components/vcs/vcs-rework"
 import { MultiLineChange } from "../../../app/components/data/change"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
@@ -26,16 +25,40 @@ interface LineRange {
     endLine: number
 }
 
-export abstract class Block extends LinkedList<Line> implements Resource, ISessionBlock<File, LineNode, LineNodeVersion> {
+export abstract class Block extends LinkedList<Line> implements Resource, ISessionFile, ISessionBlock<Block, LineNode, LineNodeVersion> {
 
     public get blockId(): string { return this.id }
 
+    public readonly file: Block
+    public readonly type: BlockType
+
+    public async getText(): Promise<string> {
+        return this.getCurrentText()
+    }
+
+    public async getUnwrappedText(): Promise<VCSUnwrappedText> {
+        return { blockText: this.getCurrentText(), fullText: this.getFullText() }
+    }
+
+    public async applyTimestamp(timestamp: number): Promise<LineNodeVersion[]> {
+        return this.map(line => line.loadTimestamp(timestamp))
+    }
+
+    public async cloneOutdatedHeads(heads: LineNodeVersion[]): Promise<void> {
+        return // in this context, head tracking is already done more elegantly
+    }
+
+    public static createFromFileData(file: VCSFileData): Block {
+
+    }
 
 
 
-    public     manager:    ResourceManager
+
+
+
     public     id:         BlockId
-    public get filePath(): string | undefined { return this.manager.getFilePathForBlock(this) }
+    //public get filePath(): string | undefined { return this.manager.getFilePathForBlock(this) }
 
     public isDeleted: boolean = false
 
@@ -121,8 +144,8 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
     public getVersionCount(): number            { return this.getVersions().length }
 
 
-    public getTags():    Tag[]    { return Array.from(this.tags.values()) }
-    public getTagData(): VCSTag[] { return this.getTags().map(tag => tag.asTagData()) }
+    public getTags():                     Tag[]        { return Array.from(this.tags.values()) }
+    public getTagInfo(fileId: VCSFileId): VCSTagInfo[] { return this.getTags().map(tag => tag.asTagInfo(VCSBlockId.createFrom(fileId, this.blockId))) }
 
 
     public addToLines():                        Line[]  { return this.map(line => line.addBlock(this)) }
@@ -211,7 +234,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
 
     // --------------------------------- Edit Mechanics ----------------------------------------
 
-    public async insertLine(lineNumber: LineNumber, content: LineContent): Promise<Line> {
+    public async insertLine(fileId: VCSFileId, lineNumber: LineNumber, content: LineContent): Promise<Line> {
         this.resetVersionMerging()
 
         const lastLineNumber     = this.getLastLineNumber()
@@ -256,20 +279,20 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         }
 
         await Promise.all(expandedChildren.map(async child => {
-            const snapshotData = await child.asBlockInfo()
+            const snapshotData = await child.asBlockInfo(fileId)
             const lineNumber   = createdLine.getLineNumber()
             if (snapshotData.range.endLine < lineNumber) {
                 snapshotData.range.endLine = lineNumber
-                child.updateInParent(snapshotData)
+                child.updateInParent(fileId, snapshotData)
             }
         }))
 
         return createdLine
     }
 
-    public async insertLines(lineNumber: LineNumber, content: LineContent[]): Promise<Line[]> {
+    public async insertLines(fileId: VCSFileId, lineNumber: LineNumber, content: LineContent[]): Promise<Line[]> {
         return await Promise.all(content.map(async (content, index) => {
-            return await this.insertLine(lineNumber + index, content)
+            return await this.insertLine(fileId, lineNumber + index, content)
         }))
     }
 
@@ -305,25 +328,6 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
     }
 
     // -------------------------- Children Mechanics ---------------------------
-
-    public readonly file: File
-    public readonly type: BlockType
-
-    public async getText(): Promise<string> {
-        return this.getCurrentText()
-    }
-
-    public async getUnwrappedText(): Promise<VCSUnwrappedText> {
-        return { blockText: this.getCurrentText(), fullText: this.getFullText() }
-    }
-
-    public async applyTimestamp(timestamp: number): Promise<LineNodeVersion[]> {
-        
-    }
-
-    public async cloneOutdatedHeads(heads: LineNodeVersion[]): Promise<void> {
-        
-    }
 
     public async createChild(range: VCSBlockRange): Promise<ChildBlock | null> {
 
@@ -366,9 +370,9 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         return this.getChildrenByPosition(position)
     }
 
-    public updateChild(update: VCSBlockInfo): ChildBlock {
+    public updateChild(fileId: VCSFileId, update: VCSBlockInfo): ChildBlock {
         const child = this.getChild(update.blockId)
-        child.updateInParent(update)
+        child.updateInParent(fileId, update)
         return child
     }
 
@@ -481,10 +485,11 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         // If the current version is pre-insertion, skip the pre-insertion phase if necessary
         else if (selectedVersion.isPreInsertion && (selectedVersion.isHeadOf(this) || nextVersion?.isHeadOf(this)))     { version = selectedVersion.next }
 
-        version.applyTo(this)
+        //version.applyTo(this)
+        return this.applyTimestamp(version.timestamp)
     }
 
-    public async updateInParent(range: VCSBlockInfo): Promise<Block[]> {
+    public async updateInParent(fileId: VCSFileId, range: VCSBlockInfo): Promise<Block[]> {
         if (!this.parent) { throw new Error("This Block does not have a parent! You cannot update its range within its parent.") }
         if (!this.parent.containsLineNumber(range.range.startLine)) { throw new Error("Start line is not in range of parent!") }
         if (!this.parent.containsLineNumber(range.range.endLine))   { throw new Error("End line is not in range of parent!") }
@@ -506,7 +511,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
             const lastLineNumber  = child.getLastLineNumberInParent()
 
             if (firstLineNumber === oldFirstLineNumber || lastLineNumber === oldLastLineNumber) {
-                const childRange = await child.asBlockInfo()
+                const childRange = await child.asBlockInfo(VCSBlockId.createFrom(fileId, this.blockId))
 
                 childRange.range.startLine = firstLineNumber === oldFirstLineNumber ? newFirstLineNumber : childRange.range.startLine
                 childRange.range.endLine   = lastLineNumber  === oldLastLineNumber  ? newLastLineNumber  : childRange.range.endLine
@@ -514,7 +519,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
                 if (childRange.range.startLine > childRange.range.endLine) {  
                     return child.delete()
                 } else {
-                    return child.updateInParent(childRange)
+                    return child.updateInParent(fileId, childRange)
                 }
             } else {
                 return []
@@ -526,20 +531,21 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         return updatedBlocks
     }
 
-    public async asBlockInfo(): Promise<VCSBlockInfo> {
+    public async asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
         const parent = this
-        return {
-            uuid:         parent.id,
-            _startLine:   parent.getFirstLineNumberInParent(),
-            _endLine:     parent.getLastLineNumberInParent(),
-            versionCount: parent.getUserVersionCount(),
-            versionIndex: parent.getCurrentVersionIndex(),
-            tags:         parent.getTagData()
-        }
+        return new VCSBlockInfo(VCSBlockId.createFrom(fileId, this.blockId),
+                                this.type,
+                                {
+                                    startLine: this.getFirstLineNumberInParent(),
+                                    endLine: this.getLastLineNumberInParent()
+                                },
+                                this.getUserVersionCount(),
+                                this.getCurrentVersionIndex(),
+                                this.getTagInfo(fileId))
     }
 
-    public async getChildrenInfo(): Promise<VCSBlockInfo[]> {
-        return await Promise.all(this.getChildren().map(async child => await child.asBlockInfo()))
+    public async getChildrenInfo(fileId: VCSFileId): Promise<VCSBlockInfo[]> {
+        return await Promise.all(this.getChildren().map(async child => await child.asBlockInfo(VCSBlockId.createFrom(fileId, this.blockId))))
     }
 
 
@@ -550,12 +556,12 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         return new Tag(this, TimestampProvider.getLastTimestamp())
     }
 
-    public createTag(): VCSTag {
+    public createTag(fileId: VCSFileId): VCSTagInfo {
 
         const tag = this.createCurrentTag()
         this.tags.set(tag.id, tag)
 
-        return tag.asTagData()
+        return tag.asTagInfo(VCSBlockId.createFrom(fileId, this.id))
     }
 
     public loadTag(id: TagId): string {
@@ -657,7 +663,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         }
 
         async function insertLine(lineNumber: number, content: string): Promise<void> {
-            const line = await parent.insertLine(lineNumber, content)
+            const line = await parent.insertLine(fileId, lineNumber, content)
             affectedLines.push(line)
         }
 
@@ -697,7 +703,6 @@ export class InlineBlock extends Block {
     public constructor(parent: Block, firstLine: Line, lastLine: Line, enableVersionMerging?: boolean) {
         super()
 
-        this.manager              = parent.manager
         this.eol                  = parent.eol
         this.parent               = parent
         this.firstLine            = firstLine
@@ -705,13 +710,11 @@ export class InlineBlock extends Block {
         this.enableVersionMerging = enableVersionMerging ? enableVersionMerging : parent.enableVersionMerging
 
         this.addToLines()
-
-        this.id = this.manager.registerBlock(this)
     }
 }
 
 export interface ForkBlockOptions {
-    manager:               ResourceManager 
+    id:                    BlockId
     eol:                   EOLSymbol
     filePath?:             string
     parent?:               Block
@@ -733,7 +736,7 @@ export class ForkBlock extends Block {
         let lastLineNode:  LineNode | undefined = undefined
 
         if (blockOptions) {
-            this.manager              = blockOptions.manager
+            this.id                   =
             this.eol                  = blockOptions.eol
             this.parent               = blockOptions.parent
             this.enableVersionMerging = blockOptions.enableVersionMerging ? blockOptions.enableVersionMerging : false
@@ -743,11 +746,10 @@ export class ForkBlock extends Block {
 
             const content = blockOptions.content
             if      (!firstLineNode && !lastLineNode) { this.setContent(content ? content : "") }
-            else if (content)                           { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
-            
-            this.id = this.manager.registerBlock(this, blockOptions.filePath)
+            else if (content)                         { throw new Error("You cannot set a first or last line and define content at the same time, as this will lead to conflicts in constructing a block.") }
         } else if (clonedBlock) {
-            this.manager              = clonedBlock.manager
+            throw new Error("WHYYY")
+            this.id                   = ""
             this.isDeleted            = clonedBlock.isDeleted
             this.eol                  = clonedBlock.eol
             this.origin               = clonedBlock
@@ -758,8 +760,6 @@ export class ForkBlock extends Block {
 
             firstLineNode            = clonedBlock.firstLine?.node
             lastLineNode             = clonedBlock.lastLine?.node
-
-            this.id = this.manager.registerClonedBlock(this)
         } else {
             throw new Error("The options provided for this ForkBlock are in an incompatiple format!")
         }

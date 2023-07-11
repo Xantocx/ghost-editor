@@ -137,8 +137,9 @@ export interface VCSDatabaseData {
 export class VCSFileData extends VCSFileId implements VCSDatabaseData {
 
     public readonly databaseId?: number
+    public readonly eol:         string
 
-    public readonly eol:    string
+    public rootBlock: VCSBlockData
 
     public lines:  VCSLineData[]  = []
     public blocks: VCSBlockData[] = []

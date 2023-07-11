@@ -59,13 +59,11 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         this.queries   = new QueryManager(this)
     }
 
-    protected abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock>>
-    protected abstract getRootSessionBlockFor(filePath: string):                                       Promise<SessionBlock | undefined>
-    protected abstract getSessionBlockFrom(block: Block):                                              Promise<SessionBlock>
-    protected abstract getSessionBlockFor(blockId: string):                                            Promise<SessionBlock>
-    protected abstract getSessionTagFrom(tag: Tag):                                                    Promise<SessionTag>
-    protected abstract getSessionTagFor(tagId: string):                                                Promise<SessionTag>
-    protected abstract deleteSessionBlock(block: SessionBlock):                                        Promise<void>
+    public abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock>>
+    public abstract getRootSessionBlockFor(filePath: string):                                       Promise<SessionBlock | undefined>
+    public abstract getSessionBlockFor(blockId: string):                                            Promise<SessionBlock | undefined>
+    public abstract getSessionTagFor(tagId: string):                                                Promise<SessionTag | undefined>
+    public abstract deleteSessionBlock(block: SessionBlock):                                        Promise<void>
 
     public abstract getFileData(fileId: VCSFileId): Promise<VCSFileData>
 
@@ -122,6 +120,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
             return this.blocks.get(id)!
         } else {
             const block = await this.getSessionBlockFor(id)
+            if (!block) { throw new Error(`Cannot find block for provided block id "${id}"`) }
             this.blocks.set(id, block)
             return block
         }
@@ -133,6 +132,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
             return this.tags.get(id)!
         } else {
             const tag = await this.getSessionTagFor(id)
+            if (!tag) { throw new Error(`Cannot find tag for provided tag id "${id}"`) }
             this.tags.set(id, tag)
             return tag
         }
@@ -175,11 +175,11 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
 
 export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy> {
 
-    protected async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, VersionProxy, BlockProxy>> {
+    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, VersionProxy, BlockProxy>> {
         return await FileProxy.create(filePath, eol, content)
     }
 
-    protected async getRootSessionBlockFor(filePath: string): Promise<BlockProxy> {
+    public async getRootSessionBlockFor(filePath: string): Promise<BlockProxy> {
         const rootBlock = await prismaClient.block.findFirst({
             where: {
                 file: { filePath },
@@ -190,27 +190,25 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
         return rootBlock ? await this.getSessionBlockFrom(rootBlock) : undefined
     }
 
-    protected async getSessionBlockFrom(block: Block): Promise<BlockProxy> {
+    public async getSessionBlockFrom(block: Block): Promise<BlockProxy> {
         return await BlockProxy.getFor(block)
     }
 
-    protected async getSessionBlockFor(blockId: string): Promise<BlockProxy> {
+    public async getSessionBlockFor(blockId: string): Promise<BlockProxy | undefined> {
         const block = await prismaClient.block.findFirst({ where: { blockId } })
-        if (!block) { throw new Error(`Cannot find block for provided block id "${blockId}"`) }
-        return await this.getSessionBlockFrom(block)
+        return block ? await this.getSessionBlockFrom(block) : undefined
     }
 
-    protected async getSessionTagFrom(tag: Tag): Promise<TagProxy> {
+    public async getSessionTagFrom(tag: Tag): Promise<TagProxy> {
         return await TagProxy.getFor(tag)
     }
 
-    protected async getSessionTagFor(tagId: string): Promise<TagProxy> {
+    public async getSessionTagFor(tagId: string): Promise<TagProxy> {
         const tag = await prismaClient.tag.findFirst({ where: { tagId } })
-        if (!tag) { throw new Error(`Cannot find tag for provided tag id "${tagId}"`) }
-        return await this.getSessionTagFrom(tag)
+        return tag ? await this.getSessionTagFrom(tag) : undefined
     }
 
-    protected async deleteSessionBlock(block: BlockProxy): Promise<void> {
+    public async deleteSessionBlock(block: BlockProxy): Promise<void> {
         await prismaClient.block.delete({ where: { id: block.id }})
     }
 
@@ -271,8 +269,10 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
         fileData.lines = Array.from(lineData.values())
 
         // map blocks, add to file -> lacks heads, parent, origin, tags
-        const blockData = new Map(file.blocks.map(block => [block.id, new VCSBlockData(block.blockId, fileData, block.type, block.id)]))
-        fileData.blocks = Array.from(blockData.values())
+        const blockData    = new Map(file.blocks.map(block => [block.id, new VCSBlockData(block.blockId, fileData, block.type, block.id)]))
+        const blocks       = Array.from(blockData.values())
+        fileData.rootBlock = blocks.find(block => block.type === BlockType.ROOT)!
+        fileData.blocks    = blocks
 
         // map versions, add to line -> lacks origin
         const versions = file.lines.flatMap(line => {
@@ -563,4 +563,8 @@ export class ResourceManager<SessionFile extends ISessionFile, SessionLine exten
         return this.getSession(fileId).getRootBlockFor(fileId)
     }
     */
+}
+
+export class DBResourceManager extends ResourceManager<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy, DBSession> {
+    public constructor() { super(DBSession) }
 }
