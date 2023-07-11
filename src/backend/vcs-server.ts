@@ -38,7 +38,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
 
     private async changeLines(session: QuerySession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
-        const result = await block.updateLines(blockId, change)
+        const result = await block.changeLines(blockId, change)
         this.updatePreview(block)
         return result
     }

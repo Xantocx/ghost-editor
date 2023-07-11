@@ -672,7 +672,7 @@ export class BlockProxy extends DatabaseProxy {
         })
     }
 
-    public async updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const eol   = await this.file.getEol()
         const heads = await this.getHeadsWithLines()
 

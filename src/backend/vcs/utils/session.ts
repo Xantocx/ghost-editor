@@ -34,7 +34,7 @@ export class Session implements Resource {
     public constructor(block: Block, tag?: Tag) {
         this.manager = block.manager
         // TODO: there might be a cleverer way for this decision, if a free copy of an InlineBlock is still available, for example (content check is required in this case!)
-        this.block   = block instanceof ForkBlock && !this.manager.hasSessionForBlockId(block.id) ? block : block.clone()
+        this.block   = block instanceof ForkBlock && !this.manager.hasSessionForBlockId(block.id) ? block : block.copy()
         this.tag     = tag
         this.id      = this.manager.registerSession(this)
 

@@ -13,7 +13,7 @@ export class File implements ISessionFile {
 
 export class InMemorySession extends Session<File, LineNode, LineNodeVersion, Block, Tag> {
 
-    protected createSessionFile(filePath: string, eol: string, content?: string): Promise<NewFileInfo<File, Line, LineVersion, Block>> {
+    protected createSessionFile(filePath: string, eol: string, content?: string): Promise<NewFileInfo<File, LineNode, LineNodeVersion, Block>> {
         throw new Error("Method not implemented.");
     }
 

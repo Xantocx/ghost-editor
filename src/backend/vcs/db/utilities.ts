@@ -19,15 +19,15 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine ext
     getText(): Promise<string>
     getUnwrappedText(): Promise<VCSUnwrappedText>
 
-    updateLine(lineNumber: number, change: string): Promise<SessionLine>
-    updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
+    updateLine(lineNumber: number, content: string): Promise<SessionLine>
+    changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
 
     applyIndex(index: number): Promise<SessionVersion[]>
     applyTimestamp(timestamp: number): Promise<SessionVersion[]>
     cloneOutdatedHeads(heads: SessionVersion[]): Promise<void>
 
-    copy(): Promise<this>
-    createChild(range: VCSBlockRange): Promise<this>
+    copy(): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion>>
+    createChild(range: VCSBlockRange): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion> | null>
 }
 
 export interface ISessionLine {

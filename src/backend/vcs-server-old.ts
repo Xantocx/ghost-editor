@@ -95,7 +95,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async createSnapshot(sessionId: SessionId, range: IRange): Promise<VCSSnapshotData | null> {
         const block = this.getBlock(sessionId)
-        return block.createChild(range)?.compressForParent()
+        return (await block.createChild(range))?.asBlockInfo()
     }
 
     public async deleteSnapshot(sessionId: SessionId, uuid: string): Promise<void> {
@@ -105,7 +105,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async getSnapshot(sessionId: SessionId, uuid: string): Promise<VCSSnapshotData> {
         const block = this.getBlock(sessionId)
-        return block.getChild(uuid).compressForParent()
+        return block.getChild(uuid).asBlockInfo()
     }
 
     public async getSnapshots(sessionId: SessionId): Promise<VCSSnapshotData[]> {
@@ -127,7 +127,7 @@ export class GhostVCSServer extends BasicVCSServer {
 
     public async lineChanged(sessionId: SessionId, change: LineChange): Promise<SnapshotUUID[]> {
         const block = this.getBlock(sessionId)
-        const line = block.updateLine(change.lineNumber, change.lineText)
+        const line = await block.updateLine(change.lineNumber, change.lineText)
         this.updatePreview(block)
         return line.getAffectedBlockIds()
     }

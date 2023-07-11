@@ -11,6 +11,8 @@ import { Disposable } from "../../../editor/utils/types"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { ISessionBlock } from "../db/utilities"
 import { File } from "./session"
+import { BlockType, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSUnwrappedText } from "../../../app/components/vcs/vcs-rework"
+import { MultiLineChange } from "../../../app/components/data/change"
 
 export type LinePosition = number  // absolute position within the root block, counting for both, visible and hidden lines
 export type LineNumber   = number  // line number within the editor, if this line is displayed
@@ -25,6 +27,11 @@ interface LineRange {
 }
 
 export abstract class Block extends LinkedList<Line> implements Resource, ISessionBlock<File, LineNode, LineNodeVersion> {
+
+    public get blockId(): string { return this.id }
+
+
+
 
     public     manager:    ResourceManager
     public     id:         BlockId
@@ -204,7 +211,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
 
     // --------------------------------- Edit Mechanics ----------------------------------------
 
-    public insertLine(lineNumber: LineNumber, content: LineContent): Line {
+    public async insertLine(lineNumber: LineNumber, content: LineContent): Promise<Line> {
         this.resetVersionMerging()
 
         const lastLineNumber     = this.getLastLineNumber()
@@ -248,34 +255,34 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
             })
         }
 
-        expandedChildren.forEach(child => {
-            const snapshotData = child.compressForParent()
+        await Promise.all(expandedChildren.map(async child => {
+            const snapshotData = await child.asBlockInfo()
             const lineNumber   = createdLine.getLineNumber()
-            if (snapshotData._endLine < lineNumber) {
-                snapshotData._endLine = lineNumber
+            if (snapshotData.range.endLine < lineNumber) {
+                snapshotData.range.endLine = lineNumber
                 child.updateInParent(snapshotData)
             }
-        })
+        }))
 
         return createdLine
     }
 
-    public insertLines(lineNumber: LineNumber, content: LineContent[]): Line[] {
-        return content.map((content, index) => {
-            return this.insertLine(lineNumber + index, content)
-        })
+    public async insertLines(lineNumber: LineNumber, content: LineContent[]): Promise<Line[]> {
+        return await Promise.all(content.map(async (content, index) => {
+            return await this.insertLine(lineNumber + index, content)
+        }))
     }
 
-    public updateLine(lineNumber: LineNumber, content: LineContent): Line {
+    public async updateLine(lineNumber: LineNumber, content: LineContent): Promise<LineNode> {
         const line = this.getLineByLineNumber(lineNumber)
         line.update(content)
 
         this.setupVersionMerging(line)
 
-        return line
+        return line.node
     }
 
-    public updateLines(lineNumber: LineNumber, content: LineContent[]): Line[] {
+    public async updateLines(lineNumber: LineNumber, content: LineContent[]): Promise<Line[]> {
         this.resetVersionMerging()
 
         const lines = this.getLineRange({ startLine: lineNumber, endLine: lineNumber + content.length - 1 })
@@ -299,9 +306,28 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
 
     // -------------------------- Children Mechanics ---------------------------
 
-    public createChild(range: IRange): ChildBlock | null {
+    public readonly file: File
+    public readonly type: BlockType
 
-        const lineRange = { startLine: range.startLineNumber, endLine: range.endLineNumber }
+    public async getText(): Promise<string> {
+        return this.getCurrentText()
+    }
+
+    public async getUnwrappedText(): Promise<VCSUnwrappedText> {
+        return { blockText: this.getCurrentText(), fullText: this.getFullText() }
+    }
+
+    public async applyTimestamp(timestamp: number): Promise<LineNodeVersion[]> {
+        
+    }
+
+    public async cloneOutdatedHeads(heads: LineNodeVersion[]): Promise<void> {
+        
+    }
+
+    public async createChild(range: VCSBlockRange): Promise<ChildBlock | null> {
+
+        const lineRange = { startLine: range.startLine, endLine: range.endLine }
         const overlappingSnapshot = this.getChildren().find(snapshot => snapshot.overlapsWith(lineRange))
 
         if (overlappingSnapshot) { 
@@ -309,8 +335,8 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
             return null
         }
 
-        const firstLine = this.getLineByLineNumber(range.startLineNumber)
-        const lastLine  = this.getLineByLineNumber(range.endLineNumber)
+        const firstLine = this.getLineByLineNumber(range.startLine)
+        const lastLine  = this.getLineByLineNumber(range.endLine)
         const child     = new InlineBlock(this, firstLine, lastLine)
 
         this.addChild(child)
@@ -340,8 +366,8 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         return this.getChildrenByPosition(position)
     }
 
-    public updateChild(update: VCSSnapshotData): ChildBlock {
-        const child = this.getChild(update.uuid)
+    public updateChild(update: VCSBlockInfo): ChildBlock {
+        const child = this.getChild(update.blockId)
         child.updateInParent(update)
         return child
     }
@@ -414,7 +440,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         return this.getTimeline()[this.getCurrentVersionIndex()]
     }
 
-    public applyIndex(targetIndex: number): void {
+    public async applyIndex(targetIndex: number): Promise<LineNodeVersion[]> {
         // The concept works as follow: I create a timeline from all versions, sorted by timestamp. Then I limit the selecteable versions to all versions past the original file creation
         // (meaning versions that were in the file when loading it into the versioning are ignored), except for the last one (to recover the original state of a snapshot). This means the
         // index provided by the interface will be increased by the amount of such native lines - 1. This index will then select the version, which will be applied on all lines directly.
@@ -458,34 +484,34 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         version.applyTo(this)
     }
 
-    public updateInParent(range: VCSSnapshotData): Block[] {
+    public async updateInParent(range: VCSBlockInfo): Promise<Block[]> {
         if (!this.parent) { throw new Error("This Block does not have a parent! You cannot update its range within its parent.") }
-        if (!this.parent.containsLineNumber(range._startLine)) { throw new Error("Start line is not in range of parent!") }
-        if (!this.parent.containsLineNumber(range._endLine))   { throw new Error("End line is not in range of parent!") }
+        if (!this.parent.containsLineNumber(range.range.startLine)) { throw new Error("Start line is not in range of parent!") }
+        if (!this.parent.containsLineNumber(range.range.endLine))   { throw new Error("End line is not in range of parent!") }
 
         const oldFirstLineNumber = this.getFirstLineNumber()
         const oldLastLineNumber  = this.getLastLineNumber()
 
         this.removeFromLines()
-        const newFirstLine = this.parent.getLineByLineNumber(range._startLine)
-        const newLastLine  = this.parent.getLineByLineNumber(range._endLine)
+        const newFirstLine = this.parent.getLineByLineNumber(range.range.startLine)
+        const newLastLine  = this.parent.getLineByLineNumber(range.range.endLine)
         this.setLineList(newFirstLine, newLastLine)
 
         const newFirstLineNumber = this.getFirstLineNumber()
         const newLastLineNumber  = this.getLastLineNumber()
 
-        const updatedBlocks = this.getChildren().flatMap(child => {
+        const results = await Promise.all(this.getChildren().map(async child => {
 
             const firstLineNumber = child.getFirstLineNumberInParent()
             const lastLineNumber  = child.getLastLineNumberInParent()
 
             if (firstLineNumber === oldFirstLineNumber || lastLineNumber === oldLastLineNumber) {
-                const childRange = child.compressForParent()
+                const childRange = await child.asBlockInfo()
 
-                childRange._startLine = firstLineNumber === oldFirstLineNumber ? newFirstLineNumber : childRange._startLine
-                childRange._endLine   = lastLineNumber  === oldLastLineNumber  ? newLastLineNumber  : childRange._endLine
+                childRange.range.startLine = firstLineNumber === oldFirstLineNumber ? newFirstLineNumber : childRange.range.startLine
+                childRange.range.endLine   = lastLineNumber  === oldLastLineNumber  ? newLastLineNumber  : childRange.range.endLine
 
-                if (childRange._startLine > childRange._endLine) {  
+                if (childRange.range.startLine > childRange.range.endLine) {  
                     return child.delete()
                 } else {
                     return child.updateInParent(childRange)
@@ -493,13 +519,14 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
             } else {
                 return []
             }
-        })
+        }))
 
+        const updatedBlocks = results.flat()
         updatedBlocks.push(this)
         return updatedBlocks
     }
 
-    public compressForParent(): VCSSnapshotData {
+    public async asBlockInfo(): Promise<VCSBlockInfo> {
         const parent = this
         return {
             uuid:         parent.id,
@@ -511,8 +538,8 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         }
     }
 
-    public getCompressedChildren(): VCSSnapshotData[] {
-        return this.getChildren().map(child => child.compressForParent())
+    public async getChildrenInfo(): Promise<VCSBlockInfo[]> {
+        return await Promise.all(this.getChildren().map(async child => await child.asBlockInfo()))
     }
 
 
@@ -548,7 +575,7 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
 
 
 
-    public clone(): ClonedBlock {
+    public async copy(): Promise<ClonedBlock> {
         const clone = new ForkBlock(this)
         //this.addChild(clone)
         return clone
@@ -572,6 +599,96 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
                 if (index >= 0) { parent.latestHeadSubscriptions.splice(index, 1) }
             }
         })
+    }
+
+    // MAGIC INTERFACE SHIT
+
+    public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
+        this.resetVersionMerging()
+
+
+        const startsWithEol = change.insertedText[0] === this.eol
+        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === this.eol
+
+        const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
+        const insertedAtEndOfStartLine = change.modifiedRange.startColumn > this.getLineByLineNumber(change.modifiedRange.startLineNumber).currentContent.length
+
+        const insertedAtEnd   = change.modifiedRange.endColumn > this.getLineByLineNumber(change.modifiedRange.endLineNumber).currentContent.length
+
+        const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
+        const insertOnly = oneLineModification && change.modifiedRange.startColumn == change.modifiedRange.endColumn
+
+        const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
+        const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
+
+        const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
+
+
+        const modifiedRange = {
+            startLine: change.modifiedRange.startLineNumber,
+            endLine:   change.modifiedRange.endLineNumber
+        }
+
+        let vcsLines: Line[] = []
+        const modifiedLines = change.lineText.split(this.eol)
+
+        if (modifyStartLine) {
+            vcsLines = this.getLineRange(modifiedRange)
+        } else {
+            // TODO: pushStartDown case not handled well yet, line tracking is off
+            if (pushStartLineUp) { 
+                modifiedRange.startLine--
+                modifiedRange.endLine--
+            }
+        }
+        
+
+
+        const parent = this
+        let affectedLines: Line[] = []
+        function deleteLine(line: Line): void {
+            line.delete()
+            affectedLines.push(line)
+        }
+
+        function updateLine(line: Line, newContent: string): void {
+            line.update(newContent)
+            affectedLines.push(line)
+        }
+
+        async function insertLine(lineNumber: number, content: string): Promise<void> {
+            const line = await parent.insertLine(lineNumber, content)
+            affectedLines.push(line)
+        }
+
+
+
+        for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
+        }
+
+        /*
+        // inverse deletion order
+        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+            const line = vcsLines.at(i)
+            deleteLine(line)
+        }
+        */
+
+        if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
+
+        for (let i = 1; i < modifiedLines.length; i++) {
+            if (i < vcsLines.length) {
+                const line = vcsLines.at(i)
+                updateLine(line, modifiedLines[i])
+            } else {
+                await insertLine(modifiedRange.startLine + i, modifiedLines[i])
+            }
+        }
+
+        // TODO: simplify
+        return affectedLines.map(line => line.getAffectedBlockIds()).flat().map(id => VCSBlockId.createFrom(fileId, id))
     }
 }
 
