@@ -18,17 +18,15 @@ export class Tag implements Resource, ISessionTag {
     public readonly name: string
     public readonly code: string
 
-    public get manager(): ResourceManager { return this.block.manager }
     public get blockId(): BlockId         { return this.block.id }
 
     constructor(block: Block, timestamp: Timestamp) {
+        this.id        = 
         this.block     = block
         this.timestamp = timestamp
 
         this.name = `Version ${this.block.tags.size + 1}`
         this.code = this.block.getFullText()
-
-        this.id = this.manager.registerTag(this)
     }
 
     public applyTo(block: Block): void {

@@ -262,14 +262,14 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
             }
         })
 
-        const fileData = new VCSFileData(fileId, file.eol, file.id)
+        const fileData = new VCSFileData(file.id, fileId, file.eol)
 
         // map lines, add to file
-        const lineData = new Map(file.lines.map((line, index) => [line.id, new VCSLineData(fileData, line.type, index, line.id)]))
+        const lineData = new Map(file.lines.map((line, index) => [line.id, new VCSLineData(line.id, fileData, line.type, index)]))
         fileData.lines = Array.from(lineData.values())
 
         // map blocks, add to file -> lacks heads, parent, origin, tags
-        const blockData    = new Map(file.blocks.map(block => [block.id, new VCSBlockData(block.blockId, fileData, block.type, block.id)]))
+        const blockData    = new Map(file.blocks.map(block => [block.id, new VCSBlockData(block.id, block.blockId, fileData, block.type)]))
         const blocks       = Array.from(blockData.values())
         fileData.rootBlock = blocks.find(block => block.type === BlockType.ROOT)!
         fileData.blocks    = blocks
@@ -279,7 +279,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
             const lineInfo    = lineData.get(line.id)
             lineInfo.versions = line.versions.map(version => {
                 const sourceBlock = version.sourceBlockId ? blockData.get(version.sourceBlockId)! : undefined
-                return new VCSVersionData(lineInfo, version.type, version.timestamp, version.isActive, version.content, sourceBlock, undefined, version.id)
+                return new VCSVersionData(version.id, lineInfo, version.type, version.timestamp, version.isActive, version.content, sourceBlock, undefined)
             })
             return lineInfo.versions
         })
@@ -303,7 +303,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
             if (block.parentId) { blockInfo.parent = blockData.get(block.parentId)! }
             if (block.originId) { blockInfo.origin = blockData.get(block.originId)! }
 
-            blockInfo.tags = block.tags.map(tag => new VCSTagData(tag.tagId, blockInfo, tag.name, tag.timestamp, tag.code, tag.id))
+            blockInfo.tags = block.tags.map(tag => new VCSTagData(tag.id, tag.tagId, blockInfo, tag.name, tag.timestamp, tag.code))
         })
 
         // return complete file data

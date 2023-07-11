@@ -136,7 +136,7 @@ export interface VCSDatabaseData {
 
 export class VCSFileData extends VCSFileId implements VCSDatabaseData {
 
-    public readonly databaseId?: number
+    public readonly databaseId: number
     public readonly eol:         string
 
     public rootBlock: VCSBlockData
@@ -144,7 +144,7 @@ export class VCSFileData extends VCSFileId implements VCSDatabaseData {
     public lines:  VCSLineData[]  = []
     public blocks: VCSBlockData[] = []
 
-    public constructor(fileId: VCSFileId, eol: string, databaseId?: number) {
+    public constructor(databaseId: number, fileId: VCSFileId, eol: string) {
         super(fileId.sessionId, fileId.filePath)
         this.databaseId = databaseId
         this.eol        = eol
@@ -153,7 +153,7 @@ export class VCSFileData extends VCSFileId implements VCSDatabaseData {
 
 export class VCSBlockData extends VCSBlockId implements VCSDatabaseData {
 
-    public readonly databaseId?: number
+    public readonly databaseId: number
 
     public readonly file:  VCSFileData
     public readonly type:  BlockType
@@ -164,7 +164,7 @@ export class VCSBlockData extends VCSBlockId implements VCSDatabaseData {
 
     public tags: VCSTagData[] = []
 
-    public constructor(blockId: string, file: VCSFileData, type: BlockType, databaseId?: number) {
+    public constructor(databaseId: number, blockId: string, file: VCSFileData, type: BlockType) {
         super(file.sessionId, file.filePath, blockId)
         this.databaseId = databaseId
         this.file       = file
@@ -174,7 +174,7 @@ export class VCSBlockData extends VCSBlockId implements VCSDatabaseData {
 
 export class VCSLineData extends VCSFileId implements VCSDatabaseData {
 
-    public readonly databaseId?: number
+    public readonly databaseId: number
 
     public readonly file:     VCSFileData
     public readonly type:     LineType
@@ -182,7 +182,7 @@ export class VCSLineData extends VCSFileId implements VCSDatabaseData {
 
     public versions: VCSVersionData[] = []
 
-    public constructor(file: VCSFileData, type: LineType, position: number, databaseId?: number) {
+    public constructor(databaseId: number, file: VCSFileData, type: LineType, position: number) {
         super(file.sessionId, file.filePath)
         this.databaseId = databaseId
         this.type       = type
@@ -193,7 +193,7 @@ export class VCSLineData extends VCSFileId implements VCSDatabaseData {
 
 export class VCSVersionData extends VCSFileId implements VCSDatabaseData {
 
-    public readonly databaseId?: number
+    public readonly databaseId: number
 
     public readonly line:      VCSLineData
     public readonly type:      VersionType
@@ -204,7 +204,7 @@ export class VCSVersionData extends VCSFileId implements VCSDatabaseData {
     public sourceBlock?: VCSBlockData
     public origin?:      VCSVersionData
 
-    public constructor(line: VCSLineData, type: VersionType, timestamp: number, isActive: boolean, content: string, sourceBlock: VCSBlockData | undefined, origin: VCSVersionData | undefined, databaseId?: number) {
+    public constructor(databaseId: number, line: VCSLineData, type: VersionType, timestamp: number, isActive: boolean, content: string, sourceBlock: VCSBlockData | undefined, origin: VCSVersionData | undefined) {
         super(line.sessionId, line.filePath)
         this.databaseId  = databaseId
         this.line        = line
@@ -219,14 +219,14 @@ export class VCSVersionData extends VCSFileId implements VCSDatabaseData {
 
 export class VCSTagData extends VCSTagId implements VCSDatabaseData {
 
-    public readonly databaseId?: number
+    public readonly databaseId: number
 
     public readonly block:     VCSBlockData
     public readonly name:      string
     public readonly timestamp: number
     public readonly code:      string
 
-    public constructor(tagId: string, block: VCSBlockData, name: string, timestamp: number, code: string, databaseId?: number) {
+    public constructor(databaseId: number, tagId: string, block: VCSBlockData, name: string, timestamp: number, code: string) {
         super(block.sessionId, block.filePath, block.blockId, tagId)
         this.databaseId = databaseId
         this.block      = block
