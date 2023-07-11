@@ -1,8 +1,9 @@
 import { BlockType } from "@prisma/client";
 import { MultiLineChange } from "../../../app/components/data/change";
-import { VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSUnwrappedText, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData } from "../../../app/components/vcs/vcs-rework";
+import { VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSUnwrappedText, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId } from "../../../app/components/vcs/vcs-rework";
 import { DBResourceManager, DBSession, ISessionBlock, ISessionFile, ISessionLine, ISessionTag, ISessionVersion, NewFileInfo, QueryType, ResourceManager, Session } from "../db/utilities";
 import { LinkedList, LinkedListNode } from "../utils/linked-list";
+import { BlockProxy } from "../db/types";
 //import { Block } from "./block";
 //import { LineNode } from "./line";
 //import { Tag } from "./tag";
@@ -47,20 +48,6 @@ export class Line extends LinkedListNode<Line> implements ISessionLine {
     public readonly type:    LineType
 
     public history: LineHistory = new VersionHistory()
-
-    public static createFrom(session: InMemorySession, file: Block, lineData: VCSLineData, previous?: Line): Line {
-        const line = new Line(session, file, lineData.type, lineData.databaseId)
-
-        if (previous) {
-            line.previous = previous
-            previous.next = line
-        }
-
-        const versions = lineData.versions.sort((versionA, versionB) => versionA.timestamp - versionB.timestamp).map(versionData => LineVersion.createFrom(session, line, versionData))
-        line.history   = new VersionHistory(versions)
-
-        return line
-    }
 
     public static async save(line: Line): Promise<number> {
 
@@ -111,17 +98,6 @@ export class LineVersion extends LinkedListNode<LineVersion> implements ISession
     public origin?:      LineVersion
     public sourceBlock?: Block
 
-    public static createFrom(session: InMemorySession, line: Line, versionData: VCSVersionData, previous?: LineVersion): LineVersion {
-        const version = new LineVersion(session, line, versionData.type, versionData.timestamp, versionData.isActive, versionData.content, versionData.databaseId)
-
-        if (previous) {
-            version.previous = previous
-            previous.next    = version
-        }
-
-        return version
-    }
-
     public static async save(version: LineVersion): Promise<number> {
 
     }
@@ -145,6 +121,7 @@ export class Tag implements ISessionTag {
     public readonly session:    InMemorySession
     public readonly databaseId: Promise<number>
 
+    public readonly tagId:     string
     public readonly block:     Block
     public readonly name:      string
     public readonly timestamp: number
@@ -154,7 +131,8 @@ export class Tag implements ISessionTag {
 
     }
 
-    public constructor(session: InMemorySession, block: Block, name: string, timestamp: number, code: string, databaseId?: number) {
+    public constructor(session: InMemorySession, tagId: string, block: Block, name: string, timestamp: number, code: string, databaseId?: number) {
+        this.tagId     = tagId
         this.block     = block
         this.name      = name
         this.timestamp = timestamp
@@ -165,14 +143,14 @@ export class Tag implements ISessionTag {
     }
 }
 
-class FileSeed {
+class CachedFile {
 
-    public readonly file: Block
+    public readonly root: Block
     
-    public readonly blocks   = new Map<number, Block>()
+    public readonly blocks   = new Map<string, Block>()
     public readonly lines    = new Map<number, Line>()
     public readonly versions = new Map<number, LineVersion>()
-    public readonly tags     = new Map<number, Tag>()
+    public readonly tags     = new Map<string, Tag>()
 
     public constructor(session: InMemorySession, fileData: VCSFileData) {
 
@@ -182,10 +160,10 @@ class FileSeed {
         const versionData = lineData.flatMap(line => line.versions)
         const tagData     = blockData.flatMap(block => block.tags)
 
-        this.file = new Block(session, rootData.blockId, fileData.filePath, rootData.type, rootData.databaseId)
+        this.root = new Block(session, rootData.blockId, fileData.filePath, rootData.type, rootData.databaseId)
 
-        blockData.forEach(block => this.blocks.set(block.databaseId, new Block(session, block.blockId, this.file, block.type, block.databaseId)))
-        lineData.forEach(line => this.lines.set(line.databaseId, new Line(session, this.file, line.type, line.databaseId)))
+        blockData.forEach(block => this.blocks.set(block.blockId, new Block(session, block.blockId, this.root, block.type, block.databaseId)))
+        lineData.forEach(line => this.lines.set(line.databaseId, new Line(session, this.root, line.type, line.databaseId)))
 
         versionData.forEach(version => {
             const line = this.lines.get(version.line.databaseId)!
@@ -193,8 +171,8 @@ class FileSeed {
         })
 
         tagData.forEach(tag => {
-            const block = this.blocks.get(tag.block.databaseId)!
-            this.tags.set(tag.databaseId, new Tag(session, block, tag.name, tag.timestamp, tag.code, tag.databaseId))
+            const block = this.blocks.get(tag.block.blockId)!
+            this.tags.set(tag.tagId, new Tag(session, tag.tagId, block, tag.name, tag.timestamp, tag.code, tag.databaseId))
         })
 
         this.fillVersions(versionData)
@@ -206,7 +184,7 @@ class FileSeed {
         versions.forEach(versionData => {
             const version  = this.versions.get(versionData.databaseId)
             if (versionData.origin)      { version.origin      = this.versions.get(versionData.origin!.databaseId) }
-            if (versionData.sourceBlock) { version.sourceBlock = this.blocks.get(versionData.sourceBlock!.databaseId) }
+            if (versionData.sourceBlock) { version.sourceBlock = this.blocks.get(versionData.sourceBlock!.blockId) }
         })
     }
 
@@ -227,7 +205,7 @@ class FileSeed {
 
     private fillBlocks(blocks: VCSBlockData[]): void {
         blocks.forEach(blockData => {
-            const block = this.blocks.get(blockData.databaseId)!
+            const block = this.blocks.get(blockData.blockId)!
 
             const sortedHeads = Array.from(blockData.heads).sort((headA, headB) => headA[0].position - headB[0].position)
             const lines = sortedHeads.map(([lineData, versionData]) => {
@@ -239,10 +217,10 @@ class FileSeed {
             block.firstLine = lines[0]
             block.lastLine  = lines[lines.length - 1]
 
-            if (blockData.parent) { block.parent = this.blocks.get(blockData.parent!.databaseId)! }
-            if (blockData.origin) { block.origin = this.blocks.get(blockData.origin!.databaseId)! }
+            if (blockData.parent) { block.parent = this.blocks.get(blockData.parent!.blockId)! }
+            if (blockData.origin) { block.origin = this.blocks.get(blockData.origin!.blockId)! }
 
-            block.tags = blockData.tags.map(tagData => this.tags.get(tagData.databaseId)!)
+            block.tags = blockData.tags.map(tagData => this.tags.get(tagData.tagId)!)
         })
     }
 }
@@ -270,32 +248,6 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
     public set firstLine(line: VirtualLine | undefined) { this.first = line }
     public set lastLine (line: VirtualLine | undefined) { this.last  = line }
 
-    public static createAsFile(session: InMemorySession, fileData: VCSFileData): Block {
-
-
-
-
-
-        const rootData = fileData.rootBlock
-        const file     = new Block(session, rootData.blockId, fileData.filePath, rootData.type, rootData.databaseId)
-
-        const sortedLineData = fileData.lines.sort((lineA, lineB) => lineA.position - lineB.position)
-
-        let previousLine: Line | undefined = undefined
-        const lines = sortedLineData.map(lineData => {
-            previousLine = Line.createFrom(session, file, lineData, previousLine)
-            return previousLine
-        })
-
-        const virualLines = 
-
-        return file
-    }
-
-    public static createAsBlock(session: InMemorySession, file: Block, blockData: VCSBlockData, existingBlocks?: Map<string, Block>): Block {
-
-    }
-
     public static async save(block: Block): Promise<number> {
 
     }
@@ -316,8 +268,6 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
         this.session    = session
         this.databaseId = databaseId ? Promise.resolve(databaseId) : Block.save(this)
     }
-
-
 
     public asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
         throw new Error("Method not implemented.");
@@ -362,6 +312,10 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
     public createChild(range: VCSBlockRange): Promise<ISessionBlock<Block, Line, LineVersion>> {
         throw new Error("Method not implemented.");
     }
+
+    public delete(): void {
+        throw new Error("Method not implemented.");
+    }
 }
 
 
@@ -401,7 +355,9 @@ export class InMemoryResourceManager extends ResourceManager<Block, Line, LineVe
 export class InMemorySession extends Session<Block, Line, LineVersion, Block, Tag> {
 
     private readonly databaseResources: DBResourceManager
-    private readonly sessionId:         VCSSessionId
+    private readonly databaseSessionId: VCSSessionId
+
+    private readonly cachedFiles = new Map<string, CachedFile>()
 
     private currentRequestId?: number = undefined
 
@@ -409,7 +365,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
         super(manager)
 
         this.databaseResources = new DBResourceManager()
-        this.sessionId         = this.databaseResources.createSession()
+        this.databaseSessionId         = this.databaseResources.createSession()
     }
 
     private getNextIds(): { requestId: string, previousRequestId?: string } {
@@ -420,7 +376,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
 
     private createSessionRequest<RequestType>(args: RequestType): VCSSessionRequest<RequestType> {
         const { requestId, previousRequestId } = this.getNextIds()
-        return { sessionId: this.sessionId, requestId, previousRequestId, data: args }
+        return { sessionId: this.databaseSessionId, requestId, previousRequestId, data: args }
     }
 
     private async createDatabaseQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: DBSession, data: RequestData) => Promise<QueryResult>): Promise<QueryResult> {
@@ -434,33 +390,59 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
     }
 
     public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<Block, Line, LineVersion, Block>> {
-        const request = this.createSessionRequest({ filePath, eol, content })
+        const request  = this.createSessionRequest({ filePath, eol, content })
         const fileData = await this.createDatabaseQuery(request, QueryType.ReadWrite, async (session, options) => {
             const blockInfo = await session.loadFile(options)
             return await session.getFileData(blockInfo)
         })
 
-        const rootBlockData = fileData.rootBlock
+        const cachedFile = new CachedFile(this, fileData)
+        const rootBlock  = cachedFile.root
 
-        // dark magic
+        this.cachedFiles.set(rootBlock.filePath, cachedFile)
 
-        return { file: { filePath: fileData.filePath, file:  }, rootBlock: { blockId: rootBlockData.blockId, block:  } }
+        return { file: { filePath: fileData.filePath, file: rootBlock }, rootBlock: { blockId: rootBlock.blockId, block: rootBlock } }
     }
 
     public async getRootSessionBlockFor(filePath: string): Promise<Block | undefined> {
-        throw new Error("Method not implemented.");
+        if (this.cachedFiles.has(filePath)) {
+            return this.cachedFiles.get(filePath)!.root
+        } else {
+            return undefined
+        }
     }
 
-    public async getSessionBlockFor(blockId: string): Promise<Block | undefined> {
-        throw new Error("Method not implemented.");
+    public async getSessionBlockFor(blockId: VCSBlockId): Promise<Block | undefined> {
+        const filePath = blockId.filePath
+        const id       = blockId.blockId
+
+        if (this.cachedFiles.has(filePath)) {
+            return this.cachedFiles.get(filePath)!.blocks.get(id)
+        } else {
+            return undefined
+        }
     }
 
-    public async getSessionTagFor(tagId: string): Promise<Tag | undefined> {
-        throw new Error("Method not implemented.");
+    public async getSessionTagFor(tagId: VCSTagId): Promise<Tag | undefined> {
+        const filePath = tagId.filePath
+        const id       = tagId.tagId
+
+        if (this.cachedFiles.has(filePath)) {
+            return this.cachedFiles.get(filePath)!.tags.get(id)
+        } else {
+            return undefined
+        }
     }
 
     public async deleteSessionBlock(block: Block): Promise<void> {
-        throw new Error("Method not implemented.");
+        block.delete()
+
+        const blockId = new VCSBlockId(this.databaseSessionId.sessionId, block.filePath, block.blockId)
+        const request = this.createSessionRequest(blockId)
+        await this.createDatabaseQuery(request, QueryType.ReadWrite, async (session, blockId) => {
+            const blockProxy = await session.getBlock(blockId)
+            await session.deleteSessionBlock(blockProxy)
+        })
     }
 
     public async getFileData(fileId: VCSFileId): Promise<VCSFileData> {

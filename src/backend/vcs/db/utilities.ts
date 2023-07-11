@@ -61,8 +61,8 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
 
     public abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock>>
     public abstract getRootSessionBlockFor(filePath: string):                                       Promise<SessionBlock | undefined>
-    public abstract getSessionBlockFor(blockId: string):                                            Promise<SessionBlock | undefined>
-    public abstract getSessionTagFor(tagId: string):                                                Promise<SessionTag | undefined>
+    public abstract getSessionBlockFor(blockId: VCSBlockId):                                        Promise<SessionBlock | undefined>
+    public abstract getSessionTagFor(tagId: VCSTagId):                                              Promise<SessionTag | undefined>
     public abstract deleteSessionBlock(block: SessionBlock):                                        Promise<void>
 
     public abstract getFileData(fileId: VCSFileId): Promise<VCSFileData>
@@ -119,7 +119,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         if (this.blocks.has(id)) {
             return this.blocks.get(id)!
         } else {
-            const block = await this.getSessionBlockFor(id)
+            const block = await this.getSessionBlockFor(blockId)
             if (!block) { throw new Error(`Cannot find block for provided block id "${id}"`) }
             this.blocks.set(id, block)
             return block
@@ -131,7 +131,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         if (this.tags.has(id)) {
             return this.tags.get(id)!
         } else {
-            const tag = await this.getSessionTagFor(id)
+            const tag = await this.getSessionTagFor(tagId)
             if (!tag) { throw new Error(`Cannot find tag for provided tag id "${id}"`) }
             this.tags.set(id, tag)
             return tag
@@ -194,8 +194,8 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
         return await BlockProxy.getFor(block)
     }
 
-    public async getSessionBlockFor(blockId: string): Promise<BlockProxy | undefined> {
-        const block = await prismaClient.block.findFirst({ where: { blockId } })
+    public async getSessionBlockFor(blockId: VCSBlockId): Promise<BlockProxy | undefined> {
+        const block = await prismaClient.block.findFirst({ where: { blockId: blockId.blockId } })
         return block ? await this.getSessionBlockFrom(block) : undefined
     }
 
@@ -203,8 +203,8 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
         return await TagProxy.getFor(tag)
     }
 
-    public async getSessionTagFor(tagId: string): Promise<TagProxy> {
-        const tag = await prismaClient.tag.findFirst({ where: { tagId } })
+    public async getSessionTagFor(tagId: VCSTagId): Promise<TagProxy> {
+        const tag = await prismaClient.tag.findFirst({ where: { tagId: tagId.tagId } })
         return tag ? await this.getSessionTagFrom(tag) : undefined
     }
 
