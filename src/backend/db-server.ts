@@ -1,13 +1,12 @@
 import { BrowserWindow } from "electron"
 
-import { VCSSuccess, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
+import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
 import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { QueryType, ResourceManager, DBSession } from "./vcs/db/utilities"
 
 import { BlockProxy, FileProxy, LineProxy, TagProxy, VersionProxy } from "./vcs/db/types"
 import { prismaClient } from "./vcs/db/client"
-import { Version } from "@prisma/client"
 
 export class DBVCSServer extends BasicVCSServer {
 
@@ -236,7 +235,7 @@ export class DBVCSServer extends BasicVCSServer {
 
     private async changeLines(session: DBSession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
-        const result = await block.updateLines(blockId, change)
+        const result = await block.changeLines(blockId, change)
         this.updatePreview(block)
         return result
 

@@ -1,4 +1,4 @@
-import { BlockType, Block, VersionType, Version, Line, PrismaPromise } from "@prisma/client"
+import { BlockType, Block, VersionType, Version, Line, PrismaPromise, Prisma } from "@prisma/client"
 import { DatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client"
 import { FileProxy, LineProxy, VersionProxy } from "../../types"
@@ -13,14 +13,32 @@ enum BlockReference {
     Next
 }
 
+class WrapperPromise<WrappedValue, WrappedPromise extends Promise<WrappedValue>> extends Promise<WrappedValue> {
+
+    public readonly wrappedPromise!: WrappedPromise
+
+    public static createFrom<WrappedValue, WrappedPromise extends Promise<WrappedValue>>(promise: WrappedPromise): WrapperPromise<WrappedValue, WrappedPromise> {
+        return new WrapperPromise((resolve, reject) => {
+            promise
+                .then( value  => resolve(value))
+                .catch(reason => reject(reason))
+        }, promise)
+    }
+
+    public constructor(executor: (resolve: (value: WrappedValue | PromiseLike<WrappedValue>) => void, reject: (reason?: any) => void) => void, promise?: WrappedPromise) {
+        super(executor)
+        this.wrappedPromise = promise
+    }
+}
+
 export class BlockProxy extends DatabaseProxy {
 
-    public readonly blockId:    string
-    public readonly file:       FileProxy
-    public readonly type:       BlockType
-    public readonly parent:     BlockProxy
-    public readonly origin:     BlockProxy
-    public readonly headListId: number
+    public readonly blockId: string
+    public readonly file:    FileProxy
+    public readonly type:    BlockType
+    public readonly parent:  BlockProxy
+    public readonly origin:  BlockProxy
+    public readonly headId:  number
 
     public static async get(id: number): Promise<BlockProxy> {
         return await ProxyCache.getBlockProxy(id)
@@ -39,17 +57,17 @@ export class BlockProxy extends DatabaseProxy {
         const file   = await ProxyCache.getFileProxy(block.fileId)
         const parent = block.parentId ? await ProxyCache.getBlockProxy(block.parentId) : undefined
         const origin = block.originId ? await ProxyCache.getBlockProxy(block.originId) : undefined
-        return new BlockProxy(block.id, block.blockId, file, block.type, parent, origin, block.headListId)
+        return new BlockProxy(block.id, block.blockId, file, block.type, parent, origin, block.headId)
     }
 
-    private constructor(id: number, blockId: string, file: FileProxy, type: BlockType, parent: BlockProxy, origin: BlockProxy, headListId: number) {
+    private constructor(id: number, blockId: string, file: FileProxy, type: BlockType, parent: BlockProxy, origin: BlockProxy, headId: number) {
         super(id)
-        this.blockId    = blockId
-        this.file       = file
-        this.type       = type
-        this.parent     = parent
-        this.origin     = origin
-        this.headListId = headListId
+        this.blockId = blockId
+        this.file    = file
+        this.type    = type
+        this.parent  = parent
+        this.origin  = origin
+        this.headId  = headId
     }
 
     //public getBlock()         { return prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }) }
@@ -63,6 +81,11 @@ export class BlockProxy extends DatabaseProxy {
     //public getAllVersions() { return prismaClient.version.findMany({ where: { line: { blocks: { some: { id: this.id } } } }, orderBy: { line: { order: "asc" } } }) }
     public getTags()          { return prismaClient.tag.findMany({ where: { blockId: this.id }, include: { block: { select: { blockId: true } } } }) }
 
+    public async getHeadTimestamp(): Promise<number> {
+        const head = await prismaClient.head.findUniqueOrThrow({ where: { id: this.headId } })
+        return head.timestamp
+    }
+
     public getOriginalLineCount() {
         return prismaClient.version.count({
             where: {
@@ -72,109 +95,194 @@ export class BlockProxy extends DatabaseProxy {
         })
     }
 
-    public getActiveLineCount() {
-        return prismaClient.version.count({
+    public async getHeads(options?: { headTimestamp?: number, includeLine?: boolean }): WrapperPromise<Version[], PrismaPromise<Version[]>> {
+        
+        const headTimestamp = options?.headTimestamp ? options!.headTimestamp! : await this.getHeadTimestamp()
+
+        const potentiallyActiveHeads = await prismaClient.version.groupBy({
+            by: ["lineId"],
             where: {
                 line: {
+                    fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                headLists: {
-                    some: {
-                        blocks: { some: { id: this.id } }
-                    }
+                timestamp: { lte: headTimestamp }
+            },
+            _max: { timestamp: true }
+        })
+
+        const preInsertionHeads = await prismaClient.version.groupBy({
+            by: ["lineId"],
+            where: {
+                line: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } },
+                    id:     { notIn: potentiallyActiveHeads.map(aggregation => aggregation.lineId) }
+                }
+            },
+            _min: { timestamp: true }
+        })
+
+        const heads: { lineId: number, timestamp: number }[] = []
+        potentiallyActiveHeads.forEach(({ lineId, _max: maxAggregations }) => heads.push({ lineId, timestamp: maxAggregations.timestamp }))
+        preInsertionHeads.forEach(     ({ lineId, _min: minAggregations }) => heads.push({ lineId, timestamp: minAggregations.timestamp }))
+
+        const versionSearch: Prisma.VersionFindManyArgs<any> = {
+            where: {
+                OR: heads
+            },
+            orderBy: {
+                line: { order: "asc" }
+            }
+        }
+
+        if (options?.includeLine) { versionSearch.include = { line: true } }
+
+        return WrapperPromise.createFrom(prismaClient.version.findMany(versionSearch))
+    }
+
+    // NOTE: Assumes first version of an inserted line is always inactive
+    public async getActiveHeads(options?: { headTimestamp?: number, includeLine?: boolean }): WrapperPromise<Version[], PrismaPromise<Version[]>>{
+
+        const headTimestamp = options?.headTimestamp ? options!.headTimestamp! : await this.getHeadTimestamp()
+
+        const potentiallyActiveHeads = await prismaClient.version.groupBy({
+            by: ["lineId"],
+            where: {
+                line: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } }
                 },
+                timestamp: { lte: headTimestamp }
+            },
+            _max: { timestamp: true }
+        })
+
+        const versionSearch: Prisma.VersionFindManyArgs<any> = {
+            where: {
+                OR: potentiallyActiveHeads.map(({ lineId, _max: maxAggregations }) => {
+                    return {
+                        lineId,
+                        timestamp: maxAggregations.timestamp
+                    }
+                }),
                 isActive: true
-            }
-        })
-    }
-
-    public getActiveLines() { 
-        return prismaClient.line.findMany({
-            where: {
-                fileId:   this.file.id,
-                blocks:   { some: { id: this.id } },
-                versions: {
-                    some: {
-                        headLists: { some: { blocks: { some: { id: this.id } } } },
-                        isActive:  true
-                    }
-                }
-            },
-            orderBy: {
-                order: "asc"
-            }
-        })
-    }
-
-    public getHeadVersions() { 
-        return prismaClient.version.findMany({
-            where: {
-                line: {
-                    blocks: { some: { id: this.id } }
-                },
-                headLists: {
-                    some: {
-                        blocks: { some: { id: this.id } }
-                    }
-                }
             },
             orderBy: {
                 line: { order: "asc" }
             }
-        })
+        }
+
+        if (options?.includeLine) { versionSearch.include = { line: true } }
+
+        return WrapperPromise.createFrom(prismaClient.version.findMany(versionSearch))
     }
 
-    public getActiveHeadVersions() {
-        return prismaClient.version.findMany({
+    public async getActiveLineCount(headTimestamp?: number): WrapperPromise<number, PrismaPromise<number>> {
+
+        headTimestamp = headTimestamp ? headTimestamp : await this.getHeadTimestamp()
+
+        const potentiallyActiveHeads = await prismaClient.version.groupBy({
+            by: ["lineId"],
             where: {
                 line: {
+                    fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                headLists: {
-                    some: {
-                        blocks: { some: { id: this.id } }
-                    }
-                },
-                isActive: true
+                timestamp: { lte: headTimestamp }
             },
-            orderBy: {
-                line: { order: "asc" }
-            }
+            _max: { timestamp: true }
         })
-    }
 
-    public getHeadFor(line: Line | LineProxy) {
-        return prismaClient.version.findFirst({
-            where: {
-                lineId:    line.id,
-                headLists: {
-                    some: {
-                        blocks: { some: { id: this.id } }
-                    }
+        return WrapperPromise.createFrom(
+            prismaClient.version.count({
+                where: {
+                    OR: potentiallyActiveHeads.map(({ lineId, _max: maxAggregations }) => {
+                        return {
+                            lineId,
+                            timestamp: maxAggregations.timestamp
+                        }
+                    }),
+                    isActive: true
                 }
-            }
-        })
+            })
+        )
     }
 
-    public getHeadsWithLines() {
-        return prismaClient.version.findMany({
+    public async getActiveLines(headTimestamp?: number): WrapperPromise<Line[], PrismaPromise<Line[]>> {
+
+        headTimestamp = headTimestamp ? headTimestamp : await this.getHeadTimestamp()
+
+        const potentiallyActiveHeads = await prismaClient.version.groupBy({
+            by: ["lineId"],
             where: {
                 line: {
+                    fileId: this.file.id,
                     blocks: { some: { id: this.id } }
                 },
-                headLists: {
-                    some: {
-                        blocks: { some: { id: this.id } }
-                    }
+                timestamp: { lte: headTimestamp }
+            },
+            _max: { timestamp: true }
+        })
+
+        return WrapperPromise.createFrom(
+            prismaClient.line.findMany({
+                where: {
+                    OR: potentiallyActiveHeads.map(({ lineId, _max: maxAggregations }) => {
+                        return {
+                            id: lineId,
+                            versions: {
+                                some: {
+                                    timestamp: maxAggregations.timestamp,
+                                    isActive:  true
+                                }
+                            }
+                        }
+                    })
+                },
+                orderBy: {
+                    order: "asc"
                 }
+            })
+        )
+    }
+
+    public async getHeadFor(line: Line | LineProxy, headTimestamp?: number) {
+
+        headTimestamp = headTimestamp ? headTimestamp : await this.getHeadTimestamp()
+
+        const head = await prismaClient.version.findFirst({
+            where: {
+                line: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } }
+                },
+                timestamp: { lte: headTimestamp }
             },
             orderBy: {
-                line: { order: "asc" }
-            },
-            include: {
-                line: true
+                timestamp: "desc"
             }
         })
+
+        if (head) {
+            return head
+        } else {
+            return await prismaClient.version.findFirstOrThrow({
+                where: {
+                    line: {
+                        fileId: this.file.id,
+                        blocks: { some: { id: this.id } }
+                    }
+                },
+                orderBy: {
+                    timestamp: "asc"
+                }
+            })
+        }
+    }
+
+    public getHeadsWithLines(headTimestamp?: number): WrapperPromise<(Version & { line: Line })[], PrismaPromise<(Version & { line: Line })[]>> {
+        return this.getHeads({ headTimestamp, includeLine: true }) as WrapperPromise<(Version & { line: Line })[], PrismaPromise<(Version & { line: Line })[]>>
     }
 
     public getLastImportedVersion() {
@@ -192,14 +300,37 @@ export class BlockProxy extends DatabaseProxy {
         })
     }
 
-    public getCurrentVersion() {
-        return prismaClient.version.findFirstOrThrow({
+    public async getCurrentVersion(headTimestamp?: number): WrapperPromise<Version, PrismaPromise<Version>> {
+
+        headTimestamp = headTimestamp ? headTimestamp! : await this.getHeadTimestamp()
+
+        const potentiallyActiveHeads = await prismaClient.version.groupBy({
+            by: ["lineId"],
             where: {
-                line:      { fileId: this.file.id },
-                headLists: { some: { blocks: { some: { id: this.id } } } }
+                line: {
+                    fileId: this.file.id,
+                    blocks: { some: { id: this.id } }
+                },
+                timestamp: { lte: headTimestamp }
             },
-            orderBy: { timestamp: "desc" }
+            _max: { timestamp: true }
         })
+
+        return WrapperPromise.createFrom(
+            prismaClient.version.findFirstOrThrow({
+                where: {
+                    OR: potentiallyActiveHeads.map(({ lineId, _max: maxAggregations }) => {
+                        return {
+                            lineId,
+                            timestamp: maxAggregations.timestamp
+                        }
+                    })
+                },
+                orderBy: {
+                    line: { order: "desc" }
+                }
+            })
+        )
     }
 
     public getTimelineIndexFor(version: Version) {
@@ -236,7 +367,7 @@ export class BlockProxy extends DatabaseProxy {
     public async getText(): Promise<string> {
         const [file, versions] = await prismaClient.$transaction([
             this.file.getFile(),
-            this.getActiveHeadVersions()
+            this.getActiveHeads().wrappedPromise
         ])
 
         const content = versions.map(version => version.content)
@@ -262,7 +393,7 @@ export class BlockProxy extends DatabaseProxy {
 
             const [file, rootVersions] = await prismaClient.$transaction([
                 this.file.getFile(),
-                this.getActiveHeadVersions()
+                this.getActiveHeads().wrappedPromise
             ])
 
             if (accumulation) {
@@ -277,7 +408,7 @@ export class BlockProxy extends DatabaseProxy {
 
         } else if (this.type === BlockType.CLONE) {
 
-            const blockVersions = await this.getActiveHeadVersions()
+            const blockVersions = await this.getActiveHeads()
             return await this.origin!.getUnwrappedText(await accumulate(this.file, blockVersions, accumulation))
 
         } else if (this.type === BlockType.INLINE) {
@@ -285,7 +416,7 @@ export class BlockProxy extends DatabaseProxy {
             if (accumulation) {
                 return await this.parent!.getUnwrappedText(accumulation)
             } else {
-                const blockVersions = await this.getActiveHeadVersions()
+                const blockVersions = await this.getActiveHeads()
                 return await this.parent!.getUnwrappedText(await accumulate(this.file, blockVersions))
             }
         } else {
@@ -319,31 +450,27 @@ export class BlockProxy extends DatabaseProxy {
             orderBy: { order: "asc" }
         })
 
-        const headList = await prismaClient.headList.create({
+        const versions        = lines.flatMap(line => line.versions).sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
+        const latestTimestamp = versions.length > 0 ? versions[versions.length - 1].timestamp : 0
+
+        const head = await prismaClient.head.create({
             data: {
-                versions: {
-                    connect: lines.map(line => {
-                        const versionCount = line.versions.length
-                        if (versionCount === 0) { throw new Error("Creation of root block for file requires (a) existing version(s) for each line!") }
-                        return { id: line.versions[versionCount - 1].id } 
-                    })
-                }
+                timestamp: latestTimestamp
             }
         })
 
         const blockId = filePath + ":root"
         const block   = await prismaClient.block.create({
             data: {
-                blockId:       blockId,
-                fileId:        file.id,
-                type:          BlockType.ROOT,
-                lines:         { connect: lines.map(line => { return { id: line.id } }) },
-                headListId:    headList.id,
-                ownedHeadList: { connect: { id: headList.id } }
+                blockId:   blockId,
+                fileId:    file.id,
+                type:      BlockType.ROOT,
+                lines:     { connect: lines.map(line => { return { id: line.id } }) },
+                headId:    head.id,
+                ownedHead: { connect: { id: head.id } }
             }
         })
 
-        const versions = lines.flatMap(line => line.versions)
         await prismaClient.version.updateMany({
             where: { id: { in: versions.map(version => version.id) } },
             data:  { sourceBlockId: block.id }
@@ -355,26 +482,26 @@ export class BlockProxy extends DatabaseProxy {
     public async copy(): Promise<BlockProxy> {
         const [cloneCount, versions] = await prismaClient.$transaction([
             this.getCloneCount(),
-            this.getHeadVersions()
+            this.getHeads().wrappedPromise
         ])
 
-        const headList = await prismaClient.headList.create({
+        const latestTimestamp = versions.length > 0 ? versions.sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)[versions.length - 1].timestamp : 0
+
+        const head = await prismaClient.head.create({
             data: {
-                versions: {
-                    connect: versions.map(version => { return { id: version.id }  })
-                }
+                timestamp: latestTimestamp
             }
         })
 
         const block = await prismaClient.block.create({
             data: {
-                blockId:       `${this.blockId}:inline${cloneCount}`,
-                fileId:        this.file.id,
-                type:          BlockType.CLONE,
-                originId:      this.id,
-                lines:         { connect: versions.map(version => { return { id: version.lineId } }) },
-                headListId:    headList.id,
-                ownedHeadList: { connect: { id: headList.id } }
+                blockId:   `${this.blockId}:inline${cloneCount}`,
+                fileId:    this.file.id,
+                type:      BlockType.CLONE,
+                originId:  this.id,
+                lines:     { connect: versions.map(version => { return { id: version.lineId } }) },
+                headId:    head.id,
+                ownedHead: { connect: { id: head.id } }
             }
         })
 
@@ -391,7 +518,7 @@ export class BlockProxy extends DatabaseProxy {
                 type:       BlockType.INLINE,
                 parentId:   this.id,
                 lines:      { connect: lines.map(line => { return { id: line.id } }) },
-                headListId: this.headListId
+                headId:     this.headId
             }
         })
 
@@ -516,7 +643,7 @@ export class BlockProxy extends DatabaseProxy {
     public async asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
         const [originalLineCount, activeLineCount, versionCount, lastImportedVersion, firstLine, currentVersion, tags] = await prismaClient.$transaction([
             this.getOriginalLineCount(),
-            this.getActiveLineCount(),
+            this.getActiveLineCount().wrappedPromise,
             this.getVersionCount(),
             this.getLastImportedVersion(),
 
@@ -529,7 +656,7 @@ export class BlockProxy extends DatabaseProxy {
                 select: { id: true, order: true }
             }),
 
-            this.getCurrentVersion(),
+            this.getCurrentVersion().wrappedPromise,
             this.getTags()
         ])
 
@@ -540,17 +667,31 @@ export class BlockProxy extends DatabaseProxy {
         const userVersionCount        = versionCount - originalLineCount + (lastImportedVersion ? 1 : 0)  // one selectable version per version minus pre-insertion versions (one per inserted line) and imported lines (which, together, is the same as all lines) plus one version for the original state of the file
 
         if (this.parent) {
-            const activeLinesBeforeBlock = await prismaClient.line.count({
+            const parentTimestamp = await this.parent.getHeadTimestamp()
+            const potentiallyActiveHeadsBeforeBlock = await prismaClient.version.groupBy({
+                by: ["lineId"],
                 where: {
-                    fileId:   this.file.id,
-                    blocks:   { none: { id: this.id } },     // line is not part of this block,
-                    versions: {                              // but has a head (aka is part of) the parent block
-                        some: {
-                            headLists: { some: {  blocks: { some: { id: this.parent.id } } } },
-                            isActive:  true
-                        }
+                    line:   {
+                        fileId: this.file.id,
+                        blocks: { none: { id: this.id } },
+                        order:  { lt: firstLine.order }
                     },
-                    order: { lt: firstLine.order },          // only lines before the block
+                    timestamp: { lte: parentTimestamp }
+                },
+                _max: {
+                    timestamp: true
+                }
+            })
+
+            const activeLinesBeforeBlock = await prismaClient.version.count({
+                where: {
+                    OR: potentiallyActiveHeadsBeforeBlock.map(({ lineId, _max: maxAggregations }) => {
+                        return {
+                            lineId,
+                            timestamp: maxAggregations.timestamp
+                        }
+                    }),
+                    isActive: true
                 }
             })
 
@@ -602,6 +743,15 @@ export class BlockProxy extends DatabaseProxy {
     }
 
     public async applyTimestamp(timestamp: number): Promise<VersionProxy[]> {
+
+        await prismaClient.head.update({
+            where: { id: this.headId },
+            data:  { timestamp }
+        })
+
+        return []
+
+        /*
         const heads = await this.getHeadsWithLines()
         const lines = heads.map(head => head.line)
         
@@ -646,30 +796,48 @@ export class BlockProxy extends DatabaseProxy {
         })
 
         return await Promise.all(selected.map(async version => await VersionProxy.getFor(version)))
+        */
     }
 
-    public async cloneOutdatedHeads(heads: VersionProxy[]): Promise<void> {
-        const timestamp = TimestampProvider.getTimestamp()
+    public async cloneOutdatedHeads(nothingRN: VersionProxy[]): Promise<void> {
+        const headTimestamp  = await this.getHeadTimestamp()
+        const cloneTimestamp = TimestampProvider.getTimestamp()
 
-        await prismaClient.headList.update({
-            where: { id: this.headListId },
-            data: {
+        const heads = await this.getHeads({ headTimestamp })
+        const linesToUpdate = await prismaClient.line.findMany({
+            where: {
+                fileId:   this.file.id,
+                blocks:   { some: { id: this.id } },
                 versions: {
-                    create: heads.map(head => {
-                        return {
-                            lineId:        head.line.id,
-                            timestamp:     timestamp,
-                            type:          VersionType.CLONE,
-                            isActive:      head.isActive,
-                            originId:      head.id,
-                            sourceBlockId: this.id,
-                            content:       head.content
-                        }
-                    }),
-                    disconnect: heads.map(head => { return { id: head.id } })
+                    some: {
+                        timestamp: { gt: headTimestamp }
+                    }
                 }
             }
         })
+
+        const headsToClone = heads.filter(head => linesToUpdate.some(line => line.id === head.lineId))
+
+        const versionCreation = prismaClient.version.createMany({
+            data: headsToClone.map(head => {
+                return {
+                    lineId:        head.lineId,
+                    timestamp:     cloneTimestamp,
+                    type:          VersionType.CLONE,
+                    isActive:      head.isActive,
+                    originId:      head.id,
+                    sourceBlockId: this.id,
+                    content:       head.content
+                }
+            })
+        })
+
+        const headUpdate = prismaClient.head.update({
+            where: { id: this.headId },
+            data:  { timestamp: cloneTimestamp }
+        })
+
+        await prismaClient.$transaction([versionCreation, headUpdate])
     }
 
     public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
@@ -719,47 +887,36 @@ export class BlockProxy extends DatabaseProxy {
         const block = this
         const affectedLines:    LineProxy[]        = []
         const prismaOperations: PrismaPromise<any>[] = []
+        let   latestTimestamp:  number = 0
+
+        heads.forEach(head => { latestTimestamp = head.timestamp > latestTimestamp ? head.timestamp : latestTimestamp })
 
         function deleteLine(line: LineProxy): void {
-            const currentHead = heads.find(head => head.lineId === line.id)!
-
             affectedLines.push(line)
-            prismaOperations.push(prismaClient.headList.update({
-                where: { id: block.headListId },
+            latestTimestamp = TimestampProvider.getTimestamp()
+            prismaOperations.push(prismaClient.version.create({
                 data: {
-                    versions: {
-                        create: {
-                            lineId:        line.id,
-                            timestamp:     TimestampProvider.getTimestamp(),
-                            type:          VersionType.DELETION,
-                            isActive:      false,
-                            sourceBlockId: block.id,
-                            content:       ""
-                        },
-                        disconnect: { id: currentHead.id }
-                    }
+                    lineId:        line.id,
+                    timestamp:     latestTimestamp,
+                    type:          VersionType.DELETION,
+                    isActive:      false,
+                    sourceBlockId: block.id,
+                    content:       ""
                 }
             }))
         }
 
         function updateLine(line: LineProxy, content: string): void {
-            const currentHead = heads.find(head => head.lineId === line.id)!
-
             affectedLines.push(line)
-            prismaOperations.push(prismaClient.headList.update({
-                where: { id: block.headListId },
+            latestTimestamp = TimestampProvider.getTimestamp()
+            prismaOperations.push(prismaClient.version.create({
                 data: {
-                    versions: {
-                        create: {
-                            lineId:        line.id,
-                            timestamp:     TimestampProvider.getTimestamp(),
-                            type:          VersionType.CHANGE,
-                            isActive:      true,
-                            sourceBlockId: block.id,
-                            content
-                        },
-                        disconnect: { id: currentHead.id }
-                    }
+                    lineId:        line.id,
+                    timestamp:     latestTimestamp,
+                    type:          VersionType.CHANGE,
+                    isActive:      true,
+                    sourceBlockId: block.id,
+                    content
                 }
             }))
         }
@@ -775,6 +932,11 @@ export class BlockProxy extends DatabaseProxy {
             const line = vcsLines.at(i)
             updateLine(line, modifiedLines[i])
         }
+
+        prismaOperations.push(prismaClient.head.update({
+            where: { id: block.headId },
+            data:  { timestamp: latestTimestamp }
+        }))
 
         await prismaClient.$transaction(prismaOperations)
 

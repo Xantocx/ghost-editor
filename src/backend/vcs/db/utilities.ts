@@ -5,6 +5,7 @@ import { randomUUID } from "crypto"
 import { VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSUnwrappedText, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 import { MultiLineChange } from "../../../app/components/data/change"
+import { truncate } from "fs"
 
 export interface ISessionFile {}
 
@@ -233,25 +234,22 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
                     include: {
                         lines: {
                             select: {
-                                id: true
+                                id: true,
+                                versions: {
+                                    select: {
+                                        id:        true,
+                                        timestamp: true
+                                    },
+                                    orderBy: {
+                                        timestamp: "asc"
+                                    }
+                                } 
                             },
                             orderBy: {
                                 order: "asc"
                             }
                         },
-                        headList: {
-                            include: {
-                                versions: {
-                                    select:{
-                                        id: true,
-                                        lineId: true
-                                    },
-                                    orderBy: {
-                                        timestamp: "asc"
-                                    }
-                                }
-                            }
-                        },
+                        head: true,
                         tags: {
                             orderBy: {
                                 timestamp: "asc"
@@ -292,11 +290,12 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
 
         // complete blocks with heads, origin, parent, and tags
         file.blocks.forEach(block => {
-            const blockInfo = blockData.get(block.id)!
+            const blockInfo     = blockData.get(block.id)!
+            const headTimestamp = block.head.timestamp
 
             blockInfo.heads = new Map(block.lines.map(line => {
                 const lineInfo = lineData.get(line.id)!
-                const version  = block.headList.versions.find(version => version.lineId === line.id)!
+                const version  = line.versions.find((version, index, versions) => { return version.timestamp <= headTimestamp && (index + 1 < versions.length ? headTimestamp < versions[index + 1].timestamp : true) })!
                 return [lineInfo, versionData.get(version.id)!]
             }))
 

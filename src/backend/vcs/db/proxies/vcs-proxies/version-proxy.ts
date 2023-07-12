@@ -6,9 +6,10 @@ import { prismaClient } from "../../client"
 
 export class VersionProxy extends DatabaseProxy {
 
-    public readonly line:     LineProxy
-    public readonly isActive: boolean
-    public readonly content:  string
+    public readonly line:      LineProxy
+    public readonly timestamp: number
+    public readonly isActive:  boolean
+    public readonly content:   string
 
     public static async get(id: number): Promise<VersionProxy> {
         return await ProxyCache.getVersionProxy(id)
@@ -25,13 +26,14 @@ export class VersionProxy extends DatabaseProxy {
 
     public static async loadFrom(version: Version): Promise<VersionProxy> {
         const line = await ProxyCache.getLineProxy(version.lineId)
-        return new VersionProxy(version.id, line, version.isActive, version.content)
+        return new VersionProxy(version.id, line, version.timestamp, version.isActive, version.content)
     }
 
-    private constructor(id: number, line: LineProxy, isActive: boolean, content: string) {
+    private constructor(id: number, line: LineProxy, timestamp: number, isActive: boolean, content: string) {
         super(id)
-        this.line     = line
-        this.isActive = isActive
-        this.content  = content
+        this.line      = line
+        this.timestamp = timestamp
+        this.isActive  = isActive
+        this.content   = content
     }
 }

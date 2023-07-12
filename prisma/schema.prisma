@@ -38,9 +38,9 @@ model Block {
 
   lines Line[] @relation("LinesInBlocks")
 
-  headListId    Int
-  headList      HeadList  @relation("HeadListForBlocks", fields: [headListId], references: [id])
-  ownedHeadList HeadList? @relation("HeadListOwner")
+  headId    Int
+  head      Head  @relation("HeadForBlocks", fields: [headId], references: [id])
+  ownedHead Head? @relation("HeadOwner")
 
   tags Tag[] @relation("TagsForBlock")
 
@@ -57,14 +57,15 @@ model Block {
   @@index([fileId])
 }
 
-model HeadList {
+model Head {
   id Int @id @default(autoincrement())
 
   ownerId Int?   @unique
-  owner   Block? @relation("HeadListOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner   Block? @relation("HeadOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
-  blocks   Block[]   @relation("HeadListForBlocks")
-  versions Version[] @relation("VersionsInHeadLists")
+  blocks Block[] @relation("HeadForBlocks")
+
+  timestamp Int
 }
 
 enum LineType {
@@ -113,8 +114,6 @@ model Version {
 
   sourceBlockId Int?
   sourceBlock   Block? @relation("VersionsFromSourceBlock", fields: [sourceBlockId], references: [id])
-
-  headLists HeadList[] @relation("VersionsInHeadLists")
 
   @@index([timestamp(sort: Asc)])
 }

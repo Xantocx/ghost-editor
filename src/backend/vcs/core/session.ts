@@ -50,7 +50,7 @@ export class Line extends LinkedListNode<Line> implements ISessionLine {
     public history: LineHistory = new VersionHistory()
 
     public static async save(line: Line): Promise<number> {
-
+        return 0
     }
 
     public constructor(session: InMemorySession, file: Block, type: LineType, databaseId?: number) {
@@ -99,7 +99,7 @@ export class LineVersion extends LinkedListNode<LineVersion> implements ISession
     public sourceBlock?: Block
 
     public static async save(version: LineVersion): Promise<number> {
-
+        return 0
     }
 
     public constructor(session: InMemorySession, line: Line, type: VersionType, timestamp: number, isActive: boolean, content: string, databaseId?: number) {
@@ -128,7 +128,7 @@ export class Tag implements ISessionTag {
     public readonly code:      string
 
     public static async save(tag: Tag): Promise<number> {
-
+        return 0
     }
 
     public constructor(session: InMemorySession, tagId: string, block: Block, name: string, timestamp: number, code: string, databaseId?: number) {
@@ -249,7 +249,7 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
     public set lastLine (line: VirtualLine | undefined) { this.last  = line }
 
     public static async save(block: Block): Promise<number> {
-
+        return 0
     }
 
     public constructor(session: InMemorySession, blockId: string, file: Block | string, type: BlockType, databaseId?: number) {

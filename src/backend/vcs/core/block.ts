@@ -48,10 +48,6 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
         return // in this context, head tracking is already done more elegantly
     }
 
-    public static createFromFileData(file: VCSFileData): Block {
-
-    }
-
 
 
 

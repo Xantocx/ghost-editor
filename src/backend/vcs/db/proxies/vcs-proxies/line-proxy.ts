@@ -1,7 +1,7 @@
 import { prismaClient } from "../../client";
 import { DatabaseProxy } from "../database-proxy";
 import { VersionProxy, BlockProxy } from "../../types";
-import { HeadList, Line, Prisma, Version, VersionType } from "@prisma/client"
+import { Line, Prisma, Version, VersionType } from "@prisma/client"
 import { FileProxy } from "./file-proxy";
 import { VCSBlockId, VCSFileId } from "../../../../../app/components/vcs/vcs-rework";
 import { TimestampProvider } from "../../../core/metadata/timestamps";
@@ -58,10 +58,10 @@ export class LineProxy extends DatabaseProxy {
             return prismaClient.block.update({
                 where: { id: block.id },
                 data:  {
-                    lines:       { connect: { id: this.id } },
-                    headList: { 
+                    lines: { connect: { id: this.id } },
+                    head:  { 
                         update: {
-                            versions: { connect: { id: blockVersions.get(block)!.id } }
+                            timestamp: blockVersions.get(block)!.timestamp
                         }
                     }
                 }
@@ -73,10 +73,8 @@ export class LineProxy extends DatabaseProxy {
 
     private async createNewVersion(sourceBlock: BlockProxy, isActive: boolean, content: string): Promise<VersionProxy> {
 
-        const [head, latestVersion] = await prismaClient.$transaction([
-            sourceBlock.getHeadFor(this),
-            this.getLatestVersion()
-        ])
+        const head = await sourceBlock.getHeadFor(this)
+        const latestVersion = await this.getLatestVersion()
 
         if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
 
@@ -112,13 +110,10 @@ export class LineProxy extends DatabaseProxy {
         const versions = await prismaClient.$transaction(versionCreation)
         const newVersion = versions[versions.length - 1]
 
-        await prismaClient.headList.update({
-            where: { id: sourceBlock.headListId },
+        await prismaClient.head.update({
+            where: { id: sourceBlock.headId },
             data:  {
-                versions: {
-                    connect:    { id: newVersion.id },
-                    disconnect: { id: head.id }
-                }
+                timestamp: newVersion.timestamp
             }
         })
 
