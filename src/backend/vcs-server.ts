@@ -212,8 +212,6 @@ export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, B
     protected async updatePreview(block: BlockProxy): Promise<void> {
         if (this.browserWindow) {
 
-            const headTimestamp = await block.getHeadTimestamp()
-
             const potentiallyActiveHeads = await prismaClient.version.groupBy({
                 by: ["lineId"],
                 where: {
@@ -221,7 +219,7 @@ export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, B
                         fileId: block.file.id,
                         blocks: { some: { id: block.id } }
                     },
-                    timestamp: { lte: headTimestamp }
+                    timestamp: { lte: block.timestamp }
                 },
                 _max: { timestamp: true }
             })

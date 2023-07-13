@@ -18,7 +18,7 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine ext
     getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]>
 
     getText(): Promise<string>
-    getUnwrappedText(): Promise<VCSUnwrappedText>
+    //getUnwrappedText(): Promise<VCSUnwrappedText>
 
     updateLine(lineNumber: number, content: string): Promise<SessionLine>
     changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
@@ -249,7 +249,6 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
                                 order: "asc"
                             }
                         },
-                        head: true,
                         tags: {
                             orderBy: {
                                 timestamp: "asc"
@@ -291,7 +290,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
         // complete blocks with heads, origin, parent, and tags
         file.blocks.forEach(block => {
             const blockInfo     = blockData.get(block.id)!
-            const headTimestamp = block.head.timestamp
+            const headTimestamp = block.timestamp
 
             blockInfo.heads = new Map(block.lines.map(line => {
                 const lineInfo = lineData.get(line.id)!

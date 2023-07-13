@@ -5,6 +5,7 @@ import { LineProxy, VersionProxy, BlockProxy } from "../../types"
 import { prismaClient } from "../../client"
 import { TimestampProvider } from "../../../core/metadata/timestamps"
 import { ProxyCache } from "../proxy-cache"
+import { sleep } from "../../../../../editor/utils/helpers"
 
 export class FileProxy extends DatabaseProxy {
 
@@ -24,7 +25,7 @@ export class FileProxy extends DatabaseProxy {
         return new FileProxy(file.id)
     }
 
-    private constructor(id: number) {
+    public constructor(id: number) {
         super(id)
     }
 

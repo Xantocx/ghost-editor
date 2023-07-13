@@ -55,17 +55,17 @@ export class LineProxy extends DatabaseProxy {
         const blocks = Array.from(blockVersions.keys())
 
         const updates = blocks.map(block => {
-            return prismaClient.block.update({
+            const update = prismaClient.block.update({
                 where: { id: block.id },
                 data:  {
-                    lines: { connect: { id: this.id } },
-                    head:  { 
-                        update: {
-                            timestamp: blockVersions.get(block)!.timestamp
-                        }
-                    }
+                    lines:     { connect: { id: this.id } },
+                    timestamp: blockVersions.get(block)!.timestamp
                 }
             })
+
+            update.then(blockData => block.setTimestampManually(blockData.timestamp))
+
+            return update
         })
 
         await prismaClient.$transaction(updates)
@@ -79,9 +79,6 @@ export class LineProxy extends DatabaseProxy {
         if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
 
         const versionCreation: Prisma.PrismaPromise<Version>[] = []
-
-        //console.log(head)
-        //console.log(latestVersion)
 
         if (latestVersion.id !== head.id) {
             throw new Error("Should never happen!")
@@ -113,12 +110,7 @@ export class LineProxy extends DatabaseProxy {
         const versions = await prismaClient.$transaction(versionCreation)
         const newVersion = versions[versions.length - 1]
 
-        await prismaClient.head.update({
-            where: { id: sourceBlock.headId },
-            data:  {
-                timestamp: newVersion.timestamp
-            }
-        })
+        await sourceBlock.setTimestamp(newVersion.timestamp)
 
         return await VersionProxy.getFor(newVersion)
     }
