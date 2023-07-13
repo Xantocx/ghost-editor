@@ -249,11 +249,6 @@ export interface VCSBlockRange {
 
 export interface VCSBlockUpdate extends VCSBlockRange {}
 
-export interface VCSUnwrappedText {
-    blockText: string
-    fullText: string
-}
-
 export interface IVCSRequest<RequestData> {
     requestId:          string
     data:               RequestData
@@ -293,7 +288,7 @@ export interface VCSProvider {
 
     // accessors to text of block
     getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>>
-    getUnwrappedText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSUnwrappedText>>
+    getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>>
 
     // edit interface on blocks -> each operation returns the ID for all blocks that got affected by an edit
     lineChanged (request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>>
@@ -332,7 +327,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
 
     // accessors to text of block
     public abstract getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>>
-    public abstract getUnwrappedText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSUnwrappedText>>
+    public abstract getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>>
 
     // edit interface on blocks -> each operation returns the ID for all blocks that got affected by an edit
     public abstract lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>>
@@ -466,9 +461,9 @@ export class VCSUnwrappedClient {
         return await this.unwrapResponse(this.client.getText(request))
     }
 
-    public async getUnwrappedText(blockId: VCSBlockId): Promise<VCSUnwrappedText> {
+    public async getRootText(blockId: VCSBlockId): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getUnwrappedText(request))
+        return await this.unwrapResponse(this.client.getRootText(request))
     }
 
     public async lineChanged(blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
@@ -603,8 +598,8 @@ export class VCSBlockSession {
         return await this.client.getText(this.block)
     }
 
-    public async getUnwrappedText(): Promise<VCSUnwrappedText> {
-        return await this.client.getUnwrappedText(this.block)
+    public async getRootText(): Promise<string> {
+        return await this.client.getRootText(this.block)
     }
 
     public async lineChanged(change: LineChange): Promise<VCSBlockId[]> {
@@ -731,8 +726,8 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSServ
         return await this.adapter.getText(request)
     }
 
-    public async getUnwrappedText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSUnwrappedText>> {
-        return await this.adapter.getUnwrappedText(request)
+    public async getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return await this.adapter.getRootText(request)
     }
 
     public async lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {

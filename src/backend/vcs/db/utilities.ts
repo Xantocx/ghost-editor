@@ -2,7 +2,7 @@ import { BlockProxy, FileProxy, LineProxy, TagProxy, VersionProxy } from "../db/
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionCreationRequest, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSUnwrappedText, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
+import { VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 import { MultiLineChange } from "../../../app/components/data/change"
 import { truncate } from "fs"
@@ -17,15 +17,14 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine ext
     asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo>
     getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]>
 
-    getText(): Promise<string>
-    //getUnwrappedText(): Promise<VCSUnwrappedText>
+    getText(clonesToConsider?: this[]): Promise<string>
 
     updateLine(lineNumber: number, content: string): Promise<SessionLine>
     changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
 
-    applyIndex(index: number): Promise<SessionVersion[]>
-    applyTimestamp(timestamp: number): Promise<SessionVersion[]>
-    cloneOutdatedHeads(heads: SessionVersion[]): Promise<void>
+    applyIndex(index: number): Promise<void>
+    applyTimestamp(timestamp: number): Promise<void>
+    cloneOutdatedHeads(): Promise<void>
 
     copy(): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion>>
     createChild(range: VCSBlockRange): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion> | null>

@@ -3,11 +3,11 @@ import { DatabaseProxy } from "../database-proxy";
 import { VersionProxy, BlockProxy } from "../../types";
 import { Line, Prisma, Version, VersionType } from "@prisma/client"
 import { FileProxy } from "./file-proxy";
-import { VCSBlockId, VCSFileId } from "../../../../../app/components/vcs/vcs-rework";
 import { TimestampProvider } from "../../../core/metadata/timestamps";
 import { ProxyCache } from "../proxy-cache";
+import { ISessionLine } from "../../utilities";
 
-export class LineProxy extends DatabaseProxy {
+export class LineProxy extends DatabaseProxy implements ISessionLine {
 
     public readonly file: FileProxy
 
@@ -72,30 +72,10 @@ export class LineProxy extends DatabaseProxy {
     }
 
     private async createNewVersion(sourceBlock: BlockProxy, isActive: boolean, content: string): Promise<VersionProxy> {
-
-        const head = await sourceBlock.getHeadFor(this)
-        const latestVersion = await this.getLatestVersion()
-
-        if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
-
+        
+        // might be used for cloning (see validateHead), rn out of use
         const versionCreation: Prisma.PrismaPromise<Version>[] = []
-
-        if (latestVersion.id !== head.id) {
-            throw new Error("Should never happen!")
-            // clone of old head -> replaces head tracking concept
-            versionCreation.push(prismaClient.version.create({
-                data:  {
-                    lineId:        this.id,
-                    timestamp:     TimestampProvider.getTimestamp(),
-                    type:          VersionType.CLONE,
-                    isActive:      head.isActive,
-                    originId:      head.id,
-                    sourceBlockId: sourceBlock.id,
-                    content:       head.content
-                }
-            }))
-        }
-
+        
         versionCreation.push(prismaClient.version.create({
             data: {
                 lineId:        this.id,
@@ -115,19 +95,47 @@ export class LineProxy extends DatabaseProxy {
         return await VersionProxy.getFor(newVersion)
     }
 
-    public async updateContent(sourceBlock: BlockProxy, content: string): Promise<VersionProxy> {
-        let previousVersion: Version
-        if (sourceBlock) { previousVersion = await sourceBlock.getHeadFor(this) }
-        else             { previousVersion = await this.getLatestVersion() }
+    private async validateHead(sourceBlock: BlockProxy, currentHead?: Version): Promise<void> {
+        const head = currentHead ? currentHead : await sourceBlock.getHeadFor(this)
+        const latestVersion = await this.getLatestVersion()
 
-        if (previousVersion.content.trimEnd() === content.trimEnd()) {
-            return await VersionProxy.getFor(previousVersion)
+        if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
+
+        const versionCreation: Prisma.PrismaPromise<Version>[] = []
+
+        // so this does not work if the final text is generated from root and children blocks, because children modify heads seen in the final text, while the root block (the one this edit is applied on), still sees another version
+        if (latestVersion.id !== head.id) {
+            console.log(head)
+            console.log(latestVersion)
+            throw new Error("Should never happen!")
+
+            // clone config, in case cloning will be moved here
+            versionCreation.push(prismaClient.version.create({
+                data:  {
+                    lineId:        this.id,
+                    timestamp:     TimestampProvider.getTimestamp(),
+                    type:          VersionType.CLONE,
+                    isActive:      head.isActive,
+                    originId:      head.id,
+                    sourceBlockId: sourceBlock.id,
+                    content:       head.content
+                }
+            }))
+        }
+    } 
+
+    public async updateContent(sourceBlock: BlockProxy, content: string): Promise<VersionProxy> {
+        const currentHead = await sourceBlock.getHeadFor(this)
+        if (currentHead.content.trimEnd() === content.trimEnd()) {
+            return await VersionProxy.getFor(currentHead)
         } else {
+            //await this.validateHead(sourceBlock, currentHead)
             return await this.createNewVersion(sourceBlock, true, content)  
         }      
     }
 
     public async delete(sourceBlock: BlockProxy): Promise<VersionProxy> {
+        //await this.validateHead(sourceBlock)
         return await this.createNewVersion(sourceBlock, false, "")   
     }
 }

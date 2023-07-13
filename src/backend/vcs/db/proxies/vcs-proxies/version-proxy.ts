@@ -3,8 +3,9 @@ import { DatabaseProxy } from "../database-proxy"
 import { ProxyCache } from "../proxy-cache"
 import { LineProxy } from "./line-proxy"
 import { prismaClient } from "../../client"
+import { ISessionVersion } from "../../utilities"
 
-export class VersionProxy extends DatabaseProxy {
+export class VersionProxy extends DatabaseProxy implements ISessionVersion<LineProxy> {
 
     public readonly line:      LineProxy
     public readonly timestamp: number

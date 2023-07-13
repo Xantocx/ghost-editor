@@ -5,9 +5,9 @@ import { LineProxy, VersionProxy, BlockProxy } from "../../types"
 import { prismaClient } from "../../client"
 import { TimestampProvider } from "../../../core/metadata/timestamps"
 import { ProxyCache } from "../proxy-cache"
-import { sleep } from "../../../../../editor/utils/helpers"
+import { ISessionFile } from "../../utilities"
 
-export class FileProxy extends DatabaseProxy {
+export class FileProxy extends DatabaseProxy implements ISessionFile {
 
     public static async get(id: number): Promise<FileProxy> {
         return await ProxyCache.getFileProxy(id)

@@ -1,6 +1,6 @@
 import { BlockType } from "@prisma/client";
 import { MultiLineChange } from "../../../app/components/data/change";
-import { VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSUnwrappedText, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId } from "../../../app/components/vcs/vcs-rework";
+import { VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId } from "../../../app/components/vcs/vcs-rework";
 import { DBResourceManager, DBSession, ISessionBlock, ISessionFile, ISessionLine, ISessionTag, ISessionVersion, NewFileInfo, QueryType, ResourceManager, Session } from "../db/utilities";
 import { LinkedList, LinkedListNode } from "../utils/linked-list";
 import { BlockProxy } from "../db/types";
@@ -281,10 +281,6 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
         throw new Error("Method not implemented.");
     }
 
-    public getUnwrappedText(): Promise<VCSUnwrappedText> {
-        throw new Error("Method not implemented.");
-    }
-
     public updateLine(lineNumber: number, content: string): Promise<Line> {
         throw new Error("Method not implemented.");
     }
@@ -293,15 +289,15 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
         throw new Error("Method not implemented.");
     }
     
-    public applyIndex(index: number): Promise<LineVersion[]> {
+    public applyIndex(index: number): Promise<void> {
         throw new Error("Method not implemented.");
     }
 
-    public applyTimestamp(timestamp: number): Promise<LineVersion[]> {
+    public applyTimestamp(timestamp: number): Promise<void> {
         throw new Error("Method not implemented.");
     }
 
-    public cloneOutdatedHeads(heads: LineVersion[]): Promise<void> {
+    public cloneOutdatedHeads(): Promise<void> {
         throw new Error("Method not implemented.");
     }
 

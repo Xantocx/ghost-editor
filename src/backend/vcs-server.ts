@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron"
 
-import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
+import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
 import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
 import { QueryType, ResourceManager, ISessionFile, ISessionBlock, ISessionTag, Session, ISessionLine, ISessionVersion, DBSession } from "./vcs/db/utilities"
@@ -24,13 +24,13 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
 
     // helper for preview update
     protected readonly browserWindow: BrowserWindow | undefined
-    protected abstract updatePreview(block: SessionBlock): Promise<void>
+    protected abstract updatePreview(session: QuerySession, blockId: VCSBlockId): Promise<void>
 
     private async changeLine(session: QuerySession, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
         const line  = await block.updateLine(change.lineNumber, change.lineText)
         
-        await this.updatePreview(block)
+        await this.updatePreview(session, blockId)
 
         const ids = await line.getBlockIds()
         return ids.map(id => VCSBlockId.createFrom(blockId, id))
@@ -39,7 +39,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     private async changeLines(session: QuerySession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
         const result = await block.changeLines(blockId, change)
-        this.updatePreview(block)
+        this.updatePreview(session, blockId)
         return result
     }
 
@@ -85,10 +85,11 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         })
     }
 
-    public async getUnwrappedText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSUnwrappedText>> {
+    public async getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
         return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+            const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
-            return await block.getUnwrappedText()
+            return await root.getText([block])
         })
     }
 
@@ -168,23 +169,21 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     }
     */
 
-    protected headsToBeTracked: SessionVersion[] = []
-    protected abstract trackHeads(heads: SessionVersion[]): void
-
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
         return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
-            const newHeads = await block.applyIndex(versionIndex)
-            this.trackHeads(newHeads)
-            await this.updatePreview(block)
+
+            await block.applyIndex(versionIndex)
+
+            await this.updatePreview(session, blockId)
+
             return await root.getText()
         }, async (session) => {
-            console.log("Chain Broke: " + this.headsToBeTracked.length)
+            console.log("Chain Broke")
             const block = await session.getBlock(blockId)
-            await block.cloneOutdatedHeads(this.headsToBeTracked)
-            this.headsToBeTracked = []
+            await block.cloneOutdatedHeads()
         })
     }
 
@@ -209,8 +208,10 @@ export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, B
         super(DBSession, browserWindow)
     }
 
-    protected async updatePreview(block: BlockProxy): Promise<void> {
+    protected async updatePreview(session: DBSession, blockId: VCSBlockId): Promise<void> {
         if (this.browserWindow) {
+
+            const block = session.getRootBlockFor(blockId)
 
             const potentiallyActiveHeads = await prismaClient.version.groupBy({
                 by: ["lineId"],
@@ -250,21 +251,5 @@ export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, B
             
             this.browserWindow!.webContents.send("update-vcs-preview", block.id, text, versionCounts)
         }
-    }
-
-    protected trackHeads(heads: VersionProxy[]): void {
-        const updatesHeads = this.headsToBeTracked.map(currentHead => {
-            const newHeadIndex = heads.findIndex(newHead => newHead.line.id === currentHead.line.id)
-            if (newHeadIndex >= 0) {
-                const head = heads[newHeadIndex]
-                heads.splice(newHeadIndex, 1)
-                return head
-            } else {
-                return currentHead
-            }
-        })
-
-        // attach any heads for lines that were previously not changed
-        this.headsToBeTracked = updatesHeads.concat(heads)
     }
 }

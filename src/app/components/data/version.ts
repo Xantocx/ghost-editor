@@ -30,7 +30,6 @@ export class VCSVersion implements CodeProvider {
 
     public async getCode(): Promise<string> {
         const session = await this.getSession()
-        const { blockText, fullText } = await session.getUnwrappedText()
-        return fullText
+        return await session.getRootText()
     }
 }

@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { VCSAdapter, AdaptableVCSServer, VCSTagId, VCSSessionId, VCSFileLoadingOptions, VCSFileId, VCSBlockId, VCSBlockRange, VCSBlockUpdate, VCSSessionCreationRequest, VCSSessionRequest } from "../vcs-rework"
+import { VCSAdapter, AdaptableVCSServer, VCSTagId, VCSFileLoadingOptions, VCSFileId, VCSBlockId, VCSBlockRange, VCSBlockUpdate, VCSSessionCreationRequest, VCSSessionRequest } from "../vcs-rework"
 import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
 
 export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSServer<Adapter> {
@@ -12,7 +12,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
     public static readonly unloadFileChannel              = "vcs-unload-file"
 
     public static readonly getTextChannel                 = "vcs-get-text"
-    public static readonly getUnwrappedTextChannel        = "vcs-get-unwrapped-text"
+    public static readonly getRootTextChannel             = "vcs-get-root-text"
 
     public static readonly lineChangedChannel             = "vcs-line-changed"
     public static readonly linesChangedChannel            = "vcs-lines-Changed"
@@ -63,8 +63,8 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
             return await this.getText(request)
         })
 
-        const getUnwrappedTextSubscription = ipcMain.handle(ElectronVCSServer.getUnwrappedTextChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
-            return await this.getUnwrappedText(request)
+        const getRootTextSubscription = ipcMain.handle(ElectronVCSServer.getRootTextChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+            return await this.getRootText(request)
         })
 
         const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>) => {

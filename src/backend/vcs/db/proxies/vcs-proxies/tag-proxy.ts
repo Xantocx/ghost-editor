@@ -2,8 +2,9 @@ import { Tag } from "@prisma/client";
 import { DatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client";
 import { ProxyCache } from "../proxy-cache";
+import { ISessionTag } from "../../utilities";
 
-export class TagProxy extends DatabaseProxy {
+export class TagProxy extends DatabaseProxy implements ISessionTag {
 
     public readonly timestamp: number
 

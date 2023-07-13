@@ -1,5 +1,5 @@
 import { ipcRenderer } from "electron"
-import { BasicVCSClient, VCSResponse, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSChildBlockInfo, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSClient, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest } from "../vcs-rework"
+import { VCSResponse, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSChildBlockInfo, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSClient, VCSTagId, VCSSessionCreationRequest, VCSSessionRequest } from "../vcs-rework"
 import { ElectronVCSServer } from "../servers/electron-server"
 import { AnyChange, Change, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
 
@@ -33,8 +33,8 @@ export const ElectronVCSClient: VCSClient = {
         return await invoke(ElectronVCSServer.getTextChannel, request)
     },
 
-    getUnwrappedText: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSUnwrappedText>> {
-        return await invoke(ElectronVCSServer.getUnwrappedTextChannel, request)
+    getRootText: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return await invoke(ElectronVCSServer.getRootTextChannel, request)
     },
 
     lineChanged: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
