@@ -26,12 +26,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public get timestamp(): number{ return this._timestamp }
 
     public setTimestampManually(newTimestamp: number) {
-        console.log("\nSetting timestamp manually: " + newTimestamp + "\n")
         this._timestamp = newTimestamp
     }
 
     public setTimestamp(newTimestamp: number) {
-        console.log("\nSetting timestamp: " + newTimestamp + "\n")
         const update = prismaClient.block.update({
             where: { id: this.id },
             data:  { timestamp: newTimestamp }
@@ -234,9 +232,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     public async getHeadFor(line: Line | LineProxy): Promise<Version> {
 
-        console.log("\ngetHeadFor")
-        console.log(this.timestamp)
-
         const head = await prismaClient.version.findFirst({
             where: {
                 lineId:    line.id,
@@ -343,6 +338,35 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         })
     }
 
+    // MAGIC: Cache lines + version, all done.
+    // !!!!!! TODO: !!!!!!
+    // THIS SHOULD BE USED TO CALCULATE HEADS?
+    // root block is edited, but versions are only represented through considering children -> heads for this block should always consider children
+    // should get a mapping from line to timestamp applicable through the corresponding children -> then map to versions in one opperation
+    private async getLineTimestamps(accumulation?: { clonesToConsider?: BlockProxy[], collectedTimestamps?: Map<number, number> }): Promise<Map<number, number>> {
+        const clonesToConsider     = accumulation?.clonesToConsider
+        const collectedTimestamps = accumulation?.collectedTimestamps
+
+        if (clonesToConsider) {
+            const clone = clonesToConsider.find(clone => clone.origin.id === this.id)
+            if (clone) { return clone.getLineTimestamps(accumulation) }
+        }
+
+        let   timestamps = collectedTimestamps !== undefined ? collectedTimestamps : new Map<number, number>()
+        const lines      = await this.getLines()
+
+        lines.forEach(line => timestamps.set(line.id, this.timestamp))
+
+        const children = await this.getChildren()
+        for (const child of children) {
+            const proxy = await BlockProxy.getFor(child)
+            timestamps  = await proxy.getLineTimestamps({ clonesToConsider, collectedTimestamps: timestamps })
+        }
+
+        return timestamps
+    }
+    
+    
     private async getVersionsForText(accumulation?: { clonesToConsider?: BlockProxy[], collectedVersions?: Map<number, Version> }): Promise<Map<number, Version>> {
         const clonesToConsider  = accumulation?.clonesToConsider
         const collectedVersions = accumulation?.collectedVersions
@@ -390,15 +414,12 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         const versionsInRange = versions.filter(version => firstVersion.line.order <= version.line.order && version.line.order <= lastVersion.line.order)
 
-        console.log(1)
         return await Promise.all(versionsInRange.map(async version => await LineProxy.getFor(version.line)))
     }
 
     public async getActiveLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
         const lines        = await (await this.getActiveLines()).prismaPromise
         const linesInRange = lines.filter((line, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
-
-        console.log(2)
         return await Promise.all(linesInRange.map(async line => await LineProxy.getFor(line)))
     }
 
@@ -431,6 +452,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return { blockId: blockId, block: await BlockProxy.getFor(block) }
     }
 
+    // WARNING: Should technically also copy children, but in this usecase unnecessary
     public async copy(): Promise<BlockProxy> {
         const [cloneCount, versions] = await prismaClient.$transaction([
             this.getCloneCount(),
@@ -500,7 +522,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  } })
         const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" } })
         
-        console.log("3 + 4")
         return await this.insertLines(lineContents, { previous:       previousLine ? await LineProxy.getFor(previousLine) : undefined,
                                                       next:           nextLine     ? await LineProxy.getFor(nextLine)     : undefined,
                                                       blockReference: BlockReference.Next })
@@ -511,7 +532,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" } })
         const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  } })
         
-        console.log("5 + 6")
         return await this.insertLines(lineContents, { previous:       previousLine ? await LineProxy.getFor(previousLine) : undefined,
                                                       next:           nextLine     ? await LineProxy.getFor(nextLine)     : undefined,
                                                       blockReference: BlockReference.Previous })
@@ -543,7 +563,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             const previousLine = activeLines[insertionLineNumber - 2]
             const currentLine  = activeLines[insertionLineNumber - 1]
 
-            console.log("7 + 8")
             const previousLineProxy = await LineProxy.getFor(previousLine)
             const currentLineProxy  = await LineProxy.getFor(currentLine)
 
@@ -670,7 +689,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public async updateLine(lineNumber: number, content: string): Promise<LineProxy> {
         const lines = await (await this.getActiveLines()).prismaPromise
 
-        console.log(9)
         const line = await LineProxy.getFor(lines[lineNumber - 1])
         await line.updateContent(this, content)
 
@@ -743,33 +761,60 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         //block.resetVersionMerging()
 
-        const startsWithEol = change.insertedText[0] === eol
-        const endsWithEol   = change.insertedText[change.insertedText.length - 1] === eol
+        const splitChangeString = change.insertedText.split(eol)
 
-        const insertedAtStartOfStartLine = change.modifiedRange.startColumn === 1
-        const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > activeHeads[change.modifiedRange.startLineNumber - 1].content.length
+        const startLineContent = activeHeads[change.modifiedRange.startLineNumber - 1].content
+        //const endLineContent   = activeHeads[change.modifiedRange.endLineNumber   - 1].content
 
-        const insertedAtEnd   = change.modifiedRange.endColumn > activeHeads[change.modifiedRange.endLineNumber - 1].content.length
+        const insertedBeforeCode = startLineContent.length - startLineContent.trimStart().length + 1 >= change.modifiedRange.startColumn
+        //const insertedAfterCode  = change.modifiedRange.endColumn > endLineContent.length
+
+        //const hasEol        = change.insertedText.includes(eol)
+        const startsWithEol = change.insertedText.startsWith(eol)
+        const endsWithEol   = change.insertedText.endsWith(eol) || (splitChangeString.pop().trim().length === 0/* && insertedAfterCode*/) // cannot enable this (technically correct) check because of monaco's annoying tab insertion on newline... -> not a problem until endsWithEol is used under new conditions...
+
+        const insertedAtStartOfStartLine = insertedBeforeCode
+        const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > startLineContent.length
 
         const oneLineModification = change.modifiedRange.startLineNumber === change.modifiedRange.endLineNumber
-        const insertOnly          = oneLineModification && change.modifiedRange.startColumn === change.modifiedRange.endColumn
+        const oneLineInsertOnly   = oneLineModification && change.modifiedRange.startColumn === change.modifiedRange.endColumn
 
         const pushStartLineDown = insertedAtStartOfStartLine && endsWithEol  // start line is not modified and will be below the inserted lines
         const pushStartLineUp   = insertedAtEndOfStartLine && startsWithEol  // start line is not modified and will be above the inserted lines
 
-        const modifyStartLine = !insertOnly || (!pushStartLineDown && !pushStartLineUp)
+        const noModifications = oneLineInsertOnly && (pushStartLineUp || pushStartLineDown)
+        //const modifyStartLine = !oneLineInsertOnly || (!pushStartLineDown && !pushStartLineUp)
 
+        console.log("\nPush Down")
+        console.log(`Inserted Text: "${change.insertedText.trimEnd()}"`)
+        console.log(startsWithEol)
+        console.log(endsWithEol)
+        console.log(startLineContent.length - startLineContent.trimStart().length + 1)
+        console.log(change.modifiedRange.startColumn)
+        console.log(pushStartLineDown)
 
         const modifiedRange = {
             startLine: change.modifiedRange.startLineNumber,
             endLine:   change.modifiedRange.endLineNumber
         }
 
-        let vcsLines: LineProxy[] = []
         const modifiedLines = change.lineText.split(eol)
+        if (pushStartLineUp) {
+            console.log(modifiedLines.splice(0, 1))
+            modifiedRange.startLine++
+        } else if (pushStartLineDown) {
+            console.log(modifiedLines.pop())
+            modifiedRange.endLine--
+        }
+        
+        let vcsLines: LineProxy[] = []
+        if (!noModifications) {
+            const activeLines = await Promise.all(activeHeads.map(async head => await LineProxy.getFor(head.line)))
+            vcsLines = activeLines.filter((_, index) => modifiedRange.startLine <= index + 1 && index + 1 <= modifiedRange.endLine)
+        }
 
+        /*
         if (modifyStartLine) {
-            console.log(10)
             const activeLines = await Promise.all(activeHeads.map(async head => await LineProxy.getFor(head.line)))
             vcsLines = activeLines.filter((_, index) => modifiedRange.startLine <= index + 1 && index + 1 <= modifiedRange.endLine)
         } else {
@@ -779,13 +824,12 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
                 modifiedRange.endLine--
             }
         }
+        */
 
         const block = this
         const affectedLines:    LineProxy[]        = []
         const prismaOperations: PrismaPromise<any>[] = []
-        let   latestTimestamp:  number = 0
-
-        heads.forEach(head => { latestTimestamp = head.timestamp > latestTimestamp ? head.timestamp : latestTimestamp })
+        let   latestTimestamp:  number = block.timestamp
 
         function deleteLine(line: LineProxy): void {
             affectedLines.push(line)
@@ -822,9 +866,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             deleteLine(line)
         }
 
-        if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
+        //if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
 
-        for (let i = 1; i < Math.min(vcsLines.length, modifiedLines.length); i++) {
+        for (let i = 0; i < Math.min(vcsLines.length, modifiedLines.length); i++) {
             const line = vcsLines.at(i)
             updateLine(line, modifiedLines[i])
         }
@@ -844,4 +888,22 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(fileId, id))
     }
+}
+
+function customTrimEnd(input: string, eol: string) {
+    // This regular expression matches trailing spaces and tabs
+    const regex = /[ \t]+$/;
+
+    // Split input by eol into lines
+    const lines = input.split(eol);
+
+    // For each line trim end spaces and tabs
+    for (let i = 0; i < lines.length; i++) {
+        lines[i] = lines[i].replace(regex, "");
+    }
+
+    // Join lines back using eol
+    const output = lines.join(eol);
+
+    return output;
 }
