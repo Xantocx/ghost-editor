@@ -1,3 +1,4 @@
+/*
 import { Block } from "../block"
 
 export type GhostId   = string
@@ -88,3 +89,4 @@ export class TagIdManager extends IdManager<TagId> {
         return this.block.id + `/tag/${id}`
     }
 }
+*/

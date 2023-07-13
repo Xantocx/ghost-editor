@@ -1,3 +1,4 @@
+/*
 import { BrowserWindow } from "electron"
 
 import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSUnwrappedText, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
@@ -161,17 +162,17 @@ export class DBVCSServer extends BasicVCSServer {
         throw new Error("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
     }
 
-    /*
-    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
-            const root  = session.getRootBlockFor(blockId)
-            const block = await session.getBlock(blockId)
-            const newHeads = await block.applyIndex(versionIndex)
-            await this.updatePreview(block)
-            return await root.getText()
-        })
-    }
-    */
+    //
+    //public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+    //    return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+    //        const root  = session.getRootBlockFor(blockId)
+    //        const block = await session.getBlock(blockId)
+    //        const newHeads = await block.applyIndex(versionIndex)
+    //        await this.updatePreview(block)
+    //        return await root.getText()
+    //    })
+    //}
+    //
 
     private headsToBeTracked: VersionProxy[] = []
     private trackHeads(heads: VersionProxy[]): void {
@@ -239,7 +240,7 @@ export class DBVCSServer extends BasicVCSServer {
         this.updatePreview(block)
         return result
 
-        /*
+        
         const eol   = await block.file.getEol()
 
         const versions = await block.getActiveHeadVersions()
@@ -332,6 +333,6 @@ export class DBVCSServer extends BasicVCSServer {
         }
 
         return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(blockId, id))
-        */
     }
 }
+*/

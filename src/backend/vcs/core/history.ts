@@ -1,3 +1,4 @@
+/*
 import { LinkedListNode, LinkedList } from "../utils/linked-list"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
 import { LineNodeVersion, LineContent, LineVersion } from "./version"
@@ -151,3 +152,4 @@ export class LineHistory {
         return this.createNewVersion(false, "")
     }
 }
+*/

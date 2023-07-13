@@ -80,6 +80,9 @@ export class LineProxy extends DatabaseProxy {
 
         const versionCreation: Prisma.PrismaPromise<Version>[] = []
 
+        //console.log(head)
+        //console.log(latestVersion)
+
         if (latestVersion.id !== head.id) {
             throw new Error("Should never happen!")
             // clone of old head -> replaces head tracking concept

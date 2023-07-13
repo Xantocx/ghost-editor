@@ -1,3 +1,4 @@
+/*
 import { LinkedListNode } from "../utils/linked-list"
 import { BlockId } from "./metadata/ids"
 import { Timestamp, TimestampProvider } from "./metadata/timestamps"
@@ -222,3 +223,4 @@ export class Line extends LinkedListNode<Line>  {
     public addBlock(block: Block):                        Line             { return this.node.addBlock(block) }
     public removeBlock(block: Block, deleting?: boolean): Block[]          { return this.node.removeBlock(block, deleting) }
 }
+*/

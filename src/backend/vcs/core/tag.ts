@@ -1,3 +1,4 @@
+/*
 import { Resource, ResourceManager } from "../utils/resource-manager"
 import { TagId, BlockId } from "./metadata/ids"
 import { Block } from "./block"
@@ -37,3 +38,4 @@ export class Tag implements Resource, ISessionTag {
         return new VCSTagInfo(VCSTagId.createFrom(blockId, this.id), this.name, this.code, false)
     }
 }
+*/

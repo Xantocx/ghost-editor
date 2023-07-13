@@ -1,3 +1,4 @@
+/*
 import { IRange } from "../../../app/components/utils/range"
 import { VCSTag, VCSSnapshotData } from "../../../app/components/vcs/vcs-provider-old"
 
@@ -670,13 +671,13 @@ export abstract class Block extends LinkedList<Line> implements Resource, ISessi
             deleteLine(line)
         }
 
-        /*
+        //
         // inverse deletion order
-        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
-            const line = vcsLines.at(i)
-            deleteLine(line)
-        }
-        */
+        //for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+        //    const line = vcsLines.at(i)
+        //    deleteLine(line)
+        //}
+        //
 
         if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
 
@@ -809,3 +810,4 @@ export class ForkBlock extends Block {
         this.lastLine  = lineCount > 0 ? lines[lineCount - 1] : undefined
     }
 }
+*/

@@ -1,3 +1,4 @@
+/*
 import { SessionId, BlockId, TagId } from "../core/metadata/ids"
 import { Resource, ResourceManager } from "./resource-manager"
 import { Block, ForkBlock, ForkBlockOptions } from "../core/block"
@@ -62,3 +63,4 @@ export class Session implements Resource {
         }
     }
 }
+*/

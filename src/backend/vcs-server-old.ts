@@ -1,3 +1,4 @@
+/*
 import { BrowserWindow } from "electron"
 
 import { IRange } from "../app/components/utils/range"
@@ -198,13 +199,13 @@ export class GhostVCSServer extends BasicVCSServer {
             deleteLine(line)
         }
 
-        /*
+        //
         // inverse deletion order
-        for (let i = modifiedLines.length; i < vcsLines.length; i++) {
-            const line = vcsLines.at(i)
-            deleteLine(line)
-        }
-        */
+        //for (let i = modifiedLines.length; i < vcsLines.length; i++) {
+        //    const line = vcsLines.at(i)
+        //    deleteLine(line)
+        //}
+        //
 
         if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
 
@@ -228,3 +229,4 @@ export class GhostVCSServer extends BasicVCSServer {
         return snapshot.createTag()
     }
 }
+*/

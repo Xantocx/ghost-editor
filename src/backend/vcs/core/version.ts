@@ -1,3 +1,4 @@
+/*
 import { LinkedListNode } from "../utils/linked-list"
 import { Timestamp } from "./metadata/timestamps"
 import { Block } from "./block"
@@ -121,3 +122,4 @@ export class LineVersion {
         this.block       = block
     }
 }
+*/
