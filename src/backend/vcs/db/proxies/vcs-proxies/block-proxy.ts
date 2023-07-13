@@ -380,68 +380,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return content.join(eol)
     }
 
-    /*
-    public async getUnwrappedText(accumulation?: { blockText: string, selectedVersions: Map<number, Version> }): Promise<VCSUnwrappedText> {
-
-        type Accumulation = { blockText: string, selectedVersions: Map<number, Version> }
-        async function accumulate(fileProxy: FileProxy, versions: Version[], acc?: Accumulation): Promise<Accumulation> {
-            if (acc) {
-                acc.selectedVersions = new Map(versions.map(version => [version.lineId, acc.selectedVersions.has(version.lineId) ? acc.selectedVersions.get(version.lineId)! : version]))
-                return acc
-            } else {
-                const eol              = await fileProxy.getEol()
-                const lineContent      = versions.map(version => version.content)
-                const text             = lineContent.join(eol)
-                const selectedVersions = new Map(versions.map(version => [version.lineId, version]))
-                return { blockText: text, selectedVersions: selectedVersions }
-            }
-        }
-
-        if (this.type === BlockType.ROOT) {
-
-            const [file, rootVersions] = await prismaClient.$transaction([
-                this.file.getFile(),
-                (await this.getActiveHeads()).prismaPromise
-            ])
-
-            if (accumulation) {
-                const selectedVersions = accumulation.selectedVersions
-                const content          = rootVersions.map(version => selectedVersions.has(version.lineId) ? selectedVersions.get(version.lineId)!.content : version.content)
-                return { blockText: accumulation.blockText, fullText: content.join(file.eol) }
-            } else {
-                const lineContent = rootVersions.map(version => version.content)
-                const text        = lineContent.join(file.eol)
-                return { blockText: text, fullText: text }
-            }
-
-        } else if (this.type === BlockType.CLONE) {
-
-            const blockVersions = await (await this.getActiveHeads()).prismaPromise
-            return await this.origin!.getUnwrappedText(await accumulate(this.file, blockVersions, accumulation))
-
-        } else if (this.type === BlockType.INLINE) {
-
-            const blockVersions = await (await this.getActiveHeads()).prismaPromise
-            return await this.parent!.getUnwrappedText(await accumulate(this.file, blockVersions, accumulation))
-
-        }
-        
-        //
-        //else if (this.type === BlockType.INLINE) {
-        //
-        //    if (accumulation) {
-        //        return await this.parent!.getUnwrappedText(accumulation)
-        //    } else {
-        //        const blockVersions = await (await this.getActiveHeads()).prismaPromise
-        //        return await this.parent!.getUnwrappedText(await accumulate(this.file, blockVersions))
-        //    }
-        //} else {
-        //    throw new Error("Block type unknown!")
-        //}
-        //
-    }
-    */
-
     public async getLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
         const versions = await (await this.getHeadsWithLines()).prismaPromise
 
@@ -755,53 +693,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     public async applyTimestamp(timestamp: number): Promise<void> {
         await this.setTimestamp(timestamp)
-
-        /*
-        const heads = await this.getHeadsWithLines()
-        const lines = heads.map(head => head.line)
-        
-        // latest version for lines before or equal to timestamp
-        const versions = await prismaClient.$transaction(lines.map(line => {
-            return prismaClient.version.findFirst({
-                where: {
-                    lineId:    line.id,
-                    timestamp: { lte: timestamp }
-                },
-                orderBy: {
-                    timestamp: "desc"
-                }
-            })
-        }))
-
-        // update head for each line with whatever has the latest timestamp, the latest version or the latest tracked version
-        const selected = await Promise.all(lines.map(async (line, index) => {
-            let version = versions[index]
-
-            if (!version) {
-                // this can only happen if a line is inserted after the timestamp, in this case we need the first version which is pre-insertion
-                version = await prismaClient.version.findFirstOrThrow({
-                    where:   { lineId: line.id },
-                    orderBy: { timestamp: "asc" }
-                })
-            }
-
-            return version
-        }))
-
-        const headsToRemove = heads.filter(head => selected.every(selectedVersion => selectedVersion.id !== head.id))
-
-        await prismaClient.headList.update({
-            where: { id: this.headListId },
-            data:  {
-                versions: {
-                    connect:    selected.map(     version => { return { id: version.id } }),
-                    disconnect: headsToRemove.map(head    => { return { id: head.id } })
-                }
-            }
-        })
-
-        return await Promise.all(selected.map(async version => await VersionProxy.getFor(version)))
-        */
     }
 
     public async cloneOutdatedHeads(): Promise<void> {
