@@ -3,10 +3,15 @@ import { DatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client";
 import { ProxyCache } from "../proxy-cache";
 import { ISessionTag } from "../../utilities";
+import { BlockProxy } from "./block-proxy";
 
 export class TagProxy extends DatabaseProxy implements ISessionTag {
 
+    public readonly tagId:     string
+    public readonly block:     BlockProxy
+    public readonly name:      string
     public readonly timestamp: number
+    public readonly code:      string
 
     public static async get(id: number): Promise<TagProxy> {
         return await ProxyCache.getTagProxy(id)
@@ -22,11 +27,16 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
     }
 
     public static async loadFrom(tag: Tag): Promise<TagProxy> {
-        return new TagProxy(tag.id, tag.timestamp)
+        const block = await BlockProxy.get(tag.blockId)
+        return new TagProxy(tag.id, tag.tagId, block, tag.name, tag.timestamp, tag.code)
     }
 
-    private constructor(id: number, timestamp: number) {
+    private constructor(id: number, tagId: string, block: BlockProxy, name: string, timestamp: number, code: string) {
         super(id)
+        this.tagId     = tagId
+        this.block     = block
+        this.name      = name
         this.timestamp = timestamp
+        this.code      = code
     }
 }

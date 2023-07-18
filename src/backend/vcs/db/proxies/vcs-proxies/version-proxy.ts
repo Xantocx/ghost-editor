@@ -1,4 +1,4 @@
-import { Version } from "@prisma/client"
+import { VersionType, Version } from "@prisma/client"
 import { DatabaseProxy } from "../database-proxy"
 import { ProxyCache } from "../proxy-cache"
 import { LineProxy } from "./line-proxy"
@@ -8,6 +8,7 @@ import { ISessionVersion } from "../../utilities"
 export class VersionProxy extends DatabaseProxy implements ISessionVersion<LineProxy> {
 
     public readonly line:      LineProxy
+    public readonly type:      VersionType
     public readonly timestamp: number
     public readonly isActive:  boolean
     public readonly content:   string
@@ -27,12 +28,13 @@ export class VersionProxy extends DatabaseProxy implements ISessionVersion<LineP
 
     public static async loadFrom(version: Version): Promise<VersionProxy> {
         const line = await ProxyCache.getLineProxy(version.lineId)
-        return new VersionProxy(version.id, line, version.timestamp, version.isActive, version.content)
+        return new VersionProxy(version.id, line, version.type, version.timestamp, version.isActive, version.content)
     }
 
-    private constructor(id: number, line: LineProxy, timestamp: number, isActive: boolean, content: string) {
+    private constructor(id: number, line: LineProxy, type: VersionType, timestamp: number, isActive: boolean, content: string) {
         super(id)
         this.line      = line
+        this.type      = type
         this.timestamp = timestamp
         this.isActive  = isActive
         this.content   = content

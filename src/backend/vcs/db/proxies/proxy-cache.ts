@@ -10,13 +10,16 @@ export class ProxyCache {
     private static readonly tags     = new Map<number, TagProxy>
 
 
+    public static registerFileProxy(proxy: FileProxy): void {
+        this.files.set(proxy.id, proxy)
+    }
 
     public static async getFileProxy(id: number): Promise<FileProxy> {
         if (this.files.has(id)) {
             return this.files.get(id)!
         } else {
             const proxy = await FileProxy.load(id)
-            this.files.set(id, proxy)
+            this.registerFileProxy(proxy)
             return proxy
         }
     }
@@ -27,19 +30,22 @@ export class ProxyCache {
             return this.files.get(id)!
         } else {
             const proxy = await FileProxy.loadFrom(file)
-            this.files.set(id, proxy)
+            this.registerFileProxy(proxy)
             return proxy
         }
     }
 
 
+    public static registerBlockProxy(proxy: BlockProxy): void {
+        this.blocks.set(proxy.id, proxy)
+    }
 
     public static async getBlockProxy(id: number): Promise<BlockProxy> {
         if (this.blocks.has(id)) {
             return this.blocks.get(id)!
         } else {
             const proxy = await BlockProxy.load(id)
-            this.blocks.set(id, proxy)
+            this.registerBlockProxy(proxy)
             return proxy
         }
     }
@@ -50,19 +56,23 @@ export class ProxyCache {
             return this.blocks.get(id)!
         } else {
             const proxy = await BlockProxy.loadFrom(block)
-            this.blocks.set(id, proxy)
+            this.registerBlockProxy(proxy)
             return proxy
         }
     }
 
 
 
-    public static async getLineProxy(id: number, fileId?: number): Promise<LineProxy> {
+    public static registerLineProxy(proxy: LineProxy): void {
+        this.lines.set(proxy.id, proxy)
+    }
+
+    public static async getLineProxy(id: number): Promise<LineProxy> {
         if (this.lines.has(id)) {
             return this.lines.get(id)!
         } else {
-            const proxy = await LineProxy.load(id, fileId)
-            this.lines.set(id, proxy)
+            const proxy = await LineProxy.load(id)
+            this.registerLineProxy(proxy)
             return proxy
         }
     }
@@ -73,19 +83,22 @@ export class ProxyCache {
             return this.lines.get(id)!
         } else {
             const proxy = await LineProxy.loadFrom(line)
-            this.lines.set(id, proxy)
+            this.registerLineProxy(proxy)
             return proxy
         }
     }
 
 
+    public static registerVersionProxy(proxy: VersionProxy): void {
+        this.versions.set(proxy.id, proxy)
+    }
 
     public static async getVersionProxy(id: number): Promise<VersionProxy> {
         if (this.versions.has(id)) {
             return this.versions.get(id)!
         } else {
             const proxy = await VersionProxy.load(id)
-            this.versions.set(id, proxy)
+            this.registerVersionProxy(proxy)
             return proxy
         }
     }
@@ -96,19 +109,22 @@ export class ProxyCache {
             return this.versions.get(id)!
         } else {
             const proxy = await VersionProxy.loadFrom(version)
-            this.versions.set(id, proxy)
+            this.registerVersionProxy(proxy)
             return proxy
         }
     }
 
 
+    public static registerTagProxy(proxy: TagProxy): void {
+        this.tags.set(proxy.id, proxy)
+    }
 
     public static async getTagProxy(id: number): Promise<TagProxy> {
         if (this.tags.has(id)) {
             return this.tags.get(id)!
         } else {
             const proxy = await TagProxy.load(id)
-            this.tags.set(id, proxy)
+            this.registerTagProxy(proxy)
             return proxy
         }
     }
@@ -119,7 +135,7 @@ export class ProxyCache {
             return this.tags.get(id)!
         } else {
             const proxy = await TagProxy.loadFrom(tag)
-            this.tags.set(id, proxy)
+            this.registerTagProxy(proxy)
             return proxy
         }
     }

@@ -1,7 +1,7 @@
-import { BlockType, Block, VersionType, Version, Line, PrismaPromise, Prisma } from "@prisma/client"
+import { BlockType, Block, VersionType, Version, Line, PrismaPromise, Prisma, LineType } from "@prisma/client"
 import { DatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client"
-import { FileProxy, LineProxy, VersionProxy } from "../../types"
+import { FileProxy, LineProxy, TagProxy, VersionProxy } from "../../types"
 import { VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileId, VCSTagId, VCSTagInfo } from "../../../../../app/components/vcs/vcs-rework"
 import { TimestampProvider } from "../../../core/metadata/timestamps"
 import { MultiLineChange } from "../../../../../app/components/data/change"
@@ -19,8 +19,16 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public readonly blockId: string
     public readonly file:    FileProxy
     public readonly type:    BlockType
-    public readonly parent:  BlockProxy
-    public readonly origin:  BlockProxy
+
+    public firstLine: LineProxy
+    public lastLine:  LineProxy
+
+    public parent?: BlockProxy
+    public origin?: BlockProxy
+
+    public children: BlockProxy[]
+    public clones:   BlockProxy[]
+    public tags:     TagProxy[]
 
     private _timestamp:  number
     public get timestamp(): number{ return this._timestamp }
@@ -56,21 +64,144 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public static async loadFrom(block: Block): Promise<BlockProxy> {
-        const file   = await ProxyCache.getFileProxy(block.fileId)
-        const parent = block.parentId ? await ProxyCache.getBlockProxy(block.parentId) : undefined
-        const origin = block.originId ? await ProxyCache.getBlockProxy(block.originId) : undefined
-        return new BlockProxy(block.id, block.blockId, file, block.type, block.timestamp, parent, origin)
+        const file  = await ProxyCache.getFileProxy(block.fileId)
+        const proxy = new BlockProxy(block.id, block.blockId, file, block.type, block.timestamp)
+
+        ProxyCache.registerBlockProxy(proxy)
+
+        // TODO: Blocks without lines are not handled well like this...
+        const firstLineData = await prismaClient.line.findFirst({ where: { fileId: file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "asc" } })!
+        const lastLineData  = await prismaClient.line.findFirst({ where: { fileId: file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "desc" } })!
+        const childrenData  = await prismaClient.block.findMany({ where: { fileId: file.id, parentId: block.id } })
+        const cloneData     = await prismaClient.block.findMany({ where: { fileId: file.id, originId: block.id } })
+        const tagData       = await prismaClient.tag.findMany({ where: { blockId: block.id } })
+
+        proxy.parent = block.parentId ? await ProxyCache.getBlockProxy(block.parentId) : undefined
+        proxy.origin = block.originId ? await ProxyCache.getBlockProxy(block.originId) : undefined
+
+        proxy.firstLine = await LineProxy.getFor(firstLineData)
+        proxy.lastLine  = await LineProxy.getFor(lastLineData)
+
+        proxy.children = await Promise.all(childrenData.map(child => BlockProxy.getFor(child)))
+        proxy.clones   = await Promise.all(cloneData.map(clone => BlockProxy.getFor(clone)))
+        proxy.tags     = await Promise.all(tagData.map(tag => TagProxy.getFor(tag)))
+
+        // NOTES: this is a unique call that is only relevant when a new block is created on already existing/loaded lines -> in this case, this will notify the lines about new blocks
+        proxy.getLines().forEach(line => {
+            if (!line.blocks.some(block => block.id === proxy.id)) {
+                line.blocks.push(proxy)
+            }
+        })
+
+        return proxy
     }
 
-    private constructor(id: number, blockId: string, file: FileProxy, type: BlockType, timestamp: number, parent: BlockProxy, origin: BlockProxy) {
+    private constructor(id: number, blockId: string, file: FileProxy, type: BlockType, timestamp: number) {
         super(id)
-        this.blockId = blockId
-        this.file    = file
-        this.type    = type
-        this.parent  = parent
-        this.origin  = origin
+        this.blockId    = blockId
+        this.file       = file
+        this.type       = type
+        this._timestamp = timestamp
     }
 
+    // MAGIC: Cache lines + version, all done.
+    // !!!!!! TODO: !!!!!!
+    // THIS SHOULD BE USED TO CALCULATE HEADS?
+    // root block is edited, but versions are only represented through considering children -> heads for this block should always consider children
+    // should get a mapping from line to timestamp applicable through the corresponding children -> then map to versions in one opperation
+    private getResponsibilityTable(accumulation?: { clonesToConsider?: BlockProxy[], collectedTimestamps?: Map<number, BlockProxy> }): Map<number, BlockProxy> {
+        const clonesToConsider     = accumulation?.clonesToConsider
+        const collectedTimestamps = accumulation?.collectedTimestamps
+
+        if (clonesToConsider) {
+            const clone = clonesToConsider.find(clone => clone.origin.id === this.id)
+            if (clone) { return clone.getResponsibilityTable(accumulation) }
+        }
+
+        const lines      = this.getLines()
+        let   timestamps = collectedTimestamps !== undefined ? collectedTimestamps : new Map<number, BlockProxy>()
+
+        lines.forEach(line => timestamps.set(line.id, this))
+
+        for (const child of this.children) {
+            timestamps  = child.getResponsibilityTable({ clonesToConsider, collectedTimestamps: timestamps })
+        }
+
+        return timestamps
+    }
+
+    public getLines(): LineProxy[] {
+        return this.file.getLinesFor(this)
+    }
+
+    public getLinesInRange(range: VCSBlockRange): LineProxy[] {
+        const heads       = this.getHeads()
+        const activeHeads = heads.filter(head => head.isActive)
+
+        const firstVersion = activeHeads[range.startLine - 1] 
+        const lastVersion  = activeHeads[range.endLine - 1] 
+
+        const headsInRange = heads.filter(version => firstVersion.line.order <= version.line.order && version.line.order <= lastVersion.line.order)
+
+        return headsInRange.map(head => head.line)
+    }
+
+    public getActiveLines(): LineProxy[] {
+        return this.getActiveHeads().map(head => head.line)
+    }
+
+    public getActiveLinesInRange(range: VCSBlockRange): LineProxy[] {
+        const lines = this.getActiveLines()
+        return lines.filter((line, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
+    }
+
+    public getOriginalLines(): LineProxy[] {
+        return this.getLines().filter(line => line.type === LineType.ORIGINAL)
+    }
+
+    public getHeads(clonesToConsider?: BlockProxy[]): VersionProxy[] {
+        const lines = this.getLines()
+        const table = this.getResponsibilityTable({ clonesToConsider })
+        return lines.map(line => line.getHeadFor(table.get(line.id)!))
+    }
+
+    public getActiveHeads(clonesToConsider?: BlockProxy[]): VersionProxy[] {
+        return this.getHeads(clonesToConsider).filter(head => head.isActive)
+    }
+
+    private getLastImportedVersion(): VersionProxy | null {
+        const originalLines    = this.getOriginalLines()
+        const importedVersions = originalLines
+            .flatMap(line => line.versions.filter(version => version.type === VersionType.IMPORTED))
+            .sort((versionA, versionB) => versionB.timestamp - versionA.timestamp)
+        
+        return importedVersions.length > 0 ? importedVersions[0] : null
+    }
+
+    private getTimeline(): VersionProxy[] {
+        const versions = this.getLines()
+            .flatMap(head => head.versions.filter(version => version.type !== VersionType.IMPORTED && version.type !== VersionType.CLONE))
+            .sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
+
+        const lastImportedVersion = this.getLastImportedVersion()
+        if (lastImportedVersion) {
+            return [lastImportedVersion].concat(...versions)
+        } else {
+            return versions
+        }
+    }
+
+    private getTimelineWithCurrentIndex(): { timeline: VersionProxy[], index: number } {
+        const timeline = this.getTimeline()
+        for (let index = timeline.length - 1; index >= 0; index--) {
+            const version = timeline[index]
+            if (version.timestamp <= this.timestamp) { return { timeline, index } }
+        }
+
+        throw new Error("Current timestamp of this block is lower than every single timestamp of a version in the timeline. As a consequence, there is no valid index!")
+    }
+
+    /*
     //public getBlock()         { return prismaClient.block.findUniqueOrThrow({ where: { id: this.id } }) }
     public getCloneCount()    { return prismaClient.block.count({ where: { originId: this.id } }) }
     public getChildrenCount() { return prismaClient.block.count({ where: { parentId: this.id } }) }
@@ -337,63 +468,18 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
     }
-
-    // MAGIC: Cache lines + version, all done.
-    // !!!!!! TODO: !!!!!!
-    // THIS SHOULD BE USED TO CALCULATE HEADS?
-    // root block is edited, but versions are only represented through considering children -> heads for this block should always consider children
-    // should get a mapping from line to timestamp applicable through the corresponding children -> then map to versions in one opperation
-    private async getLineTimestamps(accumulation?: { clonesToConsider?: BlockProxy[], collectedTimestamps?: Map<number, number> }): Promise<Map<number, number>> {
-        const clonesToConsider     = accumulation?.clonesToConsider
-        const collectedTimestamps = accumulation?.collectedTimestamps
-
-        if (clonesToConsider) {
-            const clone = clonesToConsider.find(clone => clone.origin.id === this.id)
-            if (clone) { return clone.getLineTimestamps(accumulation) }
-        }
-
-        let   timestamps = collectedTimestamps !== undefined ? collectedTimestamps : new Map<number, number>()
-        const lines      = await this.getLines()
-
-        lines.forEach(line => timestamps.set(line.id, this.timestamp))
-
-        const children = await this.getChildren()
-        for (const child of children) {
-            const proxy = await BlockProxy.getFor(child)
-            timestamps  = await proxy.getLineTimestamps({ clonesToConsider, collectedTimestamps: timestamps })
-        }
-
-        return timestamps
-    }
+    */
     
-    
-    private async getVersionsForText(accumulation?: { clonesToConsider?: BlockProxy[], collectedVersions?: Map<number, Version> }): Promise<Map<number, Version>> {
-        const clonesToConsider  = accumulation?.clonesToConsider
-        const collectedVersions = accumulation?.collectedVersions
-
-        if (clonesToConsider) {
-            const clone = clonesToConsider.find(clone => clone.origin.id === this.id)
-            if (clone) { return await clone.getVersionsForText(accumulation) }
-        }
-
-        let   versions      = collectedVersions !== undefined ? collectedVersions : new Map<number, Version>()
-        const blockVersions = await (await this.getHeads()).prismaPromise
-
-        blockVersions.forEach(version => versions.set(version.lineId, version))
-
-        const children = await this.getChildren()
-        for (const child of children) {
-            const proxy = await BlockProxy.getFor(child)
-            versions    = await proxy.getVersionsForText({ clonesToConsider, collectedVersions: versions })
-        }
-
-        return versions
-    }
 
     public async getText(clonesToConsider?: BlockProxy[]): Promise<string> {
+        const activeHeads = this.getActiveHeads(clonesToConsider)
+        const content     = activeHeads.map(head => head.content)
+        return content.join(this.file.eol)
+
+        /*
         // filtering for active lines here is important!!!
-        const lines       = await this.getLines()
-        const eol         = await this.file.getEol()
+        const lines       = this.getLines()
+        const eol         = this.file.eol
 
         const versions    = await this.getVersionsForText({ clonesToConsider })
         const content     = lines.map(line => {
@@ -402,35 +488,11 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         }).filter(content => content !== undefined)
 
         return content.join(eol)
-    }
-
-    public async getLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
-        const versions = await (await this.getHeadsWithLines()).prismaPromise
-
-        const activeVersions = versions.filter(version => version.isActive)
-
-        const firstVersion = activeVersions[range.startLine - 1] 
-        const lastVersion  = activeVersions[range.endLine - 1] 
-
-        const versionsInRange = versions.filter(version => firstVersion.line.order <= version.line.order && version.line.order <= lastVersion.line.order)
-
-        return await Promise.all(versionsInRange.map(async version => await LineProxy.getFor(version.line)))
-    }
-
-    public async getActiveLinesInRange(range: VCSBlockRange): Promise<LineProxy[]> {
-        const lines        = await (await this.getActiveLines()).prismaPromise
-        const linesInRange = lines.filter((line, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
-        return await Promise.all(linesInRange.map(async line => await LineProxy.getFor(line)))
+        */
     }
 
     public static async createRootBlock(file: FileProxy, filePath: string): Promise<{ blockId: string, block: BlockProxy }> {
-        const lines = await prismaClient.line.findMany({
-            where:   { fileId: file.id },
-            include: { versions: true },
-            orderBy: { order: "asc" }
-        })
-
-        const versions        = lines.flatMap(line => line.versions).sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
+        const versions        = file.lines.flatMap(line => line.versions).sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
         const latestTimestamp = versions.length > 0 ? versions[versions.length - 1].timestamp : 0
 
         const blockId = filePath + ":root"
@@ -440,7 +502,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
                 fileId:    file.id,
                 type:      BlockType.ROOT,
                 timestamp: latestTimestamp,
-                lines:     { connect: lines.map(line => { return { id: line.id } }) }
+                lines:     { connect: file.lines.map(line => { return { id: line.id } }) }
             }
         })
 
@@ -454,29 +516,30 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     // WARNING: Should technically also copy children, but in this usecase unnecessary
     public async copy(): Promise<BlockProxy> {
-        const [cloneCount, versions] = await prismaClient.$transaction([
-            this.getCloneCount(),
-            (await this.getHeads()).prismaPromise
-        ])
+        const lines      = this.getLines()
+        const cloneCount = this.clones.length
 
-        const latestTimestamp = versions.length > 0 ? versions.sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)[versions.length - 1].timestamp : 0
+        // Why did I have this before?
+        // const latestTimestamp = heads.length > 0 ? heads.sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)[heads.length - 1].timestamp : 0
 
         const block = await prismaClient.block.create({
             data: {
                 blockId:   `${this.blockId}:inline${cloneCount}`,
                 fileId:    this.file.id,
                 type:      BlockType.CLONE,
-                timestamp: latestTimestamp,
+                timestamp: this.timestamp,
                 originId:  this.id,
-                lines:     { connect: versions.map(version => { return { id: version.lineId } }) }
+                lines:     { connect: lines.map(line => { return { id: line.id } }) }
             }
         })
 
-        return await BlockProxy.getFor(block)
+        const clone = await BlockProxy.getFor(block)
+        this.clones.push(clone)
+        return clone
     }
 
     public async inlineCopy(lines: LineProxy[]): Promise<BlockProxy> {
-        const childrenCount = await this.getChildrenCount()
+        const childrenCount = this.children.length
 
         const block = await prismaClient.block.create({
             data: {
@@ -489,10 +552,14 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
-        return await BlockProxy.getFor(block)
+        const child = await BlockProxy.getFor(block)
+        this.children.push(child)
+        return child
     }
 
     private async insertLines(lineContents: string[], options?: { previous?: LineProxy, next?: LineProxy, blockReference?: BlockReference }): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
+        if (lineContents.length === 0) { return [] }
+        
         const lines = await this.file.insertLines(lineContents, { previous: options?.previous, next: options?.next, sourceBlock: this })
 
         const blockReference = options?.blockReference
@@ -503,12 +570,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             else if (blockReference === BlockReference.Next)     { blockReferenceLine = options?.next     ? options.next     : options.previous }
 
             if (blockReferenceLine) {
-                const blocks       = await blockReferenceLine.getBlocks()
-                const blockProxies = await Promise.all(blocks.map(async block => await BlockProxy.getFor(block)))
-
+                const blocks = blockReferenceLine.blocks
                 for (const lineInfo of lines) {
                     const { line, v0, v1 } = lineInfo
-                    const blockVersions = new Map(blockProxies.map(block => [block, block.id === this.id ? v1 : v0]))
+                    const blockVersions = new Map(blocks.map(block => [block, block.id === this.id ? v1 : v0]))
                     await line.addBlocks(blockVersions)
                 }
             }
@@ -539,8 +604,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     public async insertLinesAt(lineNumber: number, lineContents: string[]): Promise<LineProxy[]> {
         //this.resetVersionMerging()
+        if (lineContents.length === 0) { return [] }
 
-        const lastLineNumber      = await (await this.getActiveLineCount()).prismaPromise
+        const activeLines         = this.getActiveLines()
+        const lastLineNumber      = activeLines.length
         const newLastLine         = lastLineNumber + 1
         const insertionLineNumber = Math.min(Math.max(lineNumber, 1), newLastLine)
 
@@ -558,15 +625,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             const lines = await this.appendLines(lineContents) // TODO: could be optimized by getting previous line from file lines
             createdLines = lines.map(line => line.line)
         } else {
-            const activeLines = await (await this.getActiveLines()).prismaPromise
-
             const previousLine = activeLines[insertionLineNumber - 2]
             const currentLine  = activeLines[insertionLineNumber - 1]
 
-            const previousLineProxy = await LineProxy.getFor(previousLine)
-            const currentLineProxy  = await LineProxy.getFor(currentLine)
-
-            const lines = await this.insertLines(lineContents, { previous: previousLineProxy, next: currentLineProxy, blockReference: BlockReference.Previous })
+            const lines = await this.insertLines(lineContents, { previous: previousLine, next: currentLine, blockReference: BlockReference.Previous })
             createdLines = lines.map(line => line.line)
         }
 
@@ -590,7 +652,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async createChild(range: VCSBlockRange): Promise<BlockProxy | null> {
-        const linesInRange = await this.getLinesInRange(range)
+        const linesInRange = this.getLinesInRange(range)
 
         const overlappingChild = await prismaClient.block.findFirst({
             where: {
@@ -608,65 +670,23 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo> {
-        const [originalLineCount, activeLineCount, versionCount, lastImportedVersion, firstLine, currentVersion, tags] = await prismaClient.$transaction([
-            this.getOriginalLineCount(),
-            (await this.getActiveLineCount()).prismaPromise,
-            this.getVersionCount(),
-            this.getLastImportedVersion(),
-
-            prismaClient.line.findFirstOrThrow({
-                where: {
-                    fileId: this.file.id,
-                    blocks: { some: { id: this.id } } 
-                },
-                orderBy: { order: "asc"  },
-                select: { id: true, order: true }
-            }),
-
-            (await this.getCurrentVersion()).prismaPromise,
-            this.getTags()
-        ])
+        const activeLineCount = this.getActiveLines().length
 
         if (activeLineCount === 0) { throw new Error("Block has no active lines, and can thus not be positioned in parent!") }
 
         let   firstLineNumberInParent = 1
         let   lastLineNumberInParent  = activeLineCount
-        const userVersionCount        = versionCount - originalLineCount + (lastImportedVersion ? 1 : 0)  // one selectable version per version minus pre-insertion versions (one per inserted line) and imported lines (which, together, is the same as all lines) plus one version for the original state of the file
 
         if (this.parent) {
-            const parentTimestamp = this.parent.timestamp
-            const potentiallyActiveHeadsBeforeBlock = await prismaClient.version.groupBy({
-                by: ["lineId"],
-                where: {
-                    line:   {
-                        fileId: this.file.id,
-                        blocks: { none: { id: this.id } },
-                        order:  { lt: firstLine.order }
-                    },
-                    timestamp: { lte: parentTimestamp }
-                },
-                _max: {
-                    timestamp: true
-                }
-            })
+            const activeLinesInParent         = this.parent.getActiveLines()
+            const activeLinesBeforeBlock      = activeLinesInParent.filter(line => line.order < this.firstLine.order)
+            const countActiveLinesBeforeBlock = activeLinesBeforeBlock.length
 
-            const activeLinesBeforeBlock = await prismaClient.version.count({
-                where: {
-                    OR: potentiallyActiveHeadsBeforeBlock.map(({ lineId, _max: maxAggregations }) => {
-                        return {
-                            lineId,
-                            timestamp: maxAggregations.timestamp
-                        }
-                    }),
-                    isActive: true
-                }
-            })
-
-            firstLineNumberInParent = activeLinesBeforeBlock + 1
-            lastLineNumberInParent  = activeLinesBeforeBlock + activeLineCount
+            firstLineNumberInParent = countActiveLinesBeforeBlock + 1
+            lastLineNumberInParent  = countActiveLinesBeforeBlock + activeLineCount
         }
 
-        const currentVersionIndex = await this.getTimelineIndexFor(currentVersion)
+        const { timeline, index } = this.getTimelineWithCurrentIndex()
 
         const blockId = VCSBlockId.createFrom(fileId, this.blockId)
         return new VCSBlockInfo(blockId,
@@ -675,21 +695,19 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
                                     startLine: firstLineNumberInParent,
                                     endLine:   lastLineNumberInParent
                                 },
-                                userVersionCount,
-                                currentVersionIndex,
-                                tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
+                                timeline.length,
+                                index,
+                                this.tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
     }
 
     public async getChildrenInfo(fileId: VCSFileId): Promise<VCSBlockInfo[]> {
-        const children = await this.getChildren()
-        const blocks = await Promise.all(children.map(async child => await BlockProxy.getFor(child)))
-        return await Promise.all(blocks.map(block => block.asBlockInfo(fileId)))
+        return await Promise.all(this.children.map(block => block.asBlockInfo(fileId)))
     }
 
     public async updateLine(lineNumber: number, content: string): Promise<LineProxy> {
-        const lines = await (await this.getActiveLines()).prismaPromise
+        const activeLines = this.getActiveLines()
 
-        const line = await LineProxy.getFor(lines[lineNumber - 1])
+        const line = activeLines[lineNumber - 1]
         await line.updateContent(this, content)
 
         //this.setupVersionMerging(line)
@@ -700,7 +718,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public async applyIndex(targetIndex: number): Promise<void> {
         //this.resetVersionMerging()
 
-        const timeline = await this.getTimeline()
+        const timeline = this.getTimeline()
 
         if (targetIndex < 0 || targetIndex >= timeline.length) { throw new Error(`Target index ${targetIndex} out of bounds for timeline of length ${timeline.length}!`) }
 
@@ -714,50 +732,31 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async cloneOutdatedHeads(): Promise<void> {
-        const heads = await (await this.getHeads()).prismaPromise
-        const linesToUpdate = await prismaClient.line.findMany({
-            where: {
-                fileId:   this.file.id,
-                blocks:   { some: { id: this.id } },
-                versions: {
-                    some: {
-                        timestamp: { gt: this.timestamp }
-                    }
-                }
-            }
-        })
-
-        const headsToClone = heads.filter(head => linesToUpdate.some(line => line.id === head.lineId))
+        const heads        = this.getHeads()
+        const headsToClone = heads.filter(head => head.timestamp < head.line.getLatestVersion().timestamp)
 
         if (headsToClone.length > 0) {
 
             const cloneTimestamp = TimestampProvider.getTimestamp()
 
-            const versionCreation = prismaClient.version.createMany({
-                data: headsToClone.map(head => {
-                    return {
-                        lineId:        head.lineId,
-                        timestamp:     cloneTimestamp,
-                        type:          VersionType.CLONE,
-                        isActive:      head.isActive,
-                        originId:      head.id,
-                        sourceBlockId: this.id,
-                        content:       head.content
-                    }
-                })
-            })
+            const prismaOperations: PrismaPromise<any>[] = []
 
-            const headUpdate = this.setTimestamp(cloneTimestamp)
+            // this could be done with a createMany instead, but I need the side effect of createNewVersion to make sure the in-memory representation remains consistent
+            prismaOperations.push(...headsToClone.map(head => {
+                const { prismaPromise } = head.line.createNewVersion(this, cloneTimestamp, VersionType.CLONE, head.isActive, head.content, head)
+                return prismaPromise
+            }))
 
-            await prismaClient.$transaction([versionCreation, headUpdate])
+            prismaOperations.push(this.setTimestamp(cloneTimestamp))
+
+            await prismaClient.$transaction(prismaOperations)
         }
     }
 
+    // responsibility issues
     public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
-        const eol   = await this.file.getEol()
-        const heads = await (await this.getHeadsWithLines()).prismaPromise
-
-        const activeHeads = heads.filter(head => head.isActive)
+        const eol         = this.file.eol
+        const activeHeads = this.getActiveHeads()
 
         //block.resetVersionMerging()
 
@@ -785,6 +784,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         const noModifications = oneLineInsertOnly && (pushStartLineUp || pushStartLineDown)
         //const modifyStartLine = !oneLineInsertOnly || (!pushStartLineDown && !pushStartLineUp)
 
+        /*
         console.log("\nPush Down")
         console.log(`Inserted Text: "${change.insertedText.trimEnd()}"`)
         console.log(startsWithEol)
@@ -792,6 +792,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         console.log(startLineContent.length - startLineContent.trimStart().length + 1)
         console.log(change.modifiedRange.startColumn)
         console.log(pushStartLineDown)
+        */
 
         const modifiedRange = {
             startLine: change.modifiedRange.startLineNumber,
@@ -800,16 +801,16 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         const modifiedLines = change.lineText.split(eol)
         if (pushStartLineUp) {
-            console.log(modifiedLines.splice(0, 1))
+            modifiedLines.splice(0, 1)
             modifiedRange.startLine++
         } else if (pushStartLineDown) {
-            console.log(modifiedLines.pop())
+            modifiedLines.pop()
             modifiedRange.endLine--
         }
         
         let vcsLines: LineProxy[] = []
         if (!noModifications) {
-            const activeLines = await Promise.all(activeHeads.map(async head => await LineProxy.getFor(head.line)))
+            const activeLines = activeHeads.map(head => head.line)
             vcsLines = activeLines.filter((_, index) => modifiedRange.startLine <= index + 1 && index + 1 <= modifiedRange.endLine)
         }
 
@@ -834,31 +835,15 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         function deleteLine(line: LineProxy): void {
             affectedLines.push(line)
             latestTimestamp = TimestampProvider.getTimestamp()
-            prismaOperations.push(prismaClient.version.create({
-                data: {
-                    lineId:        line.id,
-                    timestamp:     latestTimestamp,
-                    type:          VersionType.DELETION,
-                    isActive:      false,
-                    sourceBlockId: block.id,
-                    content:       ""
-                }
-            }))
+            const { prismaPromise } = line.createNewVersion(block, latestTimestamp, VersionType.DELETION, false, "")
+            prismaOperations.push(prismaPromise)
         }
 
         function updateLine(line: LineProxy, content: string): void {
             affectedLines.push(line)
             latestTimestamp = TimestampProvider.getTimestamp()
-            prismaOperations.push(prismaClient.version.create({
-                data: {
-                    lineId:        line.id,
-                    timestamp:     latestTimestamp,
-                    type:          VersionType.CHANGE,
-                    isActive:      true,
-                    sourceBlockId: block.id,
-                    content
-                }
-            }))
+            const { prismaPromise } = line.createNewVersion(block, latestTimestamp, VersionType.CHANGE, true, content)
+            prismaOperations.push(prismaPromise)
         }
         
         for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
@@ -888,22 +873,4 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(fileId, id))
     }
-}
-
-function customTrimEnd(input: string, eol: string) {
-    // This regular expression matches trailing spaces and tabs
-    const regex = /[ \t]+$/;
-
-    // Split input by eol into lines
-    const lines = input.split(eol);
-
-    // For each line trim end spaces and tabs
-    for (let i = 0; i < lines.length; i++) {
-        lines[i] = lines[i].replace(regex, "");
-    }
-
-    // Join lines back using eol
-    const output = lines.join(eol);
-
-    return output;
 }
