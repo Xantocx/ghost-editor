@@ -8,10 +8,11 @@ import { MultiLineChange } from "../../../app/components/data/change"
 
 export interface ISessionFile {}
 
-export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionTag extends ISessionTag> {
+export interface ISessionBlock<SessionFile extends ISessionFile, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionLine extends ISessionLine, SessionTag extends ISessionTag> {
     blockId: string
     file:    SessionFile
     type:    BlockType
+    parent?: SessionBlock
 
     asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo>
     getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]>
@@ -25,8 +26,8 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine ext
     applyTimestamp(timestamp: number): Promise<void>
     cloneOutdatedHeads(): Promise<void>
 
-    copy(): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>>
-    createChild(range: VCSBlockRange): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag> | null>
+    copy(): Promise<SessionBlock>
+    createChild(range: VCSBlockRange): Promise<SessionBlock | null>
 
     createTag(): Promise<SessionTag>
 }
@@ -45,9 +46,9 @@ export interface ISessionTag {
     asTagInfo(blockId: VCSBlockId): Promise<VCSTagInfo>
 }
 
-export type NewFileInfo<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag> = { file: { filePath: string; file: SessionFile }; rootBlock: { blockId: string; block: SessionBlock } }
+export type NewFileInfo<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag> = { file: { filePath: string; file: SessionFile }; rootBlock: { blockId: string; block: SessionBlock } }
 
-export abstract class Session<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag> {
+export abstract class Session<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag> {
 
     public readonly id = randomUUID()
     public readonly resources: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>>
@@ -62,7 +63,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         this.queries   = new QueryManager(this)
     }
 
-    public abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>>
+    public abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionBlock, SessionTag>>
     public abstract getRootSessionBlockFor(filePath: string):                                       Promise<SessionBlock | undefined>
     public abstract getSessionBlockFor(blockId: VCSBlockId):                                        Promise<SessionBlock | undefined>
     public abstract getSessionTagFor(tagId: VCSTagId):                                              Promise<SessionTag | undefined>
@@ -141,13 +142,22 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         }
     }
 
-    public getRootBlockFor(fileId: VCSFileId): SessionBlock {
+    public getFileRootBlockFor(fileId: VCSBlockId): SessionBlock {
         const filePath = fileId.filePath
         if (this.files.has(filePath)) {
             return this.files.get(filePath)!
         } else {
             throw new Error(`Cannot return root block for unloaded file ${filePath}!`)
         }
+    }
+
+    public async getRootBlockFor(blockId: VCSBlockId): Promise<{ root: SessionBlock, block: SessionBlock }> {
+        const block = await this.getBlock(blockId)
+
+        let root = block
+        while (root.parent !== undefined) { root = root.parent }
+
+        return { root, block }
     }
 
     public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
@@ -180,7 +190,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
 
 export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy> {
 
-    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy>> {
+    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, BlockProxy, TagProxy>> {
         return await FileProxy.create(filePath, eol, content)
     }
 
@@ -367,7 +377,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     }
 }
 
-class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> {
+class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> {
 
     public readonly request:   VCSSessionRequest<QueryData>
     public readonly type:      VCSRequestType
@@ -417,10 +427,10 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
     }
 }
 
-type AnyQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>>        = Query<any, any, SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager>
-type AnyWaitingQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> = { requiredRequestId: string, query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager> }
+type AnyQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>>        = Query<any, any, SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager>
+type AnyWaitingQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> = { requiredRequestId: string, query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager> }
 
-class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
+class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
 
     public readonly session: QuerySession
 
@@ -523,7 +533,7 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
     }
 }
 
-export class ResourceManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
+export class ResourceManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
 
     private readonly sessionConstructor: new (manager: this) => QuerySession
     private readonly sessions = new Map<string, QuerySession>()

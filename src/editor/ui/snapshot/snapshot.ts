@@ -30,8 +30,9 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
     private readonly sideViewIdentifier = "versionManager"
 
-    public get vcsId():   VCSBlockId { return this.snapshot.blockInfo }
-    public get blockId(): string     { return this.snapshot.blockId }
+    public get vcsId():      VCSBlockId { return this.snapshot.blockInfo }
+    public get blockId():    string     { return this.snapshot.blockId }
+    public get vcsBlockId(): VCSBlockId { return this.session.createChildIdFrom(this.blockId) }
 
     public get core():  MonacoEditor { return this.editor.core }
     public get model(): MonacoModel  { return this.editor.getTextModel() }

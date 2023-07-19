@@ -70,15 +70,16 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
         return this.blocks.map(block => block.blockId)
     }
 
-    public async addBlocks(blockVersions: Map<BlockProxy, VersionProxy>): Promise<void> {
+    public async addBlocks(sourceBlock: BlockProxy, blockVersions: Map<BlockProxy, VersionProxy>): Promise<void> {
         const blocks = Array.from(blockVersions.keys())
 
         const updates = blocks.map(block => {
+            const responsibleBlock = sourceBlock.getChildResponsibleFor(this)
             return prismaClient.block.update({
                 where: { id: block.id },
                 data:  {
                     lines:     { connect: { id: this.id } },
-                    timestamp: blockVersions.get(block)!.timestamp
+                    timestamp: responsibleBlock.id === block.id ? blockVersions.get(block)!.timestamp : undefined
                 }
             })
         })
@@ -87,7 +88,9 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
 
         blockData.forEach((blockData, index) => {
             const block = blocks[index]
-            block.setTimestampManually(blockData.timestamp)
+            if (blockData.timestamp !== block.timestamp) {
+                block.setTimestampManually(blockData.timestamp)
+            }
         })
 
         const newBlocks = blocks.filter(block => this.blocks.every(currentBlock => block.id !== currentBlock.id))

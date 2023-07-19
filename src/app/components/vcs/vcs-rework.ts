@@ -718,9 +718,13 @@ export class VCSBlockSession {
         return await this.client.applyChanges(this.block, changes)
     }
 
-    public async copyBlock(): Promise<VCSBlockSession> {
-        const copyBlock = await this.client.copyBlock(this.block)
+    public async copyBlock(blockId: VCSBlockId): Promise<VCSBlockSession> {
+        const copyBlock = await this.client.copyBlock(blockId)
         return new VCSBlockSession(this.session, copyBlock, false)
+    }
+
+    public async copy(): Promise<VCSBlockSession> {
+        return await this.copyBlock(this.block)
     }
 
     public async createChild(range: VCSBlockRange): Promise<VCSChildBlockInfo | null> {

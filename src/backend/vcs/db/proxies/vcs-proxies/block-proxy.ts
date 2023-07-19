@@ -1,4 +1,4 @@
-import { BlockType, Block, VersionType, Version, Line, PrismaPromise, Prisma, LineType } from "@prisma/client"
+import { BlockType, Block, VersionType, Version, Line, PrismaPromise, Prisma, LineType, Tag } from "@prisma/client"
 import { DatabaseProxy } from "../database-proxy"
 import { prismaClient } from "../../client"
 import { FileProxy, LineProxy, TagProxy, VersionProxy } from "../../types"
@@ -15,7 +15,7 @@ enum BlockReference {
     Next
 }
 
-export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy, LineProxy, VersionProxy, TagProxy> {
+export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy, BlockProxy, LineProxy, TagProxy> {
 
     public readonly blockId: string
     public readonly file:    FileProxy
@@ -114,12 +114,15 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     // root block is edited, but versions are only represented through considering children -> heads for this block should always consider children
     // should get a mapping from line to timestamp applicable through the corresponding children -> then map to versions in one opperation
     private getResponsibilityTable(accumulation?: { clonesToConsider?: BlockProxy[], collectedTimestamps?: Map<number, BlockProxy> }): Map<number, BlockProxy> {
-        const clonesToConsider     = accumulation?.clonesToConsider
+        const clonesToConsider    = accumulation?.clonesToConsider
         const collectedTimestamps = accumulation?.collectedTimestamps
 
         if (clonesToConsider) {
-            const clone = clonesToConsider.find(clone => clone.origin.id === this.id)
-            if (clone) { return clone.getResponsibilityTable(accumulation) }
+            const cloneIndex = clonesToConsider.findIndex(clone => clone.origin?.id === this.id)
+            if (cloneIndex > -1) {
+                const clone = clonesToConsider.splice(cloneIndex, 1)[0]
+                return clone.getResponsibilityTable(accumulation)
+            }
         }
 
         const lines      = this.getLines()
@@ -139,6 +142,11 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return table.get(line.id)!
     }
 
+    public isResponsibleFor(line: LineProxy, clonesToConsider?: BlockProxy[]): boolean {
+        const responsibleChild = this.getChildResponsibleFor(line, clonesToConsider)
+        return this.id === responsibleChild.id
+    }
+
     public getLines(): LineProxy[] {
         return this.file.getLinesFor(this)
     }
@@ -155,8 +163,8 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return headsInRange.map(head => head.line)
     }
 
-    public getActiveLines(): LineProxy[] {
-        return this.getActiveHeads().map(head => head.line)
+    public getActiveLines(clonesToConsider?: BlockProxy[]): LineProxy[] {
+        return this.getActiveHeads(clonesToConsider).map(head => head.line)
     }
 
     public getActiveLinesInRange(range: VCSBlockRange): LineProxy[] {
@@ -188,20 +196,31 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     private getTimeline(): VersionProxy[] {
-        const versions = this.getLines()
-            .flatMap(head => head.versions.filter(version => version.type !== VersionType.IMPORTED && version.type !== VersionType.CLONE))
+        let versions = this.getLines()
+            .flatMap(head => head.versions.filter(version => version.type !== VersionType.IMPORTED))
             .sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)
 
         const lastImportedVersion = this.getLastImportedVersion()
         if (lastImportedVersion) {
-            return [lastImportedVersion].concat(...versions)
-        } else {
-            return versions
+            versions.splice(0, 0, lastImportedVersion)
         }
+
+        // NOTE: used to filter clones to avoid multiple clone triggers with the same timestamp
+        const timeline: VersionProxy[] = []
+        let   lastTimestamp: number | undefined = undefined
+        for (let version of versions) {
+            if (version.timestamp !== lastTimestamp) {
+                timeline.push(version);
+                lastTimestamp = version.timestamp;
+            }
+        }
+
+        return timeline
     }
 
     private getTimelineWithCurrentIndex(): { timeline: VersionProxy[], index: number } {
         const timeline = this.getTimeline()
+
         for (let index = timeline.length - 1; index >= 0; index--) {
             const version = timeline[index]
             if (version.timestamp <= this.timestamp) { return { timeline, index } }
@@ -321,7 +340,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             const { line, v0, v1 } = lineInfo
             const responsibleBlock = table.get(line.id)
             const blockVersions    = new Map(blocks.map(block => [block, block.id === responsibleBlock.id ? v1 : v0]))
-            await line.addBlocks(blockVersions)
+            await line.addBlocks(this, blockVersions)
         }
 
         return lines

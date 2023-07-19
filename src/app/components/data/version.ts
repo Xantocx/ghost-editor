@@ -22,7 +22,8 @@ export class VCSVersion implements CodeProvider {
 
     public async getSession(): Promise<VCSBlockSession> {
         if (!this.session) {
-            this.session = await this.snapshot.session.copyBlock()
+            const rootSession = this.snapshot.session
+            this.session = await rootSession.copyBlock(this.snapshot.vcsBlockId)
             await this.session.applyTag(this.tag)
         }
         return this.session!

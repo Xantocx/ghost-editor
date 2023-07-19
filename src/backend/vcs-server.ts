@@ -11,7 +11,7 @@ USAGE:
     - DB: const server = new VCSServer<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy, DBSession>(DBSession)
 */
 
-export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> extends BasicVCSServer {
+export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> extends BasicVCSServer {
 
     private readonly resources: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>
 
@@ -89,7 +89,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
 
     public async getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
         return await this.resources.createQuery(request, VCSOperation.GetRootText, async (session, { blockId }) => {
-            const root  = session.getRootBlockFor(blockId)
+            const root  = session.getFileRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
             return await root.getText([block])
         })
@@ -162,13 +162,9 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
         return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, VCSOperation.SetBlockVersionIndex, async (session, { blockId, versionIndex }) => {
-            const root  = session.getRootBlockFor(blockId)
-            const block = await session.getBlock(blockId)
-
+            const { root, block } = await session.getRootBlockFor(blockId)
             await block.applyIndex(versionIndex)
-
             await this.updatePreview(session, blockId)
-
             return await root.getText()
         }, async (session) => {
             // console.log("Chain Broke")
@@ -205,13 +201,14 @@ export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, B
     protected async updatePreview(session: DBSession, blockId: VCSBlockId): Promise<void> {
         if (this.browserWindow) {
 
-            const block = session.getRootBlockFor(blockId)
-            const lines = block.getActiveLines()
+            const { root, block } = await session.getRootBlockFor(blockId)
+
+            const lines = root.getActiveLines([block])
 
             const versionCounts = lines.map(line => line.versions.length)
-            const text          = await block.getText()
+            const text          = await root.getText([block])
             
-            this.browserWindow!.webContents.send("update-vcs-preview", block.id, text, versionCounts)
+            this.browserWindow!.webContents.send("update-vcs-preview", root.id, text, versionCounts)
         }
     }
 }
