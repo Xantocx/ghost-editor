@@ -20,7 +20,7 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine ext
     getText(clonesToConsider?: this[]): Promise<string>
 
     updateLine(lineNumber: number, content: string): Promise<SessionLine>
-    changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
+    updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]>
 
     applyIndex(index: number): Promise<void>
     applyTimestamp(timestamp: number): Promise<void>

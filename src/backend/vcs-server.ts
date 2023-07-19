@@ -26,7 +26,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     protected readonly browserWindow: BrowserWindow | undefined
     protected abstract updatePreview(session: QuerySession, blockId: VCSBlockId): Promise<void>
 
-    private async changeLine(session: QuerySession, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
+    private async updateLine(session: QuerySession, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
         const line  = await block.updateLine(change.lineNumber, change.lineText)
         
@@ -36,12 +36,12 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         return ids.map(id => VCSBlockId.createFrom(blockId, id))
     }
 
-    private async changeLines(session: QuerySession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    private async updateLines(session: QuerySession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block          = await session.getBlock(blockId)
-        const affectedBlocks = await block.changeLines(blockId, change)
+        const affectedBlocks = await block.updateLines(blockId, change)
 
         this.updatePreview(session, blockId)
-        
+
         return affectedBlocks
     }
 
@@ -97,13 +97,13 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
 
     public async lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
         return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, change }) => {
-            return await this.changeLine(session, blockId, change)
+            return await this.updateLine(session, blockId, change)
         })
     }
 
     public async linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
         return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, change }) => {
-            return await this.changeLines(session, blockId, change)
+            return await this.updateLines(session, blockId, change)
         })
     }
 
@@ -111,8 +111,8 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, changes }) => {
             const blockIds = []
             for (const change of changes) {
-                if      (change instanceof LineChange)      { blockIds.push(await this.changeLine(session, blockId, change)) }
-                else if (change instanceof MultiLineChange) { blockIds.push(await this.changeLines(session, blockId, change)) }
+                if      (change instanceof LineChange)      { blockIds.push(await this.updateLine(session, blockId, change)) }
+                else if (change instanceof MultiLineChange) { blockIds.push(await this.updateLines(session, blockId, change)) }
                 else                                        { throw new Error("Provided change is not in known format!") }
             }
             return blockIds.flat()

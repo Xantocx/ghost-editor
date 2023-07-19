@@ -74,27 +74,28 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
         const blocks = Array.from(blockVersions.keys())
 
         const updates = blocks.map(block => {
-            const update = prismaClient.block.update({
+            return prismaClient.block.update({
                 where: { id: block.id },
                 data:  {
                     lines:     { connect: { id: this.id } },
                     timestamp: blockVersions.get(block)!.timestamp
                 }
             })
-
-            update.then(blockData => block.setTimestampManually(blockData.timestamp))
-
-            return update
         })
 
-        await prismaClient.$transaction(updates)
+        const blockData = await prismaClient.$transaction(updates)
+
+        blockData.forEach((blockData, index) => {
+            const block = blocks[index]
+            block.setTimestampManually(blockData.timestamp)
+        })
 
         const newBlocks = blocks.filter(block => this.blocks.every(currentBlock => block.id !== currentBlock.id))
         this.blocks = this.blocks.concat(newBlocks)
     }
 
-    public createNewVersion(sourceBlock: BlockProxy, timestamp: number, versionType: VersionType, isActive: boolean, content: string, origin?: VersionProxy): { prismaPromise: PrismaPromise<Version>, proxyPromise: Promise<VersionProxy> } {
-        const prismaPromise = prismaClient.version.create({
+    public async createVersion(sourceBlock: BlockProxy, timestamp: number, versionType: VersionType, isActive: boolean, content: string, origin?: VersionProxy): Promise<VersionProxy> {
+        const versionData = await prismaClient.version.create({
             data: {
                 lineId:        this.id,
                 timestamp:     timestamp,
@@ -106,35 +107,16 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
             }
         })
 
-        const proxyPromise = prismaPromise.then(async versionData => {
-            const version = await VersionProxy.getFor(versionData)
-            this.versions.push(version)
-            return version
-        })
+        const version = await VersionProxy.getFor(versionData)
 
-        return { prismaPromise, proxyPromise }
-    }
-
-    private async createSingleNewVersion(sourceBlock: BlockProxy, isActive: boolean, content: string): Promise<VersionProxy> {
-        
-        /*
-        // might be used for cloning (see validateHead), rn out of use
-        const versionCreation: Prisma.PrismaPromise<Version>[] = []
-        
-        versionCreation.push()
-
-        const versions = await prismaClient.$transaction(versionCreation)
-        const newVersion = versions[versions.length - 1]
-        */
-
-
-        const { prismaPromise: _, proxyPromise } = this.createNewVersion(sourceBlock, TimestampProvider.getTimestamp(), isActive ? VersionType.CHANGE : VersionType.DELETION, isActive, content)
-        const version = await proxyPromise
-
-        await sourceBlock.setTimestamp(version.timestamp)
-        console.log("Timestamp: " + version.timestamp)
+        this.versions.push(version)
+        await sourceBlock.setTimestamp(timestamp)
 
         return version
+    }
+
+    public async createNextVersion(sourceBlock: BlockProxy, isActive: boolean, content: string, timestamp?: number): Promise<VersionProxy> {
+        return await this.createVersion(sourceBlock, timestamp ? timestamp : TimestampProvider.getTimestamp(), isActive ? VersionType.CHANGE : VersionType.DELETION, isActive, content)
     }
 
     private async validateHead(sourceBlock: BlockProxy): Promise<void> {
@@ -172,12 +154,12 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
             currentHead
         } else {
             //await this.validateHead(sourceBlock)
-            return await this.createSingleNewVersion(sourceBlock, true, content)  
+            return await this.createNextVersion(sourceBlock, true, content)
         }      
     }
 
     public async delete(sourceBlock: BlockProxy): Promise<VersionProxy> {
         //await this.validateHead(sourceBlock)
-        return await this.createSingleNewVersion(sourceBlock, false, "")   
+        return await this.createNextVersion(sourceBlock, false, "")
     }
 }

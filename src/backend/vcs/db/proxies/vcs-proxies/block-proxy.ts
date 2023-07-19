@@ -37,18 +37,21 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         this._timestamp = newTimestamp
     }
 
-    public setTimestamp(newTimestamp: number) {
-        const update = prismaClient.block.update({
+    public async setTimestamp(newTimestamp: number): Promise<void> {
+        const updatedBlock = await prismaClient.block.update({
             where: { id: this.id },
             data:  { timestamp: newTimestamp }
         })
 
-        update.then(updatedBlock => {
-            this._timestamp = updatedBlock.timestamp
-        })
-
-        return update
+        this._timestamp = updatedBlock.timestamp
     }
+
+    /*
+    public setTimestampOnResponsibleChildFor(line: LineProxy, timestamp: number, clonesToConsider?: BlockProxy[]) {
+        const child = this.getChildResponsibleFor(line, clonesToConsider)
+        return child.setTimestamp(timestamp)
+    }
+    */
 
     public static async get(id: number): Promise<BlockProxy> {
         return await ProxyCache.getBlockProxy(id)
@@ -128,6 +131,11 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         }
 
         return timestamps
+    }
+
+    public getChildResponsibleFor(line: LineProxy, clonesToConsider?: BlockProxy[]): BlockProxy {
+        const table = this.getResponsibilityTable({ clonesToConsider })
+        return table.get(line.id)!
     }
 
     public getLines(): LineProxy[] {
@@ -560,46 +568,81 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     private async insertLines(lineContents: string[], options?: { previous?: LineProxy, next?: LineProxy, blockReference?: BlockReference }): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         if (lineContents.length === 0) { return [] }
         
-        const lines = await this.file.insertLines(lineContents, { previous: options?.previous, next: options?.next, sourceBlock: this })
-
+        const previous       = options?.previous
+        const next           = options?.next
         const blockReference = options?.blockReference
-        if (blockReference !== undefined) {
-            let blockReferenceLine: LineProxy | undefined = undefined
 
-            if      (blockReference === BlockReference.Previous) { blockReferenceLine = options?.previous ? options.previous : options.next }
-            else if (blockReference === BlockReference.Next)     { blockReferenceLine = options?.next     ? options.next     : options.previous }
+        const lines = await this.file.insertLines(lineContents, { previous, next, sourceBlock: this })
 
-            if (blockReferenceLine) {
-                const blocks = blockReferenceLine.blocks
-                for (const lineInfo of lines) {
-                    const { line, v0, v1 } = lineInfo
-                    const blockVersions = new Map(blocks.map(block => [block, block.id === this.id ? v1 : v0]))
-                    await line.addBlocks(blockVersions)
-                }
-            }
+        const firstInsertedLine = lines[0].line
+        const lastInsertedLine  = lines[lines.length - 1].line
+
+        let blockReferenceLine: LineProxy | undefined = undefined
+
+        // TODO: these blockReference are currently set under the assumption the block used is the child, which is not the case
+        if      (blockReference === BlockReference.Previous) { blockReferenceLine = previous ? previous : next }
+        else if (blockReference === BlockReference.Next)     { blockReferenceLine = next     ? next     : previous }
+
+        console.log(blockReference === BlockReference.Previous)
+        console.log(blockReference === BlockReference.Next)
+        console.log(blockReferenceLine)
+
+        const blocks = blockReferenceLine !== undefined ? blockReferenceLine.blocks : [this]
+        if (blocks.every(block => block.id !== this.id)) { blocks.push(this) }
+
+        for (const lineInfo of lines) {
+            const { line, v0, v1 } = lineInfo
+            const responsibleBlock = this.getChildResponsibleFor(line)
+            const blockVersions    = new Map(blocks.map(block => [block, block.id === responsibleBlock.id ? v1 : v0]))
+            await line.addBlocks(blockVersions)
         }
+
+        blocks.forEach(block => {
+            if (lastInsertedLine.order < block.firstLine.order) {
+                block.firstLine = firstInsertedLine
+            } else if (block.lastLine.order < firstInsertedLine.order) {
+                block.lastLine = lastInsertedLine
+            }
+        })
 
         return lines
     }
 
     // TODO: TEST!!!
     private async prependLines(lineContents: string[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
-        const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  } })
-        const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" } })
+        //const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  } })
+        //const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" } })
         
-        return await this.insertLines(lineContents, { previous:       previousLine ? await LineProxy.getFor(previousLine) : undefined,
-                                                      next:           nextLine     ? await LineProxy.getFor(nextLine)     : undefined,
-                                                      blockReference: BlockReference.Next })
+        const lines     = this.getLines()
+        const nextLine  = lines[0]
+
+        const previousFileLines = this.file.lines.filter(line => line.order < nextLine.order)
+        const previousLine = previousFileLines.length > 0 ? previousFileLines[previousFileLines.length - 1] : undefined
+    
+
+        const insertedLines = await this.insertLines(lineContents, { previous:       previousLine ? previousLine : undefined,
+                                                                     next:           nextLine     ? nextLine     : undefined,
+                                                                     blockReference: BlockReference.Next })
+
+        return insertedLines
     }
 
     // TODO: TEST!!!
     private async appendLines(lineContents: string[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
-        const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" } })
-        const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  } })
+        //const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" } })
+        //const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  } })
         
-        return await this.insertLines(lineContents, { previous:       previousLine ? await LineProxy.getFor(previousLine) : undefined,
-                                                      next:           nextLine     ? await LineProxy.getFor(nextLine)     : undefined,
-                                                      blockReference: BlockReference.Previous })
+        const lines         = this.getLines()
+        const previousLine  = lines[lines.length - 1]
+
+        const nextFileLines = this.file.lines.filter(line => previousLine.order < line.order)
+        const nextLine = nextFileLines.length > 0 ? nextFileLines[0] : undefined
+
+        const insertedLines = await this.insertLines(lineContents, { previous:       previousLine ? previousLine : undefined,
+                                                                     next:           nextLine     ? nextLine     : undefined,
+                                                                     blockReference: BlockReference.Previous })
+
+        return insertedLines
     }
 
     public async insertLinesAt(lineNumber: number, lineContents: string[]): Promise<LineProxy[]> {
@@ -619,10 +662,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         let createdLines: LineProxy[]
 
         if (insertionLineNumber === 1) {
-            const lines = await this.prependLines(lineContents) // TODO: could be optimized by getting previous line from file lines
+            const lines    = await this.prependLines(lineContents)
             createdLines = lines.map(line => line.line)
         } else if (insertionLineNumber === newLastLine) {
-            const lines = await this.appendLines(lineContents) // TODO: could be optimized by getting previous line from file lines
+            const lines   = await this.appendLines(lineContents)
             createdLines = lines.map(line => line.line)
         } else {
             const previousLine = activeLines[insertionLineNumber - 2]
@@ -704,17 +747,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return await Promise.all(this.children.map(block => block.asBlockInfo(fileId)))
     }
 
-    public async updateLine(lineNumber: number, content: string): Promise<LineProxy> {
-        const activeLines = this.getActiveLines()
-
-        const line = activeLines[lineNumber - 1]
-        await line.updateContent(this, content)
-
-        //this.setupVersionMerging(line)
-
-        return line
-    }
-
     public async applyIndex(targetIndex: number): Promise<void> {
         //this.resetVersionMerging()
 
@@ -739,22 +771,28 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
             const cloneTimestamp = TimestampProvider.getTimestamp()
 
-            const prismaOperations: PrismaPromise<any>[] = []
-
             // this could be done with a createMany instead, but I need the side effect of createNewVersion to make sure the in-memory representation remains consistent
-            prismaOperations.push(...headsToClone.map(head => {
-                const { prismaPromise } = head.line.createNewVersion(this, cloneTimestamp, VersionType.CLONE, head.isActive, head.content, head)
-                return prismaPromise
+            await Promise.all(headsToClone.map(head => {
+                return head.line.createVersion(this, cloneTimestamp, VersionType.CLONE, head.isActive, head.content, head)
             }))
-
-            prismaOperations.push(this.setTimestamp(cloneTimestamp))
-
-            await prismaClient.$transaction(prismaOperations)
         }
     }
 
+    public async updateLine(lineNumber: number, content: string): Promise<LineProxy> {
+        const activeLines = this.getActiveLines()
+
+        const line = activeLines[lineNumber - 1]
+        const responsibleChild = this.getChildResponsibleFor(line)
+
+        await line.updateContent(responsibleChild, content)
+
+        //this.setupVersionMerging(line)
+
+        return line
+    }
+
     // responsibility issues
-    public async changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    public async updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const eol         = this.file.eol
         const activeHeads = this.getActiveHeads()
 
@@ -814,56 +852,40 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             vcsLines = activeLines.filter((_, index) => modifiedRange.startLine <= index + 1 && index + 1 <= modifiedRange.endLine)
         }
 
-        /*
-        if (modifyStartLine) {
-            const activeLines = await Promise.all(activeHeads.map(async head => await LineProxy.getFor(head.line)))
-            vcsLines = activeLines.filter((_, index) => modifiedRange.startLine <= index + 1 && index + 1 <= modifiedRange.endLine)
-        } else {
-            // TODO: pushStartDown case not handled well yet, line tracking is off
-            if (pushStartLineUp) { 
-                modifiedRange.startLine--
-                modifiedRange.endLine--
-            }
-        }
-        */
-
         const block = this
-        const affectedLines:    LineProxy[]        = []
-        const prismaOperations: PrismaPromise<any>[] = []
-        let   latestTimestamp:  number = block.timestamp
+        const table = this.getResponsibilityTable()
 
-        function deleteLine(line: LineProxy): void {
+        const affectedLines:    LineProxy[]          = []
+        // const prismaOperations: PrismaPromise<any>[] = [] // -> unfortunately, side effects are required when creating versions which prevents me from accessing the PrismaPromises
+        let   latestTimestamp:  number               = block.timestamp
+
+        async function deleteLine(line: LineProxy): Promise<void> {
             affectedLines.push(line)
             latestTimestamp = TimestampProvider.getTimestamp()
-            const { prismaPromise } = line.createNewVersion(block, latestTimestamp, VersionType.DELETION, false, "")
-            prismaOperations.push(prismaPromise)
+            const responsibleBlock = table.get(line.id)!
+            await line.createNextVersion(responsibleBlock, false, "", latestTimestamp)
         }
 
-        function updateLine(line: LineProxy, content: string): void {
+        async function updateLine(line: LineProxy, content: string): Promise<void> {
             affectedLines.push(line)
             latestTimestamp = TimestampProvider.getTimestamp()
-            const { prismaPromise } = line.createNewVersion(block, latestTimestamp, VersionType.CHANGE, true, content)
-            prismaOperations.push(prismaPromise)
+            const responsibleBlock = table.get(line.id)!
+            await line.createNextVersion(responsibleBlock, true, content, latestTimestamp)
         }
         
         for (let i = vcsLines.length - 1; i >= modifiedLines.length; i--) {
             const line = vcsLines.at(i)
-            deleteLine(line)
+            await deleteLine(line)
         }
-
-        //if (modifyStartLine) { updateLine(vcsLines.at(0), modifiedLines[0]) }
 
         for (let i = 0; i < Math.min(vcsLines.length, modifiedLines.length); i++) {
             const line = vcsLines.at(i)
-            updateLine(line, modifiedLines[i])
+            await updateLine(line, modifiedLines[i])
         }
 
-        prismaOperations.push(block.setTimestamp(latestTimestamp))
-
-        await prismaClient.$transaction(prismaOperations)
-
         const linesToInsert = modifiedLines.filter((_, index) => index + 1 > vcsLines.length)
-        await this.insertLinesAt(modifiedRange.startLine + vcsLines.length, linesToInsert)
+        const insertedLines = await this.insertLinesAt(modifiedRange.startLine + vcsLines.length, linesToInsert)
+        affectedLines.push(...insertedLines)
 
         const affectedBlocks = new Set<string>()
         for (const line of affectedLines) {

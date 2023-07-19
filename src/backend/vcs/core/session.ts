@@ -285,7 +285,7 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
         throw new Error("Method not implemented.");
     }
 
-    public changeLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    public updateLines(fileId: VCSFileId, change: MultiLineChange): Promise<VCSBlockId[]> {
         throw new Error("Method not implemented.");
     }
     
