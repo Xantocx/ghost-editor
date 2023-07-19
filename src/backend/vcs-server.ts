@@ -1,10 +1,9 @@
 import { BrowserWindow } from "electron"
 
-import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
+import { VCSRequestType, VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSChildBlockInfo, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSTagId, VCSSessionCreationRequest, VCSSessionRequest, VCSFileData } from "../app/components/vcs/vcs-rework"
 import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/change"
 
-import { QueryType, ResourceManager, ISessionFile, ISessionBlock, ISessionTag, Session, ISessionLine, ISessionVersion, DBSession } from "./vcs/db/utilities"
-import { prismaClient } from "./vcs/db/client"
+import { ResourceManager, ISessionFile, ISessionBlock, ISessionTag, Session, ISessionLine, ISessionVersion, DBSession } from "./vcs/db/utilities"
 import { FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy } from "./vcs/db/types"
 
 /*
@@ -53,42 +52,42 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     }
 
     public async closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session) => {
             session.close()
         })
     }
 
     public async waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, QueryType.Silent, async () => {})
+        return await this.resources.createQuery(request, VCSRequestType.Silent, async () => {})
     }
 
     public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { options }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { options }) => {
             return await session.loadFile(options)
         })
     }
 
     public async getFileData(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<VCSFileData>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { fileId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session, { fileId }) => {
             return await session.getFileData(fileId)
         })
     }
 
     public async unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { fileId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session, { fileId }) => {
             session.unloadFile(fileId)
         })
     }
 
     public async getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
             return await block.getText()
         })
     }
 
     public async getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session, { blockId }) => {
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
             return await root.getText([block])
@@ -96,19 +95,19 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     }
 
     public async lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, change }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { blockId, change }) => {
             return await this.updateLine(session, blockId, change)
         })
     }
 
     public async linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, change }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { blockId, change }) => {
             return await this.updateLines(session, blockId, change)
         })
     }
 
     public override async applyChanges(request: VCSSessionRequest<{ blockId: VCSBlockId; changes: ChangeSet; }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, changes }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { blockId, changes }) => {
             const blockIds = []
             for (const change of changes) {
                 if      (change instanceof LineChange)      { blockIds.push(await this.updateLine(session, blockId, change)) }
@@ -120,7 +119,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     }
 
     public async copyBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
             const copy  = await block.copy()
             return await copy.asBlockInfo(blockId)
@@ -128,7 +127,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     }
 
     public async createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { parentBlockId, range }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { parentBlockId, range }) => {
             const block = await session.getBlock(parentBlockId)
             const child  = await block.createChild(range)
             return await child.asBlockInfo(parentBlockId)
@@ -136,20 +135,20 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
     }
 
     public async deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { blockId }) => {
             await session.delete(blockId)
         })
     }
 
     public async getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
             return await block.asBlockInfo(blockId)
         })
     }
 
     public async getChildrenInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
-        return await this.resources.createQuery(request, QueryType.ReadOnly, async (session, { blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadOnly, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
             return await block.getChildrenInfo(blockId)
         })
@@ -159,21 +158,9 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         throw new Error("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
     }
 
-    /*
-    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
-            const root  = session.getRootBlockFor(blockId)
-            const block = await session.getBlock(blockId)
-            const newHeads = await block.applyIndex(versionIndex)
-            await this.updatePreview(block)
-            return await root.getText()
-        })
-    }
-    */
-
     public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
-        return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, QueryType.ReadWrite, async (session, { blockId, versionIndex }) => {
+        return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, VCSRequestType.ReadWrite, async (session, { blockId, versionIndex }) => {
             const root  = session.getRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
 
@@ -195,7 +182,7 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
 
     public async applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
         // TODO: Should the frontend or backend evaluate that blocks and tags fit together? Or do we assume I can apply any tag to any block?
-        return await this.resources.createQuery(request, QueryType.ReadWrite, async (session, { tagId, blockId }) => {
+        return await this.resources.createQuery(request, VCSRequestType.ReadWrite, async (session, { tagId, blockId }) => {
             const tag   = await session.getTag(tagId)
             const block = await session.getBlock(blockId)
             await block.applyTimestamp(tag.timestamp)
@@ -214,39 +201,7 @@ export class DBVCSServer extends VCSServer<FileProxy, LineProxy, VersionProxy, B
         if (this.browserWindow) {
 
             const block = session.getRootBlockFor(blockId)
-
-            const potentiallyActiveHeads = await prismaClient.version.groupBy({
-                by: ["lineId"],
-                where: {
-                    line: {
-                        fileId: block.file.id,
-                        blocks: { some: { id: block.id } }
-                    },
-                    timestamp: { lte: block.timestamp }
-                },
-                _max: { timestamp: true }
-            })
-
-            const lines = await prismaClient.line.findMany({
-                where: {
-                    OR: potentiallyActiveHeads.map(({ lineId, _max: maxAggregations }) => {
-                        return {
-                            id: lineId,
-                            versions: {
-                                some: {
-                                    timestamp: maxAggregations.timestamp
-                                }
-                            }
-                        }
-                    })
-                },
-                orderBy: {
-                    order: "asc"
-                },
-                include: {
-                    versions: true
-                }
-            })
+            const lines = block.getActiveLines()
 
             const versionCounts = lines.map(line => line.versions.length)
             const text          = await block.getText()

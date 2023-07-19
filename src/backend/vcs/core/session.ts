@@ -1,9 +1,9 @@
 import { BlockType } from "@prisma/client";
 import { MultiLineChange } from "../../../app/components/data/change";
-import { VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId } from "../../../app/components/vcs/vcs-rework";
-import { DBResourceManager, DBSession, ISessionBlock, ISessionFile, ISessionLine, ISessionTag, ISessionVersion, NewFileInfo, QueryType, ResourceManager, Session } from "../db/utilities";
+import { VCSRequestType, VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId } from "../../../app/components/vcs/vcs-rework";
+import { DBResourceManager, DBSession, ISessionBlock, ISessionFile, ISessionLine, ISessionTag, ISessionVersion, NewFileInfo, ResourceManager, Session } from "../db/utilities";
 import { LinkedList, LinkedListNode } from "../utils/linked-list";
-import { BlockProxy } from "../db/types";
+
 //import { Block } from "./block";
 //import { LineNode } from "./line";
 //import { Tag } from "./tag";
@@ -375,7 +375,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
         return { sessionId: this.databaseSessionId, requestId, previousRequestId, data: args }
     }
 
-    private async createDatabaseQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: QueryType, query: (session: DBSession, data: RequestData) => Promise<QueryResult>): Promise<QueryResult> {
+    private async createDatabaseQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: DBSession, data: RequestData) => Promise<QueryResult>): Promise<QueryResult> {
         const response = await this.databaseResources.createQuery(request, queryType, query)
         const result   = response as VCSSuccess<QueryResult>
         const error    = response as VCSError
@@ -387,7 +387,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
 
     public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<Block, Line, LineVersion, Block>> {
         const request  = this.createSessionRequest({ filePath, eol, content })
-        const fileData = await this.createDatabaseQuery(request, QueryType.ReadWrite, async (session, options) => {
+        const fileData = await this.createDatabaseQuery(request, VCSRequestType.ReadWrite, async (session, options) => {
             const blockInfo = await session.loadFile(options)
             return await session.getFileData(blockInfo)
         })
@@ -435,7 +435,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
 
         const blockId = new VCSBlockId(this.databaseSessionId.sessionId, block.filePath, block.blockId)
         const request = this.createSessionRequest(blockId)
-        await this.createDatabaseQuery(request, QueryType.ReadWrite, async (session, blockId) => {
+        await this.createDatabaseQuery(request, VCSRequestType.ReadWrite, async (session, blockId) => {
             const blockProxy = await session.getBlock(blockId)
             await session.deleteSessionBlock(blockProxy)
         })

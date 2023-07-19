@@ -1,9 +1,9 @@
 import React, { CSSProperties, useCallback } from "react";
 
 export interface TextButtonProps {
+    style:    CSSProperties;
     text?:    string
     onClick?: (button: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
-    style?:   CSSProperties;
 }
 
 export const TextButton: React.FC<TextButtonProps> = ({ text, onClick, style }) => {
@@ -27,9 +27,7 @@ export const TextButton: React.FC<TextButtonProps> = ({ text, onClick, style }) 
     );
 
     return (
-        <button content={text} onClick={handleClick} style={defaultStyle}>
-            
-        </button>
+        <button onClick={handleClick} style={defaultStyle}>{text}</button>
     );
 };
 

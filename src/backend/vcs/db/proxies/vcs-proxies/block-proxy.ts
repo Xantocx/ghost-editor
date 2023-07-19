@@ -160,7 +160,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     public getActiveLinesInRange(range: VCSBlockRange): LineProxy[] {
         const lines = this.getActiveLines()
-        return lines.filter((line, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
+        return lines.filter((_, index) => range.startLine <= index + 1 && index + 1 <= range.endLine)
     }
 
     public getOriginalLines(): LineProxy[] {
@@ -311,15 +311,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         if (blocks.every(block => block.id !== this.id)) { blocks.push(this) }
 
         blocks.forEach(block => {
-
-            /*
-            console.log()
-            console.log(block.blockId + ":")
-            console.log(lastInsertedLine.order)
-            console.log(block.firstLine.order)
-            console.log("------------------")
-            */
-
             if (lastInsertedLine.order < block.firstLine.order) {
                 block.firstLine = firstInsertedLine
             } else if (block.lastLine.order < firstInsertedLine.order) {
@@ -340,9 +331,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     // TODO: TEST!!!
     private async prependLines(lineContents: string[], affectedBlocks?: BlockProxy[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
-        //const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  } })
-        //const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" } })
-        
         const lines     = this.getLines()
         const nextLine  = lines[0]
 
@@ -359,9 +347,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     // TODO: TEST!!!
     private async appendLines(lineContents: string[], affectedBlocks?: BlockProxy[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
-        //const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" } })
-        //const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  } })
-        
         const lines         = this.getLines()
         const previousLine  = lines[lines.length - 1]
 
@@ -427,14 +412,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public async createChild(range: VCSBlockRange): Promise<BlockProxy | null> {
         const linesInRange = this.getLinesInRange(range)
 
-        const overlappingChild = await prismaClient.block.findFirst({
-            where: {
-                parentId: this.id,
-                lines:    { some: { id: { in: linesInRange.map(line => line.id) } } }
-            }
-        })
+        const table = this.getResponsibilityTable()
+        const overlappingChildren = linesInRange.map(line => table.get(line.id)!) 
 
-        if (overlappingChild) {
+        if (overlappingChildren.some(child => child.id !== this.id)) {
             console.warn("Could not create snapshot due to overlap!")
             return null
         }

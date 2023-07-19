@@ -1,3 +1,5 @@
+import { SubscriptionManager } from "../../../editor/ui/widgets/mouse-tracker";
+import { Disposable } from "../../../editor/utils/types";
 import { ChangeSet, LineChange, MultiLineChange, AnyChange, ChangeBehaviour } from "../data/change"
 //import { BlockType } from "@prisma/client"
 
@@ -249,6 +251,59 @@ export interface VCSBlockRange {
 
 export interface VCSBlockUpdate extends VCSBlockRange {}
 
+export enum VCSRequestType {
+    SessionManagement,
+    Silent,
+    ReadOnly,
+    ReadWrite
+}
+
+export enum VCSOperation {
+    CreateSession,
+    CloseSession,
+    WaitForCurrentRequests,
+    LoadFile,
+    UnloadFile,
+    GetText,
+    GetRootText,
+    LineChanged,
+    LinesChanged,
+    ApplyChange,
+    ApplyChanges,
+    CopyBlock,
+    CreateChild,
+    DeleteBlock,
+    GetBlockInfo,
+    GetChildrenInfo,
+    UpdateBlock,
+    SetBlockVersionIndex,
+    SaveCurrentBlockVersion,
+    ApplyTag
+}
+
+export const VCSOperationTypes = new Map<VCSOperation, VCSRequestType>([
+    [VCSOperation.CreateSession,           VCSRequestType.SessionManagement],
+    [VCSOperation.CloseSession,            VCSRequestType.SessionManagement],
+    [VCSOperation.WaitForCurrentRequests,  VCSRequestType.Silent],
+    [VCSOperation.LoadFile,                VCSRequestType.ReadWrite],
+    [VCSOperation.UnloadFile,              VCSRequestType.ReadOnly],
+    [VCSOperation.GetText,                 VCSRequestType.ReadOnly],
+    [VCSOperation.GetRootText,             VCSRequestType.ReadOnly],
+    [VCSOperation.LineChanged,             VCSRequestType.ReadWrite],
+    [VCSOperation.LinesChanged,            VCSRequestType.ReadWrite],
+    [VCSOperation.ApplyChange,             VCSRequestType.ReadWrite],
+    [VCSOperation.ApplyChanges,            VCSRequestType.ReadWrite],
+    [VCSOperation.CopyBlock,              VCSRequestType.ReadWrite],
+    [VCSOperation.CreateChild,             VCSRequestType.ReadWrite],
+    [VCSOperation.DeleteBlock,             VCSRequestType.ReadWrite],
+    [VCSOperation.GetBlockInfo,            VCSRequestType.ReadOnly],
+    [VCSOperation.GetChildrenInfo,         VCSRequestType.ReadOnly],
+    [VCSOperation.UpdateBlock,             VCSRequestType.ReadWrite],
+    [VCSOperation.SetBlockVersionIndex,    VCSRequestType.ReadWrite],
+    [VCSOperation.SaveCurrentBlockVersion, VCSRequestType.ReadWrite],
+    [VCSOperation.ApplyTag,                VCSRequestType.ReadWrite],
+])
+
 export interface IVCSRequest<RequestData> {
     requestId:          string
     data:               RequestData
@@ -399,13 +454,16 @@ export abstract class BasicVCSServer extends BasicVCSProvider implements VCSServ
 export interface VCSClient extends VCSProvider {}
 export abstract class BasicVCSClient extends BasicVCSProvider implements VCSClient {}
 
-export class VCSUnwrappedClient {
+export class VCSUnwrappedClient extends SubscriptionManager {
 
     public readonly client: VCSClient
 
     private currentRequestId?: number = undefined
 
+    private readonly requestCallbacks: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] }, callback: () => void }[] = []
+
     public constructor(client: VCSClient) {
+        super()
         this.client = client
     }
 
@@ -420,115 +478,151 @@ export class VCSUnwrappedClient {
         return { sessionId, requestId, previousRequestId, data: args }
     }
 
-    private async unwrapResponse<ResponseType>(request: Promise<VCSResponse<ResponseType>>): Promise<ResponseType> {
-        return request.then(response => {
-            const result = response as VCSSuccess<ResponseType>
-            const error  = response as VCSError
+    private requestSent(operationType: VCSOperation): void {
+        const requestType = VCSOperationTypes.get(operationType)!
+        this.requestCallbacks.forEach(({ requestTypes, operations, callback }) => {
 
-            // NOTE: seemingly I can always cast to an interface, so this seems to be safer than just checking if the cast worked
-            if (error.error) { throw new Error(error.error) }
-            else             { return result.response }
+            const includeRequestTypes = requestTypes?.include ? new Set(requestTypes.include) : new Set(Object.values(VCSRequestType).filter(v => typeof v === "number") as VCSRequestType[])
+            const excludeRequestTypes = requestTypes?.exclude ? new Set(requestTypes.exclude) : new Set<VCSRequestType>()
+
+            const includeOperations   = operations?.include   ? new Set(operations.include)   : new Set(Object.values(VCSOperation).filter(v => typeof v === "number") as VCSOperation[])
+            const excludeOperations   = operations?.exclude   ? new Set(operations.exclude)   : new Set<VCSOperation>()
+
+            excludeRequestTypes.forEach(requestType => includeRequestTypes.delete(requestType))
+            excludeOperations.forEach(operation => includeOperations.delete(operation))
+
+            if (includeRequestTypes.has(requestType) && includeOperations.has(operationType)) {
+                callback()
+            }
         })
+    }
+
+    private async unwrapResponse<ResponseType>(request: Promise<VCSResponse<ResponseType>>, type: VCSOperation): Promise<ResponseType> {
+        if (type !== undefined) { this.requestSent(type) }
+
+        const response = await request
+
+        const result = response as VCSSuccess<ResponseType>
+        const error  = response as VCSError
+
+        // NOTE: seemingly I can always cast to an interface, so this seems to be safer than just checking if the cast worked
+        if (error.error) { throw new Error(error.error) }
+        else             { return result.response }
     }
 
     public async createSession(): Promise<VCSSessionId> {
         const request = { requestId: "session-creation", data: null }
-        return await this.unwrapResponse(this.client.createSession(request))
+        return await this.unwrapResponse(this.client.createSession(request), VCSOperation.CreateSession)
     }
 
     public async closeSession(sessionId: VCSSessionId): Promise<void> {
         const request = this.createSessionRequest(sessionId, null)
-        return await this.unwrapResponse(this.client.closeSession(request))
+        return await this.unwrapResponse(this.client.closeSession(request), VCSOperation.CloseSession)
     }
 
     public async waitForCurrentRequests(sessionId: VCSSessionId): Promise<void> {
         const request = this.createSessionRequest(sessionId, null)
-        return await this.unwrapResponse(this.client.waitForCurrentRequests(request))
+        return await this.unwrapResponse(this.client.waitForCurrentRequests(request), VCSOperation.WaitForCurrentRequests)
     }
 
     public async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         const request = this.createSessionRequest(sessionId, { options })
-        return await this.unwrapResponse(this.client.loadFile(request))
+        return await this.unwrapResponse(this.client.loadFile(request), VCSOperation.LoadFile)
     }
 
     public async unloadFile(fileId: VCSFileId): Promise<void> {
         const request = this.createSessionRequest(fileId, { fileId })
-        return await this.unwrapResponse(this.client.unloadFile(request))
+        return await this.unwrapResponse(this.client.unloadFile(request), VCSOperation.UnloadFile)
     }
 
     public async getText(blockId: VCSBlockId): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getText(request))
+        return await this.unwrapResponse(this.client.getText(request), VCSOperation.GetText)
     }
 
     public async getRootText(blockId: VCSBlockId): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getRootText(request))
+        return await this.unwrapResponse(this.client.getRootText(request), VCSOperation.GetRootText)
     }
 
     public async lineChanged(blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, change })
-        return await this.unwrapResponse(this.client.lineChanged(request))
+        return await this.unwrapResponse(this.client.lineChanged(request), VCSOperation.LineChanged)
     }
 
     public async linesChanged(blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, change })
-        return await this.unwrapResponse(this.client.linesChanged(request))
+        return await this.unwrapResponse(this.client.linesChanged(request), VCSOperation.LinesChanged)
     }
 
     public async applyChange(blockId: VCSBlockId, change: AnyChange): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, change })
-        return await this.unwrapResponse(this.client.applyChange(request))
+        return await this.unwrapResponse(this.client.applyChange(request), VCSOperation.ApplyChange)
     }
 
     public async applyChanges(blockId: VCSBlockId, changes: ChangeSet): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, changes })
-        return await this.unwrapResponse(this.client.applyChanges(request))
+        return await this.unwrapResponse(this.client.applyChanges(request), VCSOperation.ApplyChanges)
     }
 
     public async copyBlock(blockId: VCSBlockId): Promise<VCSCopyBlockInfo> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.copyBlock(request))
+        return await this.unwrapResponse(this.client.copyBlock(request), VCSOperation.CopyBlock)
     }
 
     public async createChild(parentBlockId: VCSBlockId, range: VCSBlockRange): Promise<VCSChildBlockInfo | null> {
         const request = this.createSessionRequest(parentBlockId, { parentBlockId, range })
-        return await this.unwrapResponse(this.client.createChild(request))
+        return await this.unwrapResponse(this.client.createChild(request), VCSOperation.CreateChild)
     }
 
     public async deleteBlock(blockId: VCSBlockId): Promise<void> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.deleteBlock(request))
+        return await this.unwrapResponse(this.client.deleteBlock(request), VCSOperation.DeleteBlock)
     }
 
     public async getBlockInfo(blockId: VCSBlockId): Promise<VCSBlockInfo> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getBlockInfo(request))
+        return await this.unwrapResponse(this.client.getBlockInfo(request), VCSOperation.GetBlockInfo)
     }
 
     public async getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getChildrenInfo(request))
+        return await this.unwrapResponse(this.client.getChildrenInfo(request), VCSOperation.GetChildrenInfo)
     }
 
     public async updateBlock(blockId: VCSBlockId, update: VCSBlockUpdate): Promise<void> {
         const request = this.createSessionRequest(blockId, { blockId, update })
-        return await this.unwrapResponse(this.client.updateBlock(request))
+        return await this.unwrapResponse(this.client.updateBlock(request), VCSOperation.UpdateBlock)
     }
 
     public async setBlockVersionIndex(blockId: VCSBlockId, versionIndex: number): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId, versionIndex })
-        return await this.unwrapResponse(this.client.setBlockVersionIndex(request))
+        return await this.unwrapResponse(this.client.setBlockVersionIndex(request), VCSOperation.SetBlockVersionIndex)
     }
 
     public async saveCurrentBlockVersion(blockId: VCSBlockId): Promise<VCSTagInfo> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.saveCurrentBlockVersion(request))
+        return await this.unwrapResponse(this.client.saveCurrentBlockVersion(request), VCSOperation.SaveCurrentBlockVersion)
     }
 
     public async applyTag(tagId: VCSTagId, blockId: VCSBlockId): Promise<VCSBlockInfo> {
         const request = this.createSessionRequest(blockId, { tagId, blockId })
-        return await this.unwrapResponse(this.client.applyTag(request))
+        return await this.unwrapResponse(this.client.applyTag(request), VCSOperation.ApplyTag)
+    }
+
+
+    public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
+
+        const requestCallback = { requestTypes: filter.requestTypes, operations: filter.operations, callback }
+        this.requestCallbacks.push(requestCallback)
+
+        const parent = this
+        return this.addSubscription({
+            dispose() {
+                const index = parent.requestCallbacks.indexOf(requestCallback, 0)
+                if (index > -1) { parent.requestCallbacks.splice(index, 1) }
+            },
+        })
     }
 }
 
@@ -559,6 +653,10 @@ export class VCSSession {
 
     public async waitForCurrentRequests(): Promise<void> {
         await this.client.waitForCurrentRequests(this.session)
+    }
+
+    public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
+        return this.client.onRequestSend(callback, filter)
     }
 
     // WARNING: This will also close all active block sessions belonging to this session! Any further operation on them will fail!
@@ -666,6 +764,10 @@ export class VCSBlockSession {
 
     public async applyTagToChild(tagId: VCSTagId, childBlockId: VCSBlockId): Promise<VCSBlockInfo> {
         return await this.client.applyTag(tagId, childBlockId)
+    }
+
+    public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
+        return this.client.onRequestSend(callback, filter)
     }
 
     public async close(): Promise<void> {

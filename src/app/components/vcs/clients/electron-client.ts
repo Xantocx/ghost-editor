@@ -1,7 +1,7 @@
 import { ipcRenderer } from "electron"
 import { VCSResponse, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockUpdate, VCSChildBlockInfo, VCSCopyBlockInfo, VCSFileId, VCSFileLoadingOptions, VCSRootBlockInfo, VCSSessionId, VCSTagInfo, VCSClient, VCSTagId, VCSSessionCreationRequest, VCSSessionRequest } from "../vcs-rework"
 import { ElectronVCSServer } from "../servers/electron-server"
-import { AnyChange, Change, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
+import { AnyChange, ChangeSet, LineChange, MultiLineChange } from "../../data/change"
 
 function invoke<Type>(channel: string, ...args: any): Promise<Type> {
     return ipcRenderer.invoke(channel, ...args)

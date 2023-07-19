@@ -3,9 +3,9 @@ import "../../../utils/environment"
 import * as monaco from "monaco-editor"
 
 import { CodeProvider, View } from "../view";
-import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, IRange, MonacoChangeEvent } from "../../../utils/types";
+import { MonacoEditor, MonacoModel, MonacoEditorOption, URI, Disposable, MonacoChangeEvent } from "../../../utils/types";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
-import { VCSTagId, VCSClient, VCSBlockSession, VCSBlockInfo, VCSSession, VCSBlockRange, VCSFileLoadingOptions, VCSBlockId } from "../../../../app/components/vcs/vcs-rework";
+import { VCSRequestType, VCSTagId, VCSBlockSession, VCSBlockInfo, VCSSession, VCSBlockRange, VCSFileLoadingOptions, VCSBlockId, VCSOperation } from "../../../../app/components/vcs/vcs-rework";
 import { MetaView, ViewIdentifier } from "../meta-view";
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
@@ -13,11 +13,11 @@ import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionManagerView } from "../version/version-manager";
-import { VCSSnapshot } from "../../../../app/components/data/snapshot";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
-import { extractEOLSymbol, sleep } from "../../../utils/helpers";
+import { extractEOLSymbol } from "../../../utils/helpers";
 import { VCSVersion } from "../../../../app/components/data/version";
+import { GhostSnapshotFooter } from "../../snapshot/footer";
 
 class GhostEditorSnapshotManager {
 
@@ -415,7 +415,10 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
     private static _session?: VCSSession
     public static async getSession(): Promise<VCSSession> {
-        if (!this._session) { this._session = await VCSSession.create(window.vcs) } 
+        if (!this._session) {
+            this._session = await VCSSession.create(window.vcs)
+            this._session.onRequestSend(() => GhostSnapshotFooter.loadingEventEmitter.reload(), { requestTypes: { include: [VCSRequestType.ReadWrite] }, operations: { exclude: [VCSOperation.SetBlockVersionIndex] } })
+        } 
         return this._session!
     }
 

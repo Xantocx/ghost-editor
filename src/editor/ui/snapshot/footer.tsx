@@ -1,13 +1,12 @@
 import { InlineEditorBanner } from "../widgets/inline-editor-banner";
 import { Disposable, IRange } from "../../utils/types";
 import { Range } from "monaco-editor";
-import { Slider as OldSlider } from "../components/slider-old";
-import { Button } from "../components/button";
 
 import React from "react"
-import LoadingView from "../views/utils/spinner"
+import './footer.css'
+
+import LoadingView, { LoadingEventEmitter } from "../views/utils/loadingView"
 import { createRoot } from "react-dom/client"
-import { sleep } from "../../utils/helpers";
 
 import TextButton, { TextButtonProps } from "../components/react-button"
 import Slider, { SliderProps } from "../components/slider"
@@ -21,6 +20,7 @@ interface FooterContentProps {
 
 const FooterContent: React.FC<FooterContentProps> = ({ buttonProps, sliderProps }: FooterContentProps) => {
 
+    buttonProps                       = buttonProps ? buttonProps : { style: {} }
     buttonProps.text                  = "+"
     buttonProps.style.backgroundColor = "green"
     buttonProps.style.color           = "white"
@@ -28,7 +28,7 @@ const FooterContent: React.FC<FooterContentProps> = ({ buttonProps, sliderProps 
     buttonProps.style.margin          = "5px"
 
     return (
-        <div>
+        <div className="layout-container">
             <div className="button-container">
                 <TextButton {...buttonProps} />
             </div>
@@ -40,8 +40,7 @@ const FooterContent: React.FC<FooterContentProps> = ({ buttonProps, sliderProps 
 
 export class GhostSnapshotFooter extends InlineEditorBanner {
 
-    private addButton: Button
-    private slider: OldSlider
+    public static readonly loadingEventEmitter = new LoadingEventEmitter()
 
     private get session(): VCSBlockSession { return this.snapshot.session }
 
@@ -75,27 +74,43 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
 
     protected override setupContent(container: HTMLElement): void {
 
+        /*
         container.style.display  = "inline-flex"
         container.style.width    = "100%"
         container.style.height   = "100%"
         container.style.border   = "1px solid black" 
         container.style.overflow = "hidden"
+        */
 
-        /*
+        const onButtonClick = async () => {
+            const version = await this.editor.getSession().saveChildBlockVersion(this.snapshot.vcsId)
+            this.snapshot.addVersion(version)
+            this.editor.activeSnapshot = this.snapshot
+        }
+
+        const onSliderChange = (value: number) => {
+            this.sliderCallbacks.forEach(callback => callback(value))
+        }
+
         const root = createRoot(container)
         root.render(<LoadingView loadData={async () => {
             await this.session.waitForCurrentRequests();
             return {
+                buttonProps: {
+                    style:   {},
+                    onClick: onButtonClick
+                },
                 sliderProps: {
                     uuid: this.snapshot.blockId,
                     min: 0,
                     max: this.versionCount - 1,
-                    defaultValue: this.versionIndex
+                    defaultValue: this.versionIndex,
+                    onChange: onSliderChange
                 }
             } as FooterContentProps
-        }} ContentView={FooterContent} />)
-        */
+        }} ContentView={FooterContent} loadingEventEmitter={GhostSnapshotFooter.loadingEventEmitter} />)
 
+        /*
         const buttonContainer = document.createElement("div")
         buttonContainer.style.height      = "100%"
         buttonContainer.style.padding     = "0 0"
@@ -110,13 +125,24 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
         })
 
         this.slider = new OldSlider(container, this.snapshot.snapshot.blockId, 0, this.versionCount - 1, this.versionIndex)
+        */
     }
 
     public updateSlider(): void {
-        this.slider.update(0, this.versionCount - 1, this.versionIndex)
+        GhostSnapshotFooter.loadingEventEmitter.reload()
     }
 
+    private readonly sliderCallbacks: {(value: number): void}[] = []
     public onChange(callback: (value: number) => void): Disposable {
-        return this.addSubscription(this.slider.onChange(callback))
+
+        this.sliderCallbacks.push(callback)
+
+        const parent = this
+        return this.addSubscription({
+            dispose() {
+                const index = parent.sliderCallbacks.indexOf(callback)
+                if (index > -1) { parent.sliderCallbacks.splice(index, 1) }
+            },
+        })
     }
 }

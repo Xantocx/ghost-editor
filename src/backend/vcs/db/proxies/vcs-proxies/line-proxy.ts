@@ -119,35 +119,6 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
         return await this.createVersion(sourceBlock, timestamp ? timestamp : TimestampProvider.getTimestamp(), isActive ? VersionType.CHANGE : VersionType.DELETION, isActive, content)
     }
 
-    private async validateHead(sourceBlock: BlockProxy): Promise<void> {
-        const head          = this.getHeadFor(sourceBlock)
-        const latestVersion = this.getLatestVersion()
-
-        if (!head) { throw new Error("Cannot find head in block for line updated by the same block! This should not be possible!") }
-
-        const versionCreation: Prisma.PrismaPromise<Version>[] = []
-
-        // so this does not work if the final text is generated from root and children blocks, because children modify heads seen in the final text, while the root block (the one this edit is applied on), still sees another version
-        if (latestVersion.id !== head.id) {
-            console.log(head)
-            console.log(latestVersion)
-            throw new Error("Latest version and current head do not match before creating a new version!")
-
-            // clone config, in case cloning will be moved here
-            versionCreation.push(prismaClient.version.create({
-                data:  {
-                    lineId:        this.id,
-                    timestamp:     TimestampProvider.getTimestamp(),
-                    type:          VersionType.CLONE,
-                    isActive:      head.isActive,
-                    originId:      head.id,
-                    sourceBlockId: sourceBlock.id,
-                    content:       head.content
-                }
-            }))
-        }
-    } 
-
     public async updateContent(sourceBlock: BlockProxy, content: string): Promise<VersionProxy> {
         const currentHead = this.getHeadFor(sourceBlock)
         if (TimestampProvider.getLastTimestamp() === currentHead.timestamp && currentHead.content.trimEnd() === content.trimEnd()) {

@@ -33,15 +33,13 @@ const Slider: React.FC<SliderProps> = ({ uuid, min, max, defaultValue, onChange 
     }, [min, max, defaultValue, handleChange]);
 
     return (
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-            <input
-                id={`slider-${uuid}`}
-                type="range"
-                step="1"
-                style={{ width: "100%" }}
-                ref={sliderRef}
-            />
-        </div>
+        <input
+            id={`slider-${uuid}`}
+            type="range"
+            step="1"
+            ref={sliderRef}
+            style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}
+        />
     );
 }
 
