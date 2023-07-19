@@ -73,15 +73,7 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
     }
 
     protected override setupContent(container: HTMLElement): void {
-
-        /*
-        container.style.display  = "inline-flex"
-        container.style.width    = "100%"
-        container.style.height   = "100%"
-        container.style.border   = "1px solid black" 
-        container.style.overflow = "hidden"
-        */
-
+        
         const onButtonClick = async () => {
             const version = await this.editor.getSession().saveChildBlockVersion(this.snapshot.vcsId)
             this.snapshot.addVersion(version)
@@ -109,23 +101,6 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
                 }
             } as FooterContentProps
         }} ContentView={FooterContent} loadingEventEmitter={GhostSnapshotFooter.loadingEventEmitter} />)
-
-        /*
-        const buttonContainer = document.createElement("div")
-        buttonContainer.style.height      = "100%"
-        buttonContainer.style.padding     = "0 0"
-        buttonContainer.style.margin      = "0 0"
-        buttonContainer.style.borderRight = "1px solid black"
-        container.appendChild(buttonContainer)
-
-        this.addButton = Button.addButton(buttonContainer, async () => {
-            const version = await this.editor.getSession().saveChildBlockVersion(this.snapshot.vcsId)
-            this.snapshot.addVersion(version)
-            this.editor.activeSnapshot = this.snapshot
-        })
-
-        this.slider = new OldSlider(container, this.snapshot.snapshot.blockId, 0, this.versionCount - 1, this.versionIndex)
-        */
     }
 
     public updateSlider(): void {

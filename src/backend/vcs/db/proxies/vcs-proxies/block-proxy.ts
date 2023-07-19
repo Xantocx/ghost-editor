@@ -7,6 +7,7 @@ import { TimestampProvider } from "../../../core/metadata/timestamps"
 import { MultiLineChange } from "../../../../../app/components/data/change"
 import { ProxyCache } from "../proxy-cache"
 import { ISessionBlock } from "../../utilities"
+import { randomUUID } from "crypto"
 
 
 enum BlockReference {
@@ -254,15 +255,14 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     // WARNING: Should technically also copy children, but in this usecase unnecessary
     public async copy(): Promise<BlockProxy> {
-        const lines      = this.getLines()
-        const cloneCount = this.clones.length
+        const lines = this.getLines()
 
         // Why did I have this before?
         // const latestTimestamp = heads.length > 0 ? heads.sort((versionA, versionB) => versionA.timestamp - versionB.timestamp)[heads.length - 1].timestamp : 0
 
         const block = await prismaClient.block.create({
             data: {
-                blockId:   `${this.blockId}:inline${cloneCount}`,
+                blockId:   `${this.blockId}:clone-${randomUUID()}`,
                 fileId:    this.file.id,
                 type:      BlockType.CLONE,
                 timestamp: this.timestamp,
@@ -277,11 +277,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async inlineCopy(lines: LineProxy[]): Promise<BlockProxy> {
-        const childrenCount = this.children.length
-
         const block = await prismaClient.block.create({
             data: {
-                blockId:    `${this.blockId}:inline${childrenCount}`,
+                blockId:    `${this.blockId}:inline-${randomUUID()}`,
                 fileId:     this.file.id,
                 type:       BlockType.INLINE,
                 timestamp:  this.timestamp,

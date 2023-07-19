@@ -1,6 +1,6 @@
 import { BlockProxy, FileProxy, LineProxy, TagProxy, VersionProxy } from "../db/types"
 import { prismaClient } from "../db/client"
-import { BlockType, Block, Tag } from "@prisma/client"
+import { BlockType, Block, Tag, PrismaPromise } from "@prisma/client"
 import { randomUUID } from "crypto"
 import { VCSRequestType, VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
@@ -211,7 +211,58 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     }
 
     public async deleteSessionBlock(block: BlockProxy): Promise<void> {
-        await prismaClient.block.delete({ where: { id: block.id }})
+
+        const file     = block.file
+        const fileData = await prismaClient.file.findUniqueOrThrow({ where: { id: file.id } })
+
+        const prismaOperations: PrismaPromise<any>[] = []
+
+        function removeBlock(block: BlockProxy): number {
+            prismaOperations.push(prismaClient.block.update({
+                where: { id: block.id },
+                data: {
+                    file:              { disconnect: true },
+                    fileAfterDeletion: { connect: fileData },
+                    lines:             { set: [] },
+                    parent:            { disconnect: true },
+                    origin:            { disconnect: true }
+                }
+            }))
+
+            const timestamps = block.children.map(child => removeBlock(child))
+            const timestamp = Math.max(...timestamps)
+
+            // I think this is unnecessary, but testing is needed
+            // block.clones.map(clone => removeBlock(clone))
+
+            file.lines.forEach(line => {
+                const index = line.blocks.findIndex(lineBlock => block.id === lineBlock.id)
+                if (index > -1) { line.blocks.splice(index, 1) }
+            })
+
+            if (block.parent) {
+                const parent = block.parent!
+                const index  = parent.children.findIndex(child => block.id === child.id)
+                if (index > -1) { parent.children.splice(index, 1) }
+            }
+
+            if (block.origin) {
+                const origin = block.origin!
+                const index  = origin.clones.findIndex(child => block.id === child.id)
+                if (index > -1) { origin.clones.splice(index, 1) }
+            }
+
+            return Math.max(block.timestamp, timestamp)
+        }
+
+        const parent    = block.parent
+        const timestamp = removeBlock(block)
+        
+        if (parent && parent.timestamp < timestamp) {
+            await parent.setTimestamp(timestamp)
+        }
+
+        await prismaClient.$transaction(prismaOperations)
     }
 
     public async getFileData(fileId: VCSFileId): Promise<VCSFileData> {

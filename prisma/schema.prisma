@@ -18,6 +18,8 @@ model File {
 
   lines  Line[]  @relation("LinesInFile")
   blocks Block[] @relation("BlocksInFile")
+
+  deletedBlocks Block[] @relation("DeletedBlocksInFile")
 }
 
 enum BlockType {
@@ -31,8 +33,11 @@ model Block {
 
   blockId String @unique
 
-  fileId Int
-  file   File @relation("BlocksInFile", fields: [fileId], references: [id], onDelete: Cascade)
+  fileId Int?
+  file   File? @relation("BlocksInFile", fields: [fileId], references: [id], onDelete: Cascade)
+
+  fileIdAfterDeletion Int?
+  fileAfterDeletion   File? @relation("DeletedBlocksInFile", fields: [fileIdAfterDeletion], references: [id], onDelete: Cascade)
 
   type      BlockType
   timestamp Int

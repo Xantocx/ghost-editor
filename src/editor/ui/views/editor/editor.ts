@@ -462,7 +462,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     private _activeSnapshot:      GhostSnapshot | undefined = undefined
     public  get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
     public  set activeSnapshot(snapshot: GhostSnapshot | undefined) {
-        if (snapshot === this.activeSnapshot) { 
+        if (snapshot === this.activeSnapshot) {
             this.activeSnapshot?.updateVersionManager()
         } else {
             this._activeSnapshot?.hideVersionManager()
