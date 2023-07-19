@@ -84,6 +84,7 @@ export class FileProxy extends DatabaseProxy implements ISessionFile {
     }
 
     public getLinesFor(block: BlockProxy): LineProxy[] {
+        if (this.lines === undefined) { return [] } // NOTE: this is a helper that allows blocks to not access unloaded lines in creation while loading a file
         return this.lines.filter(line => block.firstLine.order <= line.order && line.order <= block.lastLine.order)
     }
 

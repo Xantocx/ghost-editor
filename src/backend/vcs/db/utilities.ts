@@ -180,7 +180,10 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     }
 
     public async getRootSessionBlockFor(filePath: string): Promise<BlockProxy> {
-        const rootBlock = await prismaClient.block.findFirst({
+        //const fileData = await prismaClient.file.findFirstOrThrow({ where: { filePath } })
+        //const file     = await FileProxy.getFor(fileData)
+
+        const rootBlock = await prismaClient.block.findFirstOrThrow({
             where: {
                 file: { filePath },
                 type: BlockType.ROOT

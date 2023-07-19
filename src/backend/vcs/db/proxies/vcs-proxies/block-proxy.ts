@@ -565,39 +565,31 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return child
     }
 
-    private async insertLines(lineContents: string[], options?: { previous?: LineProxy, next?: LineProxy, blockReference?: BlockReference }): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
+    private async insertLines(lineContents: string[], options?: { previous?: LineProxy, next?: LineProxy, affectedBlocks?: BlockProxy[] }): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         if (lineContents.length === 0) { return [] }
         
         const previous       = options?.previous
         const next           = options?.next
-        const blockReference = options?.blockReference
+        const affectedBlocks = options?.affectedBlocks
 
         const lines = await this.file.insertLines(lineContents, { previous, next, sourceBlock: this })
 
         const firstInsertedLine = lines[0].line
         const lastInsertedLine  = lines[lines.length - 1].line
 
-        let blockReferenceLine: LineProxy | undefined = undefined
-
-        // TODO: these blockReference are currently set under the assumption the block used is the child, which is not the case
-        if      (blockReference === BlockReference.Previous) { blockReferenceLine = previous ? previous : next }
-        else if (blockReference === BlockReference.Next)     { blockReferenceLine = next     ? next     : previous }
-
-        console.log(blockReference === BlockReference.Previous)
-        console.log(blockReference === BlockReference.Next)
-        console.log(blockReferenceLine)
-
-        const blocks = blockReferenceLine !== undefined ? blockReferenceLine.blocks : [this]
+        const blocks = affectedBlocks !== undefined ? affectedBlocks : [this]
         if (blocks.every(block => block.id !== this.id)) { blocks.push(this) }
 
-        for (const lineInfo of lines) {
-            const { line, v0, v1 } = lineInfo
-            const responsibleBlock = this.getChildResponsibleFor(line)
-            const blockVersions    = new Map(blocks.map(block => [block, block.id === responsibleBlock.id ? v1 : v0]))
-            await line.addBlocks(blockVersions)
-        }
-
         blocks.forEach(block => {
+
+            /*
+            console.log()
+            console.log(block.blockId + ":")
+            console.log(lastInsertedLine.order)
+            console.log(block.firstLine.order)
+            console.log("------------------")
+            */
+
             if (lastInsertedLine.order < block.firstLine.order) {
                 block.firstLine = firstInsertedLine
             } else if (block.lastLine.order < firstInsertedLine.order) {
@@ -605,11 +597,19 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
+        const table = this.getResponsibilityTable()
+        for (const lineInfo of lines) {
+            const { line, v0, v1 } = lineInfo
+            const responsibleBlock = table.get(line.id)
+            const blockVersions    = new Map(blocks.map(block => [block, block.id === responsibleBlock.id ? v1 : v0]))
+            await line.addBlocks(blockVersions)
+        }
+
         return lines
     }
 
     // TODO: TEST!!!
-    private async prependLines(lineContents: string[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
+    private async prependLines(lineContents: string[], affectedBlocks?: BlockProxy[]): Promise<{ line: LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         //const nextLine     = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                }, orderBy: { order: "asc"  } })
         //const previousLine = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { lt: nextLine.order } }, orderBy: { order: "desc" } })
         
@@ -622,13 +622,13 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         const insertedLines = await this.insertLines(lineContents, { previous:       previousLine ? previousLine : undefined,
                                                                      next:           nextLine     ? nextLine     : undefined,
-                                                                     blockReference: BlockReference.Next })
+                                                                     affectedBlocks })
 
         return insertedLines
     }
 
     // TODO: TEST!!!
-    private async appendLines(lineContents: string[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
+    private async appendLines(lineContents: string[], affectedBlocks?: BlockProxy[]): Promise<{ line:LineProxy, v0: VersionProxy, v1: VersionProxy }[]> {
         //const previousLine = await prismaClient.line.findFirstOrThrow({ where: { fileId: this.file.id, blocks: { some: { id: this.id } }                                    }, orderBy: { order: "desc" } })
         //const nextLine     = await prismaClient.line.findFirst(       { where: { fileId: this.file.id, blocks: { none: { id: this.id } }, order: { gt: previousLine.order } }, orderBy: { order: "asc"  } })
         
@@ -640,12 +640,12 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         const insertedLines = await this.insertLines(lineContents, { previous:       previousLine ? previousLine : undefined,
                                                                      next:           nextLine     ? nextLine     : undefined,
-                                                                     blockReference: BlockReference.Previous })
+                                                                     affectedBlocks })
 
         return insertedLines
     }
 
-    public async insertLinesAt(lineNumber: number, lineContents: string[]): Promise<LineProxy[]> {
+    public async insertLinesAt(lineNumber: number, lineContents: string[], affectedBlocks: BlockProxy[]): Promise<LineProxy[]> {
         //this.resetVersionMerging()
         if (lineContents.length === 0) { return [] }
 
@@ -662,16 +662,16 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         let createdLines: LineProxy[]
 
         if (insertionLineNumber === 1) {
-            const lines    = await this.prependLines(lineContents)
+            const lines    = await this.prependLines(lineContents, affectedBlocks)
             createdLines = lines.map(line => line.line)
         } else if (insertionLineNumber === newLastLine) {
-            const lines   = await this.appendLines(lineContents)
+            const lines   = await this.appendLines(lineContents, affectedBlocks)
             createdLines = lines.map(line => line.line)
         } else {
             const previousLine = activeLines[insertionLineNumber - 2]
             const currentLine  = activeLines[insertionLineNumber - 1]
 
-            const lines = await this.insertLines(lineContents, { previous: previousLine, next: currentLine, blockReference: BlockReference.Previous })
+            const lines = await this.insertLines(lineContents, { previous: previousLine, next: currentLine, affectedBlocks })
             createdLines = lines.map(line => line.line)
         }
 
@@ -689,8 +689,8 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return createdLines
     }
 
-    public async insertLineAt(lineNumber: number, content: string): Promise<LineProxy> {
-        const lines = await this.insertLinesAt(lineNumber, [content])
+    public async insertLineAt(lineNumber: number, content: string, affectedBlocks: BlockProxy[]): Promise<LineProxy> {
+        const lines = await this.insertLinesAt(lineNumber, [content], affectedBlocks)
         return lines[0]
     }
 
@@ -798,17 +798,18 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         //block.resetVersionMerging()
 
-        const splitChangeString = change.insertedText.split(eol)
-
+        const startLine        = activeHeads[change.modifiedRange.startLineNumber - 1].line
         const startLineContent = activeHeads[change.modifiedRange.startLineNumber - 1].content
         //const endLineContent   = activeHeads[change.modifiedRange.endLineNumber   - 1].content
 
         const insertedBeforeCode = startLineContent.length - startLineContent.trimStart().length + 1 >= change.modifiedRange.startColumn
         //const insertedAfterCode  = change.modifiedRange.endColumn > endLineContent.length
 
-        //const hasEol        = change.insertedText.includes(eol)
+        const hasEol        = change.insertedText.includes(eol)
         const startsWithEol = change.insertedText.startsWith(eol)
-        const endsWithEol   = change.insertedText.endsWith(eol) || (splitChangeString.pop().trim().length === 0/* && insertedAfterCode*/) // cannot enable this (technically correct) check because of monaco's annoying tab insertion on newline... -> not a problem until endsWithEol is used under new conditions...
+
+        const insertedTextAfterLastEol = change.insertedText.split(eol).pop()
+        const endsWithEol              = change.insertedText.endsWith(eol) || (hasEol && insertedTextAfterLastEol.trim().length === 0/* && insertedAfterCode*/) // cannot enable this (technically correct) check because of monaco's annoying tab insertion on newline... -> not a problem until endsWithEol is used under new conditions...
 
         const insertedAtStartOfStartLine = insertedBeforeCode
         const insertedAtEndOfStartLine   = change.modifiedRange.startColumn > startLineContent.length
@@ -884,7 +885,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         }
 
         const linesToInsert = modifiedLines.filter((_, index) => index + 1 > vcsLines.length)
-        const insertedLines = await this.insertLinesAt(modifiedRange.startLine + vcsLines.length, linesToInsert)
+        const insertedLines = await this.insertLinesAt(modifiedRange.startLine + vcsLines.length, linesToInsert, startLine.blocks)
         affectedLines.push(...insertedLines)
 
         const affectedBlocks = new Set<string>()
