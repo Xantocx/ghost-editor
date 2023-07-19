@@ -1,6 +1,6 @@
 import { BlockType } from "@prisma/client";
 import { MultiLineChange } from "../../../app/components/data/change";
-import { VCSRequestType, VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId } from "../../../app/components/vcs/vcs-rework";
+import { VCSRequestType, VCSFileId, VCSFileData, VCSSessionRequest, VCSSessionId, VCSResponse, VCSSuccess, VCSError, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSBlockData, VCSLineData, LineType, VersionType, VCSVersionData, VCSTagData, VCSTagId, VCSTagInfo } from "../../../app/components/vcs/vcs-rework";
 import { DBResourceManager, DBSession, ISessionBlock, ISessionFile, ISessionLine, ISessionTag, ISessionVersion, NewFileInfo, ResourceManager, Session } from "../db/utilities";
 import { LinkedList, LinkedListNode } from "../utils/linked-list";
 
@@ -8,6 +8,8 @@ import { LinkedList, LinkedListNode } from "../utils/linked-list";
 //import { LineNode } from "./line";
 //import { Tag } from "./tag";
 //import { LineNodeVersion } from "./version";
+
+/*
 
 class VersionHistory<Version extends LinkedListNode<Version>> extends LinkedList<Version> {
 
@@ -141,6 +143,10 @@ export class Tag implements ISessionTag {
         this.session    = session
         this.databaseId = databaseId ? Promise.resolve(databaseId) : Tag.save(this)
     }
+
+    public async asTagInfo(blockId: VCSBlockId): Promise<VCSTagInfo> {
+        throw new Error("Implementation missing!")
+    }
 }
 
 class CachedFile {
@@ -225,7 +231,7 @@ class CachedFile {
     }
 }
 
-export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISessionBlock<Block, Line, LineVersion> {
+export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISessionBlock<Block, Line, LineVersion, Tag> {
 
     public readonly session:    InMemorySession
     public readonly databaseId: Promise<number>
@@ -301,19 +307,22 @@ export class Block extends LinkedList<VirtualLine> implements ISessionFile, ISes
         throw new Error("Method not implemented.");
     }
 
-    public copy(): Promise<ISessionBlock<Block, Line, LineVersion>> {
+    public copy(): Promise<ISessionBlock<Block, Line, LineVersion, Tag>> {
         throw new Error("Method not implemented.");
     }
 
-    public createChild(range: VCSBlockRange): Promise<ISessionBlock<Block, Line, LineVersion>> {
+    public createChild(range: VCSBlockRange): Promise<ISessionBlock<Block, Line, LineVersion, Tag>> {
         throw new Error("Method not implemented.");
+    }
+
+    public async createTag(): Promise<Tag> {
+        throw new Error("Implementation missing!")
     }
 
     public delete(): void {
         throw new Error("Method not implemented.");
     }
 }
-
 
 
 
@@ -361,7 +370,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
         super(manager)
 
         this.databaseResources = new DBResourceManager()
-        this.databaseSessionId         = this.databaseResources.createSession()
+        this.databaseSessionId = this.databaseResources.createSession()
     }
 
     private getNextIds(): { requestId: string, previousRequestId?: string } {
@@ -385,7 +394,7 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
         else             { return result.response }
     }
 
-    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<Block, Line, LineVersion, Block>> {
+    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<Block, Line, LineVersion, Block, Tag>> {
         const request  = this.createSessionRequest({ filePath, eol, content })
         const fileData = await this.createDatabaseQuery(request, VCSRequestType.ReadWrite, async (session, options) => {
             const blockInfo = await session.loadFile(options)
@@ -446,3 +455,5 @@ export class InMemorySession extends Session<Block, Line, LineVersion, Block, Ta
     }
 
 }
+
+*/

@@ -2,13 +2,13 @@ import { BlockProxy, FileProxy, LineProxy, TagProxy, VersionProxy } from "../db/
 import { prismaClient } from "../db/client"
 import { BlockType, Block, Tag, PrismaPromise } from "@prisma/client"
 import { randomUUID } from "crypto"
-import { VCSRequestType, VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSVersionData } from "../../../app/components/vcs/vcs-rework"
+import { VCSRequestType, VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, VCSFileData, VCSFileId, VCSFileLoadingOptions, VCSLineData, VCSRootBlockInfo, VCSSessionId, VCSSessionRequest, VCSTagData, VCSTagId, VCSVersionData, VCSOperation, VCSOperationTypes, VCSTagInfo } from "../../../app/components/vcs/vcs-rework"
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 import { MultiLineChange } from "../../../app/components/data/change"
 
 export interface ISessionFile {}
 
-export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>> {
+export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionTag extends ISessionTag> {
     blockId: string
     file:    SessionFile
     type:    BlockType
@@ -25,8 +25,10 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionLine ext
     applyTimestamp(timestamp: number): Promise<void>
     cloneOutdatedHeads(): Promise<void>
 
-    copy(): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion>>
-    createChild(range: VCSBlockRange): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion> | null>
+    copy(): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>>
+    createChild(range: VCSBlockRange): Promise<ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag> | null>
+
+    createTag(): Promise<SessionTag>
 }
 
 export interface ISessionLine {
@@ -39,11 +41,13 @@ export interface ISessionVersion<SessionLine extends ISessionLine> {
 
 export interface ISessionTag {
     timestamp: number
+
+    asTagInfo(blockId: VCSBlockId): Promise<VCSTagInfo>
 }
 
-export type NewFileInfo<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>> = { file: { filePath: string; file: SessionFile }; rootBlock: { blockId: string; block: SessionBlock } }
+export type NewFileInfo<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag> = { file: { filePath: string; file: SessionFile }; rootBlock: { blockId: string; block: SessionBlock } }
 
-export abstract class Session<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag> {
+export abstract class Session<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag> {
 
     public readonly id = randomUUID()
     public readonly resources: ResourceManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>>
@@ -58,7 +62,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         this.queries   = new QueryManager(this)
     }
 
-    public abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock>>
+    public abstract createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>>
     public abstract getRootSessionBlockFor(filePath: string):                                       Promise<SessionBlock | undefined>
     public abstract getSessionBlockFor(blockId: VCSBlockId):                                        Promise<SessionBlock | undefined>
     public abstract getSessionTagFor(tagId: VCSTagId):                                              Promise<SessionTag | undefined>
@@ -146,12 +150,14 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         }
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: this, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
-        return this.queries.createQuery(request, queryType, query)
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+        const requestType = VCSOperationTypes.get(queryType)!
+        return this.queries.createQuery(request, requestType, query)
     }
 
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: this, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: this) => Promise<void>): Promise<VCSResponse<QueryResult>> {
-        return this.queries.createQueryChain(chainId, request, queryType, query, onChainInterrupt)
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: this) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+        const requestType = VCSOperationTypes.get(queryType)!
+        return this.queries.createQueryChain(chainId, request, requestType, query, onChainInterrupt)
     }
 
     public async delete(blockId: VCSBlockId): Promise<void> {
@@ -174,7 +180,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
 
 export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy> {
 
-    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, VersionProxy, BlockProxy>> {
+    public async createSessionFile(filePath: string | undefined, eol: string, content?: string): Promise<NewFileInfo<FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy>> {
         return await FileProxy.create(filePath, eol, content)
     }
 
@@ -361,7 +367,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     }
 }
 
-class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> {
+class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> {
 
     public readonly request:   VCSSessionRequest<QueryData>
     public readonly type:      VCSRequestType
@@ -373,9 +379,9 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
     private          resolve: (value: VCSResponse<QueryResult> | PromiseLike<VCSResponse<QueryResult>>) => void
     private          reject:  (reason?: any) => void
 
-    public get session():   QuerySession { return this.manager.session }
-    public get requestId(): string       { return this.request.requestId }
-    public get data():      QueryData    { return this.request.data }
+    public get session():     QuerySession { return this.manager.session }
+    public get requestId():   string       { return this.request.requestId }
+    public get data():        QueryData    { return this.request.data }
 
     public constructor(manager: Manager, request: VCSSessionRequest<QueryData>, type: VCSRequestType, query: (session: QuerySession, data: QueryData) => Promise<QueryResult>) {
         this.manager = manager
@@ -411,10 +417,10 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
     }
 }
 
-type AnyQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>>        = Query<any, any, SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager>
-type AnyWaitingQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> = { requiredRequestId: string, query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager> }
+type AnyQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>>        = Query<any, any, SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager>
+type AnyWaitingQuery<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>, Manager extends QueryManager<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession>> = { requiredRequestId: string, query: AnyQuery<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag, QuerySession, Manager> }
 
-class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
+class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
 
     public readonly session: QuerySession
 
@@ -495,7 +501,7 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
     // WARNING: Right now, query chains are only interrupted by new chains of unchained readwrite queries, assuming that we can always read inbetween a chain!!!
     public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
         if (this.currentQueryChain !== chainId) {
-            console.log("Start Chain: " + chainId)
+            // console.log("Start Chain: " + chainId)
             await this.breakQueryChain()
             this.startQueryChain(chainId, onChainInterrupt)
         }
@@ -517,7 +523,7 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
     }
 }
 
-export class ResourceManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
+export class ResourceManager<SessionFile extends ISessionFile, SessionLine extends ISessionLine, SessionVersion extends ISessionVersion<SessionLine>, SessionBlock extends ISessionBlock<SessionFile, SessionLine, SessionVersion, SessionTag>, SessionTag extends ISessionTag, QuerySession extends Session<SessionFile, SessionLine, SessionVersion, SessionBlock, SessionTag>> {
 
     private readonly sessionConstructor: new (manager: this) => QuerySession
     private readonly sessions = new Map<string, QuerySession>()
@@ -543,7 +549,7 @@ export class ResourceManager<SessionFile extends ISessionFile, SessionLine exten
         return Array.from(this.sessions.values())
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         let session: QuerySession
 
         try {
@@ -558,7 +564,7 @@ export class ResourceManager<SessionFile extends ISessionFile, SessionLine exten
         return session.createQuery(request, queryType, query)
     }
 
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
         let session: QuerySession
 
         try {

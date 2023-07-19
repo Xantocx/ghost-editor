@@ -4,6 +4,7 @@ import { prismaClient } from "../../client";
 import { ProxyCache } from "../proxy-cache";
 import { ISessionTag } from "../../utilities";
 import { BlockProxy } from "./block-proxy";
+import { VCSBlockId, VCSTagId, VCSTagInfo } from "../../../../../app/components/vcs/vcs-rework";
 
 export class TagProxy extends DatabaseProxy implements ISessionTag {
 
@@ -38,5 +39,13 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
         this.name      = name
         this.timestamp = timestamp
         this.code      = code
+    }
+
+    public async asTagInfo(blockId: VCSBlockId): Promise<VCSTagInfo> {
+        return new VCSTagInfo(VCSTagId.createFrom(blockId, this.tagId),
+                              this.name,
+                              this.timestamp,
+                              this.code,
+                              false)
     }
 }

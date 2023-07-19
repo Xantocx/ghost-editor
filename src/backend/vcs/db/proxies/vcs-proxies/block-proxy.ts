@@ -15,7 +15,7 @@ enum BlockReference {
     Next
 }
 
-export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy, LineProxy, VersionProxy> {
+export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy, LineProxy, VersionProxy, TagProxy> {
 
     public readonly blockId: string
     public readonly file:    FileProxy
@@ -449,7 +449,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
                                 },
                                 timeline.length,
                                 index,
-                                this.tags.map(tag => new VCSTagInfo(VCSTagId.createFrom(blockId, tag.tagId), tag.name, tag.code, false)))
+                                await Promise.all(this.tags.map(tag => tag.asTagInfo(blockId))))
     }
 
     public async getChildrenInfo(fileId: VCSFileId): Promise<VCSBlockInfo[]> {
@@ -604,5 +604,21 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         }
 
         return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(fileId, id))
+    }
+
+    public async createTag(): Promise<TagProxy> {
+        const tagData = await prismaClient.tag.create({
+            data: {
+                tagId:     `${this.blockId}:tag-${randomUUID()}`,
+                blockId:   this.id,
+                name:      `Tag ${this.tags.length + 1}`,
+                timestamp: this.timestamp,
+                code:      await this.getText()
+            }
+        })
+
+        const tag = await TagProxy.getFor(tagData)
+        this.tags.push(tag)
+        return tag
     }
 }

@@ -2,7 +2,7 @@ import { VCSVersion } from "../../../../app/components/data/version";
 import { VCSBlockSession } from "../../../../app/components/vcs/vcs-rework";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { Button, IconButton } from "../../components/button";
-import { GhostEditor } from "../editor/editor";
+import { GhostBlockSessionLoadingOptions, GhostEditor } from "../editor/editor";
 import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
 
@@ -38,7 +38,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.setupMenu()
         this.setupEditor()
 
-        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, { session }, { enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
+        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, new GhostBlockSessionLoadingOptions(session), { enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
     }
 
     private setupMenu(): void {

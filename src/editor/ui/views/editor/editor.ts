@@ -383,30 +383,61 @@ export class GhostEditorModel {
 }
 
 
-interface GhostFileLoadingOptions {
-    uri:      URI
-    content?: string
+export class GhostFileLoadingOptions {
+    public readonly uri:      URI
+    public readonly content?: string
+
+    public constructor(uri: URI, content?: string) {
+        this.uri     = uri
+        this.content = content
+    }
 }
 
-interface GhostFilePathLoadingOptions {
-    filePath: string
-    content?: string
+export class GhostFilePathLoadingOptions {
+    public readonly filePath: string
+    public readonly content?: string
+
+    public constructor(filePath: string, content?: string) {
+        this.filePath = filePath
+        this.content  = content
+    }
 }
 
-interface GhostBlockLoadingOptions extends GhostFilePathLoadingOptions {
-    blockId: VCSBlockId
+export class GhostBlockLoadingOptions {
+    public readonly filePath: string
+    public readonly blockId:  VCSBlockId
+    public readonly content?: string
+
+    public constructor(filePath: string, blockId: VCSBlockId, content?: string) {
+        this.filePath = filePath
+        this.blockId  = blockId
+        this.content  = content
+    }
 }
 
-interface GhostTagLoadingOptions extends GhostFilePathLoadingOptions {
-    tagId:    VCSTagId
-    blockId?: VCSBlockId
+export class GhostTagLoadingOptions {
+    public readonly filePath: string
+    public readonly blockId?: VCSBlockId
+    public readonly tagId:    VCSTagId
+    public readonly content?: string
+
+    public constructor(filePath: string, tagId: VCSTagId, options?: { blockId?: VCSBlockId, content?: string }) {
+        this.filePath = filePath
+        this.blockId  = options?.blockId
+        this.tagId    = tagId
+        this.content  = options?.content
+    }
 }
 
-interface GhostBlockSessionLoadingOptions {
-    session: VCSBlockSession
+export class GhostBlockSessionLoadingOptions {
+    public readonly session: VCSBlockSession
+
+    public constructor(session: VCSBlockSession) {
+        this.session = session
+    }
 }
 
-type GhostLoadingOptions = undefined | GhostFileLoadingOptions | GhostFilePathLoadingOptions | GhostBlockLoadingOptions | GhostTagLoadingOptions | GhostBlockSessionLoadingOptions
+export type GhostLoadingOptions = undefined | GhostFileLoadingOptions | GhostFilePathLoadingOptions | GhostBlockLoadingOptions | GhostTagLoadingOptions | GhostBlockSessionLoadingOptions
 
 export class GhostEditor extends View implements ReferenceProvider, CodeProvider {
 
@@ -655,7 +686,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         return await vcsSession.loadFile(options)
     }
 
-    public async load(loadingOptions: GhostLoadingOptions): Promise<void> {
+    public async load(options: GhostLoadingOptions): Promise<void> {
         this.unload()
 
         const hostSession = await GhostEditor.getSession()
@@ -678,22 +709,20 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
             return extractEOLSymbol(textModel)
         }
 
-        if (loadingOptions === undefined) {
+        if (options === undefined) {
             this.languageId = GhostEditor.defaultLanguageId
             const eol       = setTextModel(undefined, GhostEditor.defaultLanguageId)
 
             session = await hostSession.loadFile({ eol, content: GhostEditor.defaultCode.replace(new RegExp("\n", "g"), eol) })
 
-        } else if (loadingOptions as GhostFileLoadingOptions) {
-            const options = loadingOptions as GhostFileLoadingOptions
+        } else if (options instanceof GhostFileLoadingOptions) {
             const uri     = options.uri
             const content = options.content ? options.content : ""
             const eol     = setTextModel(uri, content)
 
             session = await hostSession.loadFile({ filePath: uri.fsPath, eol, content })
 
-        } else if (loadingOptions as GhostFilePathLoadingOptions) {
-            const options  = loadingOptions as GhostFilePathLoadingOptions
+        } else if (options instanceof GhostFilePathLoadingOptions) {
             const filePath = options.filePath
             const content  = options.content ? options.content : ""
 
@@ -702,8 +731,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
             session = await hostSession.loadFile({ filePath: filePath, eol, content })
 
-        } else if (loadingOptions as GhostBlockLoadingOptions) {
-            const options  = loadingOptions as GhostBlockLoadingOptions
+        } else if (options instanceof GhostBlockLoadingOptions) {
             const filePath = options.filePath
             const blockId  = options.blockId
             const content  = options.content ? options.content : ""
@@ -713,8 +741,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
             
             session = await fileSession.getChild(blockId)
 
-        } else if (loadingOptions as GhostTagLoadingOptions) {
-            const options  = loadingOptions as GhostTagLoadingOptions
+        } else if (options instanceof GhostTagLoadingOptions) {
             const filePath = options.filePath
             const tagId    = options.tagId
             const blockId  = options.blockId
@@ -728,9 +755,8 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
             session = blockSession
 
-        } else if (loadingOptions as GhostBlockSessionLoadingOptions) {
-            const options = loadingOptions as GhostBlockSessionLoadingOptions
-            
+        } else if (options instanceof GhostBlockSessionLoadingOptions) {
+
             setTextModel(undefined, undefined)
             session = options.session
 
@@ -753,7 +779,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     public async loadFile(filePath: string, content: string): Promise<void> {
         if (this.enableFileManagement) {
             const uri = monaco.Uri.file(filePath)
-            this.load({ uri, content })
+            this.load(new GhostFileLoadingOptions(uri, content))
         } else {
             throw new Error("This GhostEditor is not configured to support file management! You cannot load a file.")
         }

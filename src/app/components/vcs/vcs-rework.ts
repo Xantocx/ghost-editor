@@ -120,13 +120,15 @@ export class VCSChildBlockInfo extends VCSBlockInfo {
 export class VCSTagInfo extends VCSTagId {
 
     public readonly name:                string
+    public readonly timestamp:           number
     public readonly text:                string
     public readonly automaticSuggestion: boolean
 
-    public constructor(tagId: VCSTagId, name: string, text: string, automaticSuggestion: boolean) {
+    public constructor(tagId: VCSTagId, name: string, timestamp: number, text: string, automaticSuggestion: boolean) {
         super(tagId.sessionId, tagId.filePath, tagId.blockId, tagId.tagId)
 
         this.name                = name
+        this.timestamp           = timestamp
         this.text                = text
         this.automaticSuggestion = automaticSuggestion
     }
