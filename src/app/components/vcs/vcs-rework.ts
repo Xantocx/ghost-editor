@@ -295,7 +295,7 @@ export const VCSOperationTypes = new Map<VCSOperation, VCSRequestType>([
     [VCSOperation.LinesChanged,            VCSRequestType.ReadWrite],
     [VCSOperation.ApplyChange,             VCSRequestType.ReadWrite],
     [VCSOperation.ApplyChanges,            VCSRequestType.ReadWrite],
-    [VCSOperation.CopyBlock,              VCSRequestType.ReadWrite],
+    [VCSOperation.CopyBlock,               VCSRequestType.ReadWrite],
     [VCSOperation.CreateChild,             VCSRequestType.ReadWrite],
     [VCSOperation.DeleteBlock,             VCSRequestType.ReadWrite],
     [VCSOperation.GetBlockInfo,            VCSRequestType.ReadOnly],

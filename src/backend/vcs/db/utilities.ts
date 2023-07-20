@@ -246,7 +246,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
             }))
 
             const timestamps = block.children.map(child => removeBlock(child))
-            const timestamp = Math.max(...timestamps)
+            const timestamp  = Math.max(...timestamps)
 
             // I think this is unnecessary, but testing is needed
             // block.clones.map(clone => removeBlock(clone))
@@ -413,7 +413,7 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
 
         this.manager.queryRunning(this)
 
-        const requestId  = this.requestId
+        const requestId = this.requestId
         this.query(this.session, this.data)
             .then(response => {
                 this.manager.queryFinished(this)
@@ -467,12 +467,16 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
             }
         })
 
+        const runningQueries        = Array.from(this.running.values())
+        const hasRunningQueries     = runningQueries.length > 0
+        const noWriteQueriesRunning = runningQueries.every(query => query.type !== VCSRequestType.ReadWrite)
+
         if (this.ready.length > 0) {
             const firstType = this.ready[0].type 
-            if (firstType === VCSRequestType.ReadWrite) {
+            if (firstType === VCSRequestType.ReadWrite && !hasRunningQueries) {
                 this.ready[0].execute()
                 this.ready.splice(0, 1)
-            } else {
+            } else if(noWriteQueriesRunning) {
                 while(this.ready.length > 0 && this.ready[0].type !== VCSRequestType.ReadWrite) {
                     this.ready[0].execute()
                     this.ready.splice(0, 1)
