@@ -531,7 +531,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
             this.sideViewContainer.style.borderLeft = "1px solid gray"
         }
         
-        this.core               = monaco.editor.create(this.editorContainer, { value: '', automaticLayout: true  });
+        this.core               = monaco.editor.create(this.editorContainer, { value: '', automaticLayout: true, colorDecorators: true  });
         this.snapshotManager    = new GhostEditorSnapshotManager(this)
         this.interactionManager = new GhostEditorInteractionManager(this)
 
