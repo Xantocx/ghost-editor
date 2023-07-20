@@ -1,0 +1,1 @@
+export const p5jsDefaultCode = "function setup() {\n\tcreateCanvas(400, 400);\n}\n\nfunction draw() {\n\tbackground(220);\n}"

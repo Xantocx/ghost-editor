@@ -19,6 +19,8 @@ import { extractEOLSymbol } from "../../../utils/helpers";
 import { VCSVersion } from "../../../../app/components/data/version";
 import { GhostSnapshotFooter } from "../../snapshot/footer";
 
+import { p5jsDefaultCode } from "../../../utils/default-code-snippets"
+
 class GhostEditorSnapshotManager {
 
     public readonly editor: GhostEditor
@@ -442,7 +444,7 @@ export type GhostLoadingOptions = undefined | GhostFileLoadingOptions | GhostFil
 export class GhostEditor extends View implements ReferenceProvider, CodeProvider {
 
     public static readonly defaultLanguageId = "javascript"
-    public static readonly defaultCode       = "function setup() {\n\tcreateCanvas(400, 400);\n}\n\nfunction draw() {\n\tbackground(220);\n}"
+    public static readonly defaultCode       = p5jsDefaultCode
 
     private static _session?: VCSSession
     public static async getSession(): Promise<VCSSession> {
@@ -605,8 +607,8 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
     private setupElectronCommunication(): void {
         if (this.enableFileManagement) {
-            window.ipcRenderer.on('load-file' , (response: LoadFileEvent) => this.loadFile(response.path, response.content))
-            window.ipcRenderer.on('save' ,      ()                        => this.save())
+            window.ipcRenderer.on('menu-load-file', (response: LoadFileEvent) => this.loadFile(response.path, response.content))
+            window.ipcRenderer.on('menu-save' ,     ()                        => this.save())
         }
     }
 
