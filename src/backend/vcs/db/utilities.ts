@@ -108,8 +108,6 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
     }
 
     public async updateFilePath(fileId: VCSFileId, newFilePath: string): Promise<VCSFileId> {
-        console.log(newFilePath)
-
         const file = this.getFile(fileId)
         await file.updateFilePath(newFilePath)
 
@@ -214,8 +212,6 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     public async getRootSessionBlockFor(filePath: string): Promise<BlockProxy | undefined> {
         //const fileData = await prismaClient.file.findFirstOrThrow({ where: { filePath } })
         //const file     = await FileProxy.getFor(fileData)
-
-        console.log(filePath)
 
         const rootBlock = await prismaClient.block.findFirst({
             where: {
