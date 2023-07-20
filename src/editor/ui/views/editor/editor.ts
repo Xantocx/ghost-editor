@@ -448,7 +448,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     public static async getSession(): Promise<VCSSession> {
         if (!this._session) {
             this._session = await VCSSession.create(window.vcs)
-            this._session.onRequestSend(() => GhostSnapshotFooter.loadingEventEmitter.reload(), { requestTypes: { include: [VCSRequestType.ReadWrite] }, operations: { exclude: [VCSOperation.SetBlockVersionIndex] } })
+            this._session.onRequestSend(() => GhostSnapshotFooter.loadingEventEmitter.reload(), { requestTypes: { include: [VCSRequestType.ReadWrite] }, operations: { exclude: [VCSOperation.LoadFile, VCSOperation.SetBlockVersionIndex] } })
         } 
         return this._session!
     }
@@ -549,6 +549,8 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
             //this.sideView!.update(this.sideViewIdentifiers!.p5js, session)
             this.sideView!.update(this.sideViewIdentifiers!.versionManager, { languageId: textModel.getLanguageId() })
         }
+
+        this.triggerSync()
     }
 
     public getTextModel(): MonacoModel {
@@ -561,8 +563,13 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         else               { throw new Error("The editor currently has no session. Please load a session in order to re-establish functionality before using this function.") } 
     }
 
+    // TODO: this could be optimized, kinda slow as this is used for every preview render!
     public async getCode(): Promise<string> {
-        return this.code
+        try {
+            return await this.getSession().getRootText()
+        } catch {
+            return ""
+        }
     }
 
     // edior and model options to extract config
@@ -642,7 +649,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
             })
 
             this.sideViewIdentifiers = this.sideView.identifiers
-            this.defaultSideView     = this.sideViewIdentifiers.vcs
+            this.defaultSideView     = this.sideViewIdentifiers.p5js
             this.showDefaultSideView()
         }
     }

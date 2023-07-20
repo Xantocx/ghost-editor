@@ -117,7 +117,7 @@ model Tag {
   block   Block @relation("TagsForBlock", fields: [blockId], references: [id], onDelete: Cascade)
 
   name      String
-  timestamp Int    @unique
+  timestamp Int
   code      String
 
   @@index([blockId])

@@ -493,7 +493,12 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     public async cloneOutdatedHeads(): Promise<void> {
         const heads        = this.getHeads()
-        const headsToClone = heads.filter(head => head.timestamp < head.line.getLatestVersion().timestamp)
+        const headsToClone = heads.filter(head => {
+            const latestVersion = head.line.getLatestVersion()
+
+            // the second part of this condition makes sure that we do not clone versions without need if there is already an identical version at the end of this line history
+            return head.timestamp < latestVersion.timestamp && (head.content !== latestVersion.content || head.isActive !== latestVersion.isActive)
+        })
 
         if (headsToClone.length > 0) {
 

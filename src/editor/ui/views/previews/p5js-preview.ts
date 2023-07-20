@@ -1,9 +1,11 @@
-import { throttle } from "../../../utils/helpers";
+import { sleep, throttle } from "../../../utils/helpers";
 import { Synchronizable, Synchronizer } from "../../../utils/synchronizer";
 import { Disposable } from "../../../utils/types";
 import { uuid } from "../../../utils/uuid";
 import { CodeProvider, CodeProviderPreview } from "./preview";
 import { iframeResize } from "iframe-resizer"
+
+// TODO: Should be replaced from here: https://github.com/processing/p5.js-web-editor/tree/develop/client/modules/Preview
 
 export class P5JSPreview extends CodeProviderPreview {
 
@@ -82,7 +84,7 @@ export class P5JSPreview extends CodeProviderPreview {
         if (this.provider) { this.render() }
     }
 
-    private async getHtml(code: string): Promise<string> {
+    private async getHtml(renderId: string, code: string): Promise<string> {
         return `
             <!DOCTYPE html>
             <html lang="en">
@@ -108,7 +110,7 @@ export class P5JSPreview extends CodeProviderPreview {
                     function sendErrorMessage() {
                         const iframe = window.parentIFrame
                         if (hasErrorMessage && !sentErrorState && iframe) {
-                            iframe.sendMessage({ hasErrorMessage: true, message: errorMessage, stack: errorStack })
+                            iframe.sendMessage({ renderId: "${renderId}", hasErrorMessage: true, message: errorMessage, stack: errorStack })
                             sentErrorState = true
                         }
                     }
@@ -215,8 +217,8 @@ export class P5JSPreview extends CodeProviderPreview {
         `
     }
 
-    private async getHtmlUrl(code: string): Promise<string> {
-        const htmlBlob = new Blob([await this.getHtml(code)], { type: 'text/html' });
+    private async getHtmlUrl(renderId: string, code: string): Promise<string> {
+        const htmlBlob = new Blob([await this.getHtml(renderId, code)], { type: 'text/html' });
         return URL.createObjectURL(htmlBlob);
     }
 
@@ -239,9 +241,10 @@ export class P5JSPreview extends CodeProviderPreview {
     private setupResizing(): void {
         
         const onResize = (data: any) => { this.resizeIFrame(data.width, data.height) }
-        const onError  = (data: any) => { 
-
+        const onError  = (data: any) => {
             const error = data.message
+
+            if (error.renderId !== this.lastRenderId) { return }
 
             this.hasErrorMessage = error.hasErrorMessage
             if (this.hasErrorMessage) {
@@ -341,12 +344,15 @@ export class P5JSPreview extends CodeProviderPreview {
         await this.renderThrottled()
     }
 
+    private lastRenderId: string
     private async updateIFrame(code: string): Promise<void> {
-        this.iframe.src = await this.getHtmlUrl(code)
+        this.lastRenderId = uuid(32)
+
+        this.iframe.src = await this.getHtmlUrl(this.lastRenderId, code)
         this.currentCode = code
 
         if (this.hasErrorMessage) {
-            this.errorMessage.remove()
+            this.errorMessage?.remove()
             this.hasErrorMessage = false
         }
 
@@ -357,7 +363,7 @@ export class P5JSPreview extends CodeProviderPreview {
         if (this.provider === undefined) { return }
         const code = await this.getCode()
         if (code !== undefined) {
-            this.updateIFrame(code)
+            await this.updateIFrame(code)
         }
     }
 
@@ -365,7 +371,7 @@ export class P5JSPreview extends CodeProviderPreview {
         if (this.provider === undefined) { return }
         const code = await this.getCode()
         if (code !== undefined && this.currentCode !== code) {
-            this.updateIFrame(code)
+            await this.updateIFrame(code)
         }
     }
 
