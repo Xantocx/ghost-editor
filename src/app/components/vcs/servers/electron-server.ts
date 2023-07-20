@@ -9,6 +9,7 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
     public static readonly waitForCurrentRequestsChannel  = "vcs-wait-for-current-requests"
 
     public static readonly loadFileChannel                = "vcs-load-file"
+    public static readonly updateFilePathChannel          = "vcs-update-file-path"
     public static readonly unloadFileChannel              = "vcs-unload-file"
 
     public static readonly getTextChannel                 = "vcs-get-text"
@@ -39,83 +40,87 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
     private mapChannels() {
 
-        const createSessionSubscription = ipcMain.handle(ElectronVCSServer.createSessionChannel, async (event, request: VCSSessionCreationRequest) => {
+        ipcMain.handle(ElectronVCSServer.createSessionChannel, async (event, request: VCSSessionCreationRequest) => {
             return await this.createSession(request)
         })
 
-        const closeSessionSubscription = ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, request: VCSSessionRequest<void>) => {
+        ipcMain.handle(ElectronVCSServer.closeSessionChannel, async (event, request: VCSSessionRequest<void>) => {
             return await this.closeSession(request)
         })
 
-        const waitForCurrentRequestsSubscription = ipcMain.handle(ElectronVCSServer.waitForCurrentRequestsChannel, async (event, request: VCSSessionRequest<void>) => {
+        ipcMain.handle(ElectronVCSServer.waitForCurrentRequestsChannel, async (event, request: VCSSessionRequest<void>) => {
             return await this.waitForCurrentRequests(request)
         })
 
-        const loadFileSubscription = ipcMain.handle(ElectronVCSServer.loadFileChannel, async (event, request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>) => {
+        ipcMain.handle(ElectronVCSServer.loadFileChannel, async (event, request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>) => {
             return await this.loadFile(request)
         })
 
-        const unloadFileSubscription = ipcMain.handle(ElectronVCSServer.unloadFileChannel, async (event, request: VCSSessionRequest<{ fileId: VCSFileId }>) => {
+        ipcMain.handle(ElectronVCSServer.updateFilePathChannel, async (event, request: VCSSessionRequest<{ fileId: VCSFileId, filePath: string }>) => {
+            return await this.updateFilePath(request)
+        })
+
+        ipcMain.handle(ElectronVCSServer.unloadFileChannel, async (event, request: VCSSessionRequest<{ fileId: VCSFileId }>) => {
             return await this.unloadFile(request)
         })
 
-        const getTextSubscription = ipcMain.handle(ElectronVCSServer.getTextChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.getTextChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.getText(request)
         })
 
-        const getRootTextSubscription = ipcMain.handle(ElectronVCSServer.getRootTextChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.getRootTextChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.getRootText(request)
         })
 
-        const lineChangedSubscription = ipcMain.handle(ElectronVCSServer.lineChangedChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>) => {
+        ipcMain.handle(ElectronVCSServer.lineChangedChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>) => {
             return await this.lineChanged(request)
         })
 
-        const linesChangedSubscription = ipcMain.handle(ElectronVCSServer.linesChangedChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>) => {
+        ipcMain.handle(ElectronVCSServer.linesChangedChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>) => {
             return await this.linesChanged(request)
         })
 
-        const applyChangeSubscription = ipcMain.handle(ElectronVCSServer.applyChangeChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: AnyChange }>) => {
+        ipcMain.handle(ElectronVCSServer.applyChangeChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, change: AnyChange }>) => {
             return await this.applyChange(request)
         })
 
-        const applyChangesSubscription = ipcMain.handle(ElectronVCSServer.applyChangesChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, changes: ChangeSet }>) => {
+        ipcMain.handle(ElectronVCSServer.applyChangesChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, changes: ChangeSet }>) => {
             return await this.applyChanges(request)
         })
 
-        const copyBlockSubscription = ipcMain.handle(ElectronVCSServer.copyBlockChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.copyBlockChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.copyBlock(request)
         })
 
-        const createChildSubscription = ipcMain.handle(ElectronVCSServer.createChildChannel, async (event, request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>) => {
+        ipcMain.handle(ElectronVCSServer.createChildChannel, async (event, request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>) => {
             return await this.createChild(request)
         })
 
-        const deleteBlockSubscription = ipcMain.handle(ElectronVCSServer.deleteBlockChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.deleteBlockChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.deleteBlock(request)
         })
 
-        const getBlockInfoSubscription = ipcMain.handle(ElectronVCSServer.getBlockInfoChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.getBlockInfoChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.getBlockInfo(request)
         })
 
-        const getChildrenInfoSubscription = ipcMain.handle(ElectronVCSServer.getChildrenInfoChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.getChildrenInfoChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.getChildrenInfo(request)
         })
 
-        const updateBlockSubscription = ipcMain.handle(ElectronVCSServer.updateBlockChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>) => {
+        ipcMain.handle(ElectronVCSServer.updateBlockChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>) => {
             return await this.updateBlock(request)
         })
 
-        const setBlockVersionIndexSubscription = ipcMain.handle(ElectronVCSServer.setBlockVersionIndexChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>) => {
+        ipcMain.handle(ElectronVCSServer.setBlockVersionIndexChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>) => {
             return await this.setBlockVersionIndex(request)
         })
 
-        const saveCurrentBlockVersionSubscription = ipcMain.handle(ElectronVCSServer.saveCurrentBlockVersionChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.saveCurrentBlockVersionChannel, async (event, request: VCSSessionRequest<{ blockId: VCSBlockId }>) => {
             return await this.saveCurrentBlockVersion(request)
         })
 
-        const applyTagSubscription = ipcMain.handle(ElectronVCSServer.applyTagChannel, async (event, request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>) => {
+        ipcMain.handle(ElectronVCSServer.applyTagChannel, async (event, request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>) => {
             return await this.applyTag(request)
         })
     }

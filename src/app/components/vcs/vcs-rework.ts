@@ -265,6 +265,7 @@ export enum VCSOperation {
     CloseSession,
     WaitForCurrentRequests,
     LoadFile,
+    UpdateFilePath,
     UnloadFile,
     GetText,
     GetRootText,
@@ -288,6 +289,7 @@ export const VCSOperationTypes = new Map<VCSOperation, VCSRequestType>([
     [VCSOperation.CloseSession,            VCSRequestType.SessionManagement],
     [VCSOperation.WaitForCurrentRequests,  VCSRequestType.Silent],
     [VCSOperation.LoadFile,                VCSRequestType.ReadWrite],
+    [VCSOperation.UpdateFilePath,          VCSRequestType.ReadWrite],
     [VCSOperation.UnloadFile,              VCSRequestType.ReadOnly],
     [VCSOperation.GetText,                 VCSRequestType.ReadOnly],
     [VCSOperation.GetRootText,             VCSRequestType.ReadOnly],
@@ -341,6 +343,7 @@ export interface VCSProvider {
 
     // operation on session: loading and unloading a file, making it available for operations
     loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>>  // always returns ID to root block so that editing is immediately possible
+    updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId, filePath: string }>): Promise<VCSResponse<VCSFileId>>
     unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>>
 
     // accessors to text of block
@@ -380,6 +383,7 @@ export abstract class BasicVCSProvider implements VCSProvider {
 
     // operation on session: loading and unloading a file, making it available for operations
     public abstract loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>>  // always returns ID to root block so that editing is immediately possible
+    public abstract updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId, filePath: string }>): Promise<VCSResponse<VCSFileId>>
     public abstract unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>>
 
     // accessors to text of block
@@ -532,6 +536,11 @@ export class VCSUnwrappedClient extends SubscriptionManager {
         return await this.unwrapResponse(this.client.loadFile(request), VCSOperation.LoadFile)
     }
 
+    public async updateFilePath(fileId: VCSFileId, filePath: string): Promise<VCSFileId> {
+        const request = this.createSessionRequest(fileId, { fileId, filePath })
+        return await this.unwrapResponse(this.client.updateFilePath(request), VCSOperation.UpdateFilePath)
+    }
+
     public async unloadFile(fileId: VCSFileId): Promise<void> {
         const request = this.createSessionRequest(fileId, { fileId })
         return await this.unwrapResponse(this.client.unloadFile(request), VCSOperation.UnloadFile)
@@ -670,7 +679,7 @@ export class VCSSession {
 export class VCSBlockSession {
 
     public readonly session:     VCSSession
-    public readonly block:       VCSBlockId
+    public          block:       VCSBlockId
     public readonly isRootBlock: boolean
 
     public get client():  VCSUnwrappedClient { return this.session.client }
@@ -692,6 +701,12 @@ export class VCSBlockSession {
 
     public async waitForCurrentRequests(): Promise<void> {
         await this.session.waitForCurrentRequests()
+    }
+
+    public async updateFilePath(filePath: string): Promise<VCSFileId> {
+        const fileId = await this.client.updateFilePath(this.block, filePath)
+        this.block   = VCSBlockId.createFrom(fileId, this.blockId)
+        return fileId
     }
 
     public async getText(): Promise<string> {
@@ -824,6 +839,10 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSServ
 
     public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
         return await this.adapter.loadFile(request)
+    }
+
+    public async updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId; filePath: string; }>): Promise<VCSResponse<VCSFileId>> {
+        return await this.adapter.updateFilePath(request)
     }
 
     public async unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {

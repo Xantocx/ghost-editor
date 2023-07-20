@@ -25,6 +25,10 @@ export const ElectronVCSClient: VCSClient = {
         return await invoke(ElectronVCSServer.loadFileChannel, request)
     },
 
+    updateFilePath: async function (request: VCSSessionRequest<{ fileId: VCSFileId, filePath: string }>): Promise<VCSResponse<VCSFileId>> {
+        return await invoke(ElectronVCSServer.updateFilePathChannel, request)
+    },
+
     unloadFile: async function (request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
         return await invoke(ElectronVCSServer.unloadFileChannel, request)
     },

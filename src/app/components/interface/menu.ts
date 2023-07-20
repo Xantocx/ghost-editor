@@ -1,5 +1,5 @@
 import * as file from "../utils/file"
-import { Menu, MenuItem, ipcMain } from "electron"
+import { BrowserWindow, Menu, MenuItem, ipcMain } from "electron"
 
 import { p5jsDefaultCode } from "../../../editor/utils/default-code-snippets"
 
@@ -50,15 +50,20 @@ export class GhostMenu {
 
     private static menu: Menu
 
-    public static setup() {
-        this.setupEventHandlers()
+    public static setup(browserWindow: BrowserWindow) {
+        this.setupEventHandlers(browserWindow)
         this.menu = Menu.buildFromTemplate(this.menuTemplate)
         Menu.setApplicationMenu(this.menu)
     }
 
-    private static setupEventHandlers(): void {
-        const saveSubscription = ipcMain.handle('save-file', (event, response) => {
-            file.saveFile(response.path, response.content)
+    private static setupEventHandlers(browserWindow: BrowserWindow): void {
+        ipcMain.handle('save-file', async (event, response) => {
+
+            const filePath = await file.saveFile(browserWindow, response.path, response.content)
+
+            if (response.path !== filePath) {
+                browserWindow.webContents.send("menu-update-file-path", filePath)
+            }
         })
     }
 }

@@ -6,7 +6,9 @@ import { VCSRequestType, VCSBlockData, VCSBlockId, VCSBlockInfo, VCSBlockRange, 
 import { VCSResponse } from "../../../app/components/vcs/vcs-rework"
 import { MultiLineChange } from "../../../app/components/data/change"
 
-export interface ISessionFile {}
+export interface ISessionFile {
+    updateFilePath(filePath: string): Promise<void>
+}
 
 export interface ISessionBlock<SessionFile extends ISessionFile, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionLine extends ISessionLine, SessionTag extends ISessionTag> {
     blockId: string
@@ -105,6 +107,21 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         return await rootBlock.block.asBlockInfo(fileId)
     }
 
+    public async updateFilePath(fileId: VCSFileId, newFilePath: string): Promise<VCSFileId> {
+        console.log(newFilePath)
+
+        const file = this.getFile(fileId)
+        await file.updateFilePath(newFilePath)
+
+        const oldFilePath = fileId.filePath
+        const rootBlock   = this.getFileRootBlockFor(fileId)
+
+        this.files.delete(oldFilePath)
+        this.files.set(newFilePath, rootBlock)
+
+        return new VCSFileId(this.id, newFilePath)
+    }
+
     public unloadFile(fileId: VCSFileId): void {
         this.files.delete(fileId.filePath)
     }
@@ -142,7 +159,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         }
     }
 
-    public getFileRootBlockFor(fileId: VCSBlockId): SessionBlock {
+    public getFileRootBlockFor(fileId: VCSFileId): SessionBlock {
         const filePath = fileId.filePath
         if (this.files.has(filePath)) {
             return this.files.get(filePath)!
@@ -197,6 +214,8 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     public async getRootSessionBlockFor(filePath: string): Promise<BlockProxy | undefined> {
         //const fileData = await prismaClient.file.findFirstOrThrow({ where: { filePath } })
         //const file     = await FileProxy.getFor(fileData)
+
+        console.log(filePath)
 
         const rootBlock = await prismaClient.block.findFirst({
             where: {
@@ -440,7 +459,7 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
 
     private readonly finishedRequestIds: string[] = []
 
-    private currentQueryChain?:     string                              = undefined
+    private currentQueryChain?:     string                                   = undefined
     private breakingChainCallback?: (session: QuerySession) => Promise<void> = undefined
 
     public constructor(session: QuerySession) {

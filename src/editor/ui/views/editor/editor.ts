@@ -607,8 +607,9 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
     private setupElectronCommunication(): void {
         if (this.enableFileManagement) {
-            window.ipcRenderer.on('menu-load-file', (response: LoadFileEvent) => this.loadFile(response.path, response.content))
-            window.ipcRenderer.on('menu-save' ,     ()                        => this.save())
+            window.ipcRenderer.on('menu-load-file',        (response: LoadFileEvent) => this.loadFile(response.path, response.content))
+            window.ipcRenderer.on('menu-save' ,            ()                        => this.save())
+            window.ipcRenderer.on('menu-update-file-path', (filePath: string)        => this.getSession().updateFilePath(filePath))
         }
     }
 
@@ -795,14 +796,8 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     }
 
     public save(): void {
-        // TODO: make sure files without a path can be saved at new path!
         if (this.enableFileManagement) {
-            if (this.path) {
-                window.ipcRenderer.invoke('save-file', { path: this.path, content: this.code })
-            } else {
-                throw new Error("Currently, we do not support choosing a filename for new files. Sorry.")
-                //if (this.path) this.vcs.updatePath(this.path)
-            }
+            window.ipcRenderer.invoke('save-file', { path: this.path, content: this.code })
         } else {
             throw new Error("This GhostEditor is not configured to support file management! You cannot save a file.")
         }

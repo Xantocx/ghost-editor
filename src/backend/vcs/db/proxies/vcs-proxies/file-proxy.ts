@@ -214,4 +214,11 @@ export class FileProxy extends DatabaseProxy implements ISessionFile {
         const lastLine = await prismaClient.line.findFirst({ where: { fileId: this.id }, orderBy: { order: "desc" } })
         return await this.insertLines(lineContents, { previous: lastLine ? await LineProxy.getFor(lastLine) : undefined })
     }
+
+    public async updateFilePath(filePath: string): Promise<void> {
+        await prismaClient.file.update({
+            where: { id: this.id },
+            data:  { filePath }
+        })
+    }
 }

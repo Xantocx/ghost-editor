@@ -21,8 +21,6 @@ export class GhostApp {
     }
 
     private static setup() {
-        GhostMenu.setup()
-
         this.app.whenReady().then(() => {
             this.createWindow()
 
@@ -50,6 +48,7 @@ export class GhostApp {
         this.window.loadFile("dist/renderer/index.html")
         this.window.webContents.openDevTools()
 
+        GhostMenu.setup(this.window)
         this.vcs = new LocalGhostVCSServer(this.window)
     }
 }

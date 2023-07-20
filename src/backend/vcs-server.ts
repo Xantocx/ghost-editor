@@ -67,6 +67,12 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         })
     }
 
+    public async updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId; filePath: string; }>): Promise<VCSResponse<VCSFileId>> {
+        return await this.resources.createQuery(request, VCSOperation.UpdateFilePath, async (session, { fileId, filePath }) => {
+            return await session.updateFilePath(fileId, filePath)
+        })
+    }
+
     public async getFileData(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<VCSFileData>> {
         // TODO: fix VCSOperation eventually
         return await this.resources.createQuery(request, VCSOperation.GetBlockInfo, async (session, { fileId }) => {

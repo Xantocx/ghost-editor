@@ -30,8 +30,12 @@ export async function createFile(browserWindow: BrowserWindow, content?: string)
     const response = await createFileDialog(browserWindow)
 
     if (!response.canceled && response.filePath) {
-        const filePath = response.filePath
-        if (content) { await saveFile(filePath, content) }
+        let filePath = response.filePath
+
+        // fix for inconsistend drive identifiers
+        filePath = filePath[0].toLowerCase() + filePath.substring(1)
+
+        if (content) { await saveFile(browserWindow, filePath, content) }
         return { path: filePath, content: content ? content : "" }
     } else {
         return null
@@ -44,6 +48,10 @@ export async function openFile(browserWindow: BrowserWindow): Promise<{ path: st
 
     if (!response.canceled && response.filePaths.length > 0) {
         let filePath = response.filePaths[0]
+
+        // fix for inconsistend drive identifiers
+        filePath = filePath[0].toLowerCase() + filePath.substring(1)
+
         const content = await fs.promises.readFile(filePath, 'utf-8')
         return { path: filePath, content: content }
     } else {
@@ -51,11 +59,12 @@ export async function openFile(browserWindow: BrowserWindow): Promise<{ path: st
     }
 }
 
-export async function saveFile(filePath: string | undefined, content: string): Promise<void> {
+export async function saveFile(browserWindow: BrowserWindow, filePath: string | undefined, content: string): Promise<string> {
     if (filePath) {
         await fs.promises.writeFile(filePath, content)
+        return filePath
     } else {
-        // TODO: use createFile to make sure the file exists, even if it never did before
-        console.warn('NO FILE PATH! PATH SELECTOR MISSING!')
+        const response = await createFile(browserWindow, content)
+        return response.path
     }
 }
