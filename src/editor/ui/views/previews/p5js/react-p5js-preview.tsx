@@ -13,6 +13,8 @@ import "./react-p5js-preview.css"
 const p5jsScript          = new URL("./libs/p5js/p5.min.js", document.baseURI).href
 const iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
 
+const previewPadding = 5
+
 function getHtml(sketchId: number, code: string): string {
     return `
         <!DOCTYPE html>
@@ -33,6 +35,10 @@ function getHtml(sketchId: number, code: string): string {
 
                 canvas {
                     display: block;
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform-origin: top left;
                 }
             </style>
         </head>
@@ -64,22 +70,28 @@ function getHtml(sketchId: number, code: string): string {
                     sendMessage("runtime-error", { description: error.message, stack: error.stack, code })
                 }
 
+                function scaleCanvases() {
+                    const maxWidth  = window.innerWidth  - ${2 * previewPadding}
+                    const maxHeight = window.innerHeight - ${2 * previewPadding}
+
+                    const p5Canvas = document.getElementsByClassName("p5Canvas")
+
+                    if (p5Canvas.length > 0) {
+                        for (let i = 0; i < p5Canvas.length; i++) {
+                            const canvas           = p5Canvas[i]
+                            const scaleFactor      = Math.min(maxWidth / canvas.width, maxHeight / canvas.height)
+                            canvas.style.transform = "scale(" + scaleFactor + ") translate(-50%, -50%)"
+                        }
+                    }
+                }
+
+                window.addEventListener("load",   () => scaleCanvases()) 
+                window.addEventListener("resize", () => scaleCanvases())
+
                 // setup config object of iFrameResizer
                 window.iFrameResizer = {
                     onReady: () => { if (preparedMessage) { sendMessage(preparedMessage.type, preparedMessage.message) } }
                 }
-
-                // workaround to allow the use of taggedElement for width calculation when sizing the iframe
-                window.addEventListener("load", event => {
-                    const p5Canvas = document.getElementsByClassName("p5Canvas")
-                    if (p5Canvas.length > 0) {
-                        for (let i = 0; i < p5Canvas.length; i++) { p5Canvas[i].setAttribute("data-iframe-width", "") }
-                    } else {
-                        const sizingDiv = document.createElement("div")
-                        sizingDiv.setAttribute("data-iframe-width", "")
-                        document.body.appendChild(sizingDiv)
-                    }
-                })
             </script>
 
             <script src="${iframeResizerScript}"></script>
@@ -169,9 +181,10 @@ interface P5JSPreviewProps {
 
 const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, errorMessageColor }) => {
 
-    const containerRef      = useRef<HTMLDivElement | null>(null)
-    const latestSketchId    = useRef<number>(0)
-    const lastWorkingSketch = useRef<{ sketchId: number, code: string } | undefined>(undefined)
+    const containerRef          = useRef<HTMLDivElement | null>(null)
+    const latestSketchId        = useRef<number>(0)
+    const lastWorkingSketch     = useRef<{ sketchId: number, code: string } | undefined>(undefined)
+    const runtimeRecoverySketch = useRef<{ sketchId: number, code: string } | undefined>(undefined)
 
     const [iframeSource,      setIframeSource]      = useState<string | undefined>(undefined)
     const [sketch,            setSketch]            = useState<string | undefined>(undefined)
@@ -190,7 +203,6 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
     function renderLastWorkingSketch(): void {
         const workingSketch = lastWorkingSketch.current
         if (workingSketch) {
-            console.log("RENDERING OLD SKETCH!")
             renderSketch(workingSketch.sketchId, workingSketch.code)
         }
     }
@@ -220,45 +232,39 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
     }, []);
 
     function onMessage({ iframe, message: { sketchId, type, message }}: { iframe: IframeResizer.IFrameComponent, message: { type: string, sketchId: number, message: any } }): void {
-        console.log("RECIEVED MESSAGE!")
-        console.log(sketchId)
-        console.log(latestSketchId.current)
 
         if (sketchId !== latestSketchId.current) { return }
-
-        console.log(type)
 
         if (type !== "success" && type !== "syntax-error" && type !== "runtime-error") {
             throw new Error(`"${type}" is not a valid message type for the P5JSPreview!`)
         }
         
-        if (type === "success" || type === "runtime-error") {
-            lastWorkingSketch.current = { sketchId, code: message.code }
+        if (type === "success") {
+            runtimeRecoverySketch.current = lastWorkingSketch.current
+            lastWorkingSketch.current     = { sketchId, code: message.code }
+        }
+
+        if (type === "runtime-error" && lastWorkingSketch.current.sketchId === sketchId && runtimeRecoverySketch.current) {
+            lastWorkingSketch.current = runtimeRecoverySketch.current
         }
 
         if (type === "syntax-error" || type === "runtime-error") {
-            console.log(message.description)
             const description = message.description
             const stack       = message.stack
-            setErrorMessage(`Message:\n${description}` + (stack && parseInt(iframe.style.height) > 300 ? `\n\nStack:\n${stack}` : ""))
-        }
-
-        if (type === "syntax-error") {
+            setErrorMessage(`${type === "syntax-error" ? "Syntax" : "Runtime"} Error:\n${description}` + (stack && parseInt(iframe.style.height) > 300 ? `\n\nStack:\n${stack}` : ""))
             renderLastWorkingSketch()
         }
     }
 
     return (
-        <div className="container" ref={containerRef} style={{ padding: 5 }}>
+        <div className="container" ref={containerRef} style={{ padding: previewPadding }}>
 
             <div style={{ position: 'relative', flex: 4 }}>
 
                 {iframeSource && <IframeResizer
                     src={iframeSource}
                     checkOrigin={["file://"]}
-                    sizeWidth={true}
-                    widthCalculationMethod='taggedElement'
-                    tolerance={20}
+                    sizeHeight={false}
                     onMessage={onMessage}
                 />}
 
@@ -268,13 +274,12 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    background: 'rgba(255, 255, 255, 0.5)', // semi-transparent black
+                    background: 'rgba(255, 255, 255, 0.6)', // semi-transparent black
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center'
                 }}>
-                    {/* <img src='graphic.png' alt='graphic' /> */}
-                    <h1>TEST</h1>
+                    <i className="fa-solid fa-circle-exclamation" style={{ fontSize: "120px" }}></i>
                 </div>}
 
             </div>

@@ -137,7 +137,7 @@ export class IconButton extends Button {
     
     private readonly icon: HTMLElement
 
-    public get iconClass(): string         { return this.icon.getAttribute("class")! }
+    public get iconClass(): string          { return this.icon.getAttribute("class")! }
     public set iconClass(iconClass: string) { this.icon.setAttribute("class", iconClass) }
 
     public static override defaultButton(root: HTMLElement, iconClass: string, onClick?: ((button: Button) => void)): IconButton {
