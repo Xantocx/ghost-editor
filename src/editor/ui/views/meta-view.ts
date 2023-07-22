@@ -1,3 +1,5 @@
+import { IDisposable } from "monaco-editor";
+import { Synchronizer, Synchronizable } from "../../utils/synchronizer";
 import { View } from "./view";
 
 export type ViewIdentifier = string
@@ -81,6 +83,15 @@ class ViewWrapper<WrappedView extends View, UpdateArguments> extends View {
     }
 }
 
+class ReactViewWrapper extends ViewWrapper<View, void> {
+    
+    public constructor(root: HTMLElement, builder?: (root: HTMLElement) => void, show?: boolean) {
+        super(root)
+        if (builder) { builder(this.container) }
+        if (show)    { this.show() }
+    }
+}
+
 type AnyWrappedView = ViewWrapper<any, any>
 
 export class MetaView extends View {
@@ -141,6 +152,15 @@ export class MetaView extends View {
         if (options?.show) { this.showView(identifier) }
 
         return wrapper.wrappedView!
+    }
+
+    public addReactView(identifier: ViewIdentifier, builder: (root: HTMLElement) => void, show?: boolean): void {
+        if (this.views.has(identifier)) { throw new Error(`Please remove the existing view for ${identifier} before adding a new one!`) }
+
+        const wrapper = new ReactViewWrapper(this.root, builder)
+        this.setIdentifier(identifier, wrapper)
+
+        if (show) { this.showView(identifier) }
     }
 
     public removeView(identifier: ViewIdentifier): View | undefined {

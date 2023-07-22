@@ -11,7 +11,8 @@ import { GhostSnapshot } from "../../snapshot/snapshot";
 import { SubscriptionManager } from "../../widgets/mouse-tracker";
 import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
-import { P5JSPreview } from "../previews/p5js-preview";
+//import { P5JSPreview } from "../previews/p5js-preview";
+import P5JSPreview from "../previews/p5js/react-p5js-preview";
 import { VersionManagerView } from "../version/version-manager";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
@@ -20,6 +21,9 @@ import { VCSVersion } from "../../../../app/components/data/version";
 import { GhostSnapshotFooter } from "../../snapshot/footer";
 
 import { p5jsDefaultCode } from "../../../utils/default-code-snippets"
+
+import React from "react";
+import { createRoot } from "react-dom/client"
 
 class GhostEditorSnapshotManager {
 
@@ -625,9 +629,12 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
                 }
             })
 
-            const p5jsPreview = this.sideView.addView("p5js", root => {
-                return new P5JSPreview(root, { provider: this, padding: 5, synchronizer: this.synchronizer })
-            }, {
+            /*const p5jsPreview = */this.sideView.addReactView("p5js", root => {
+                const reactRoot = createRoot(root)
+                reactRoot.render(<P5JSPreview synchronizer={this.synchronizer!} codeProvider={this}></P5JSPreview>)
+
+                //return new P5JSPreview(root, { provider: this, padding: 5, synchronizer: this.synchronizer })
+            }, /*{
                 showCallback(view: P5JSPreview) {
                     view.forceRender()
                 },
@@ -637,7 +644,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
                 hideCallback(view: P5JSPreview) {
                     view.hideIFrame()
                 },
-            })
+            }*/)
 
             const versionManager = this.sideView.addView("versionManager", root => {
                 return new VersionManagerView(root, { synchronizer: this.synchronizer })

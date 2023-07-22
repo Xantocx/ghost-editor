@@ -1,7 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react'
 import IframeResizer from 'iframe-resizer-react'
 
-import { Synchronizer, Sync } from "../../../../utils/synchronizer"
+import { styled } from 'styled-components';
+
+import { Synchronizer } from "../../../../utils/synchronizer"
 import { CodeProvider } from "../preview";
 import { uuid } from "../../../../utils/uuid"
 import { throttle } from "../../../../utils/helpers"
@@ -11,7 +13,7 @@ import "./react-p5js-preview.css"
 const p5jsScript          = new URL("./libs/p5js/p5.min.js", document.baseURI).href
 const iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
 
-function getHtml(sketchId: string, code: string): string {
+function getHtml(sketchId: number, code: string): string {
     return `
         <!DOCTYPE html>
         <html lang="en">
@@ -44,16 +46,18 @@ function getHtml(sketchId: string, code: string): string {
                 function sendMessage(type, message) {
                     const iframe = window.parentIFrame
                     if (iframe) {
-                        iframe.sendMessage({ sketchId: "${sketchId}", type, message })
+                        iframe.sendMessage({ sketchId: ${sketchId}, type, message })
+                    } else {
+                        preparedMessage = { type, message }
                     }
                 }
 
                 function sendSuccessMessage() {
-                    preparedMessage = { type: "success", message: { code } })
+                    sendMessage("success", { code })
                 }
 
                 function sendSyntaxError(error) {
-                    preparedMessage = { type: "syntax-error", message: { description: error.message, stack: error.stack } })
+                    sendMessage("syntax-error", { description: error.message, stack: error.stack })
                 }
 
                 function sendRuntimeError(error) {
@@ -137,14 +141,13 @@ function getHtml(sketchId: string, code: string): string {
                         } else {
                             window.setup = undefined
                             window.draw  = undefined
-                            sendSyntaxError(error)
+                            sendSyntaxError({ message: "Your code must include a 'setup' and a 'draw' function to be rendered in this P5JS preview.", stack: "" })
                         }
 
+                        sendSuccessMessage()
                     } catch (error) {
                         sendSyntaxError(error)
                     }
-
-
                 }
             </script>
         </body>
@@ -152,11 +155,10 @@ function getHtml(sketchId: string, code: string): string {
     `
 }
 
-function getHtmlUrl(sketchId: string, code: string): string {
+function getHtmlUrl(sketchId: number, code: string): string {
     const htmlBlob = new Blob([getHtml(sketchId, code)], { type: 'text/html' });
     return URL.createObjectURL(htmlBlob);
 }
-
 
 
 interface P5JSPreviewProps {
@@ -167,35 +169,49 @@ interface P5JSPreviewProps {
 
 const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, errorMessageColor }) => {
 
-    const containerRef                    = useRef<HTMLDivElement | null>(null)
-    const iframeRef                       = useRef<HTMLIFrameElement | null>(null)
-    const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined)
+    const containerRef      = useRef<HTMLDivElement | null>(null)
+    const latestSketchId    = useRef<number>(0)
+    const lastWorkingSketch = useRef<{ sketchId: number, code: string } | undefined>(undefined)
 
-    function renderSketch(sketchId: string, code: string) {
-        const iframe = iframeRef.current
-        if (iframe) {
-            iframe.src = getHtmlUrl(sketchId, code)
+    const [iframeSource,      setIframeSource]      = useState<string | undefined>(undefined)
+    const [sketch,            setSketch]            = useState<string | undefined>(undefined)
+    const [errorMessage,      setErrorMessage]      = useState<string>("")
+    const [color,             setColor]             = useState<string>("black")
+
+    function renderSketch(sketchId: number, code: string) {
+        const oldIframeSource = iframeSource
+
+        const newIframeSource = getHtmlUrl(sketchId, code)
+        setIframeSource(newIframeSource)
+
+        if (oldIframeSource) { URL.revokeObjectURL(oldIframeSource) }
+    }
+
+    function renderLastWorkingSketch(): void {
+        const workingSketch = lastWorkingSketch.current
+        if (workingSketch) {
+            console.log("RENDERING OLD SKETCH!")
+            renderSketch(workingSketch.sketchId, workingSketch.code)
         }
     }
 
-    let lastWorkingSketch: { sketchId: string, code: string }
-    function renderLastWorkingSketch(): void {
-        renderSketch(lastWorkingSketch.sketchId, lastWorkingSketch.code)
+    function updateSketch(sketch: string | undefined): void {
+        if (sketch === undefined) { return }
+
+        setErrorMessage("")
+        latestSketchId.current++
+        renderSketch(latestSketchId.current, sketch)
     }
 
-    let latestSketchId:  string
-    function updateCode(code: string): void {
-        latestSketchId = uuid(32)
-        setErrorMessage(undefined)
-        renderSketch(latestSketchId, code)
-    }
+    const updateSketchThrottled = throttle(setSketch, 500)
 
-    const updateCodeThrottled = throttle(updateCode, 500)
+    useEffect(() => updateSketch(sketch),                                      [sketch])
+    useEffect(() => setColor(errorMessageColor ? errorMessageColor : "black"), [errorMessageColor])
 
     useEffect(() => {
         const sync = synchronizer.registerSync(async () => {
             const code = await codeProvider.getCode()
-            updateCodeThrottled(code)
+            updateSketchThrottled(code)
         })
     
         return () => {
@@ -203,21 +219,28 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
         };
     }, []);
 
-    function onMessage({ message: { type, sketchId, message }}: { iframe: IframeResizer.IFrameComponent, message: { type: string, sketchId: string, message: any } }): void {
-        if (sketchId !== latestSketchId) { return }
+    function onMessage({ iframe, message: { sketchId, type, message }}: { iframe: IframeResizer.IFrameComponent, message: { type: string, sketchId: number, message: any } }): void {
+        console.log("RECIEVED MESSAGE!")
+        console.log(sketchId)
+        console.log(latestSketchId.current)
+
+        if (sketchId !== latestSketchId.current) { return }
+
+        console.log(type)
 
         if (type !== "success" && type !== "syntax-error" && type !== "runtime-error") {
             throw new Error(`"${type}" is not a valid message type for the P5JSPreview!`)
         }
         
         if (type === "success" || type === "runtime-error") {
-            lastWorkingSketch = { sketchId, code: message.code }
+            lastWorkingSketch.current = { sketchId, code: message.code }
         }
 
         if (type === "syntax-error" || type === "runtime-error") {
+            console.log(message.description)
             const description = message.description
             const stack       = message.stack
-            setErrorMessage(`Message:\n${description}` + (stack && this.getContentHeight() > 300 ? `\n\nStack:\n${stack}` : ""))
+            setErrorMessage(`Message:\n${description}` + (stack && parseInt(iframe.style.height) > 300 ? `\n\nStack:\n${stack}` : ""))
         }
 
         if (type === "syntax-error") {
@@ -227,16 +250,40 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
 
     return (
         <div className="container" ref={containerRef} style={{ padding: 5 }}>
-            <IframeResizer
-                forwardRef={iframeRef}
-                checkOrigin={["file://"]}
-                sizeWidth={true}
-                heightCalculationMethod='taggedElement'
-                tolerance={20}
-                log
-                onMessage={onMessage}
-            />
-            <div className='error-message' style={{ color: errorMessageColor ? errorMessageColor : "black", border: `1px solid ${errorMessageColor ? errorMessageColor : "black"}` }}>{errorMessage ? errorMessage : ""}</div>
+
+            <div style={{ position: 'relative', flex: 4 }}>
+
+                {iframeSource && <IframeResizer
+                    src={iframeSource}
+                    checkOrigin={["file://"]}
+                    sizeWidth={true}
+                    widthCalculationMethod='taggedElement'
+                    tolerance={20}
+                    onMessage={onMessage}
+                />}
+
+                {errorMessage && <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(255, 255, 255, 0.5)', // semi-transparent black
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }}>
+                    {/* <img src='graphic.png' alt='graphic' /> */}
+                    <h1>TEST</h1>
+                </div>}
+
+            </div>
+
+            <div className='error-message' style={{ color, border: `1px solid ${color}` }}>
+                <h3 style={{ color, borderBottom: `1px solid ${color}`, padding: "5px", margin: "0" }}>Error Log:</h3>
+                <p style={{ color, padding: "5px", margin: "0" }}>{errorMessage ? errorMessage : "No errors"}</p>
+            </div>
+
         </div>
     )
 }
