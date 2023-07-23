@@ -30,6 +30,7 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
     }
 
     public static async loadFrom(tag: Tag): Promise<TagProxy> {
+        console.log("GETTING BLOCK PROXY 1")
         const tagBlock    = await BlockProxy.get(tag.tagBlockId)
         const sourceBlock = await BlockProxy.get(tag.sourceBlockId)
 

@@ -27,7 +27,11 @@ export function setupP5JS(): void {
     
             let label: string;
             if (color.alpha === 1) {
-                label = keyword + "(" + red + ", " + green + ", " + blue + ")";
+                if (red === green && red === blue) {
+                    label = keyword + "(" + red + ")";
+                } else {
+                    label = keyword + "(" + red + ", " + green + ", " + blue + ")";
+                }
             } else {
                 label = keyword + "(" + red + ", " + green + ", " + blue + ", " + alpha + ")";
             }

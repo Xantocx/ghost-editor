@@ -13,8 +13,8 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
     public readonly type:     LineType
     public          order:    number
 
-    public versions: VersionProxy[]
-    public blocks:   BlockProxy[]
+    public versions: VersionProxy[] = []
+    public blocks:   BlockProxy[]   = []
 
     public static async get(id: number): Promise<LineProxy> {
         return await ProxyCache.getLineProxy(id)
@@ -36,12 +36,13 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
         ProxyCache.registerLineProxy(proxy)
         
         const versionData = await prismaClient.version.findMany({ where: { lineId: line.id }, orderBy: { timestamp: "asc" } })
-        proxy.versions    = await Promise.all(versionData.map(version => VersionProxy.getFor(version)))
+        for (const version of versionData) { proxy.versions.push(await VersionProxy.getFor(version)) }
 
         if (proxy.versions.length === 0) { throw new Error("LINE SHOULD NEVER HAVE 0 VERSIONS WHEN CREATING A PROXY FOR THE FIRST TIME!") }
 
+        console.log("GETTING BLOCK PROXY 3")
         const blockData = await prismaClient.block.findMany({ where: { fileId: file.id, lines: { some: { id: line.id } } } })
-        proxy.blocks    = await Promise.all(blockData.map(block => BlockProxy.getFor(block)))
+        for (const block of blockData) { proxy.blocks.push(await BlockProxy.getFor(block)) }
 
         return proxy
     }

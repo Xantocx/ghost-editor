@@ -1,11 +1,22 @@
+import { prismaClient } from "../../db/client"
+
 export type Timestamp = number
 
 export class TimestampProvider {
 
-    private static nextTimestamp: Timestamp = Math.floor(Math.random() * 100000000)
+    private static id:            number
+    private static nextTimestamp: Timestamp
 
-    public static setupNextTimestamp(timestamp: Timestamp): void {
-        this.nextTimestamp = timestamp
+    private static updateOperation: Promise<any> = Promise.resolve() 
+
+    public static async setup(): Promise<void> {
+        let timestamp = await prismaClient.timestamp.findFirst()
+        if (timestamp === null) {
+            timestamp = await prismaClient.timestamp.create({})
+        }
+
+        this.id            = timestamp.id
+        this.nextTimestamp = timestamp.timestamp
     }
 
     public static getLastTimestamp(): Timestamp {
@@ -15,6 +26,18 @@ export class TimestampProvider {
     public static getTimestamp(): Timestamp {
         const timestamp = this.nextTimestamp
         this.nextTimestamp++
+
+        this.updateOperation = this.updateOperation.then(async () => {
+            await prismaClient.timestamp.update({
+                where: { id:        this.id },
+                data:  { timestamp: this.nextTimestamp }
+            })
+        })
+
         return timestamp
+    }
+
+    public static async flush(): Promise<void> {
+        await this.updateOperation
     }
 }

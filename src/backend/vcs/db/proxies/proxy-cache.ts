@@ -10,8 +10,15 @@ export class ProxyCache {
     private static readonly tags     = new Map<number, TagProxy>
 
 
-    public static registerFileProxy(proxy: FileProxy): void {
-        this.files.set(proxy.id, proxy)
+    public static registerFileProxy(proxy: FileProxy): FileProxy {
+        if (this.files.has(proxy.id)) {
+            const existingProxy = this.files.get(proxy.id)!
+            if (existingProxy.identity !== proxy.identity) { throw new Error("Multiple instances for the same File created!") }
+            return existingProxy
+        } else {
+            this.files.set(proxy.id, proxy)
+            return proxy
+        }
     }
 
     public static async getFileProxy(id: number): Promise<FileProxy> {
@@ -19,8 +26,7 @@ export class ProxyCache {
             return this.files.get(id)!
         } else {
             const proxy = await FileProxy.load(id)
-            this.registerFileProxy(proxy)
-            return proxy
+            return this.registerFileProxy(proxy)
         }
     }
 
@@ -30,14 +36,20 @@ export class ProxyCache {
             return this.files.get(id)!
         } else {
             const proxy = await FileProxy.loadFrom(file)
-            this.registerFileProxy(proxy)
-            return proxy
+            return this.registerFileProxy(proxy)
         }
     }
 
 
-    public static registerBlockProxy(proxy: BlockProxy): void {
-        this.blocks.set(proxy.id, proxy)
+    public static registerBlockProxy(proxy: BlockProxy): BlockProxy {
+        if (this.blocks.has(proxy.id)) {
+            const existingProxy = this.blocks.get(proxy.id)!
+            if (existingProxy.identity !== proxy.identity) { throw new Error("Multiple instances for the same Block created!") }
+            return existingProxy
+        } else {
+            this.blocks.set(proxy.id, proxy)
+            return proxy
+        }
     }
 
     public static async getBlockProxy(id: number): Promise<BlockProxy> {
@@ -45,8 +57,7 @@ export class ProxyCache {
             return this.blocks.get(id)!
         } else {
             const proxy = await BlockProxy.load(id)
-            this.registerBlockProxy(proxy)
-            return proxy
+            return this.registerBlockProxy(proxy)
         }
     }
 
@@ -56,15 +67,21 @@ export class ProxyCache {
             return this.blocks.get(id)!
         } else {
             const proxy = await BlockProxy.loadFrom(block)
-            this.registerBlockProxy(proxy)
-            return proxy
+            return this.registerBlockProxy(proxy)
         }
     }
 
 
 
-    public static registerLineProxy(proxy: LineProxy): void {
-        this.lines.set(proxy.id, proxy)
+    public static registerLineProxy(proxy: LineProxy): LineProxy {
+        if (this.lines.has(proxy.id)) {
+            const existingProxy = this.lines.get(proxy.id)!
+            if (existingProxy.identity !== proxy.identity) { throw new Error("Multiple instances for the same Line created!") }
+            return existingProxy
+        } else {
+            this.lines.set(proxy.id, proxy)
+            return proxy
+        }
     }
 
     public static async getLineProxy(id: number): Promise<LineProxy> {
@@ -72,8 +89,7 @@ export class ProxyCache {
             return this.lines.get(id)!
         } else {
             const proxy = await LineProxy.load(id)
-            this.registerLineProxy(proxy)
-            return proxy
+            return this.registerLineProxy(proxy)
         }
     }
 
@@ -83,14 +99,20 @@ export class ProxyCache {
             return this.lines.get(id)!
         } else {
             const proxy = await LineProxy.loadFrom(line)
-            this.registerLineProxy(proxy)
-            return proxy
+            return this.registerLineProxy(proxy)
         }
     }
 
 
-    public static registerVersionProxy(proxy: VersionProxy): void {
-        this.versions.set(proxy.id, proxy)
+    public static registerVersionProxy(proxy: VersionProxy): VersionProxy {
+        if (this.versions.has(proxy.id)) {
+            const existingProxy = this.versions.get(proxy.id)!
+            if (existingProxy.identity !== proxy.identity) { throw new Error("Multiple instances for the same Version created!") }
+            return existingProxy
+        } else {
+            this.versions.set(proxy.id, proxy)
+            return proxy
+        }
     }
 
     public static async getVersionProxy(id: number): Promise<VersionProxy> {
@@ -98,8 +120,7 @@ export class ProxyCache {
             return this.versions.get(id)!
         } else {
             const proxy = await VersionProxy.load(id)
-            this.registerVersionProxy(proxy)
-            return proxy
+            return this.registerVersionProxy(proxy)
         }
     }
 
@@ -109,14 +130,20 @@ export class ProxyCache {
             return this.versions.get(id)!
         } else {
             const proxy = await VersionProxy.loadFrom(version)
-            this.registerVersionProxy(proxy)
-            return proxy
+            return this.registerVersionProxy(proxy)
         }
     }
 
 
-    public static registerTagProxy(proxy: TagProxy): void {
-        this.tags.set(proxy.id, proxy)
+    public static registerTagProxy(proxy: TagProxy): TagProxy {
+        if (this.tags.has(proxy.id)) {
+            const existingProxy = this.tags.get(proxy.id)!
+            if (existingProxy.identity !== proxy.identity) { throw new Error("Multiple instances for the same Tag created!") }
+            return existingProxy
+        } else {
+            this.tags.set(proxy.id, proxy)
+            return proxy
+        }
     }
 
     public static async getTagProxy(id: number): Promise<TagProxy> {
@@ -124,8 +151,7 @@ export class ProxyCache {
             return this.tags.get(id)!
         } else {
             const proxy = await TagProxy.load(id)
-            this.registerTagProxy(proxy)
-            return proxy
+            return this.registerTagProxy(proxy)
         }
     }
 
@@ -135,8 +161,7 @@ export class ProxyCache {
             return this.tags.get(id)!
         } else {
             const proxy = await TagProxy.loadFrom(tag)
-            this.registerTagProxy(proxy)
-            return proxy
+            return this.registerTagProxy(proxy)
         }
     }
 }

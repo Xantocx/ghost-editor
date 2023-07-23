@@ -10,6 +10,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Timestamp {
+  id        Int @id @default(autoincrement())
+  timestamp Int     @default(0)
+}
+
 model File {
   id Int @id @default(autoincrement())
 

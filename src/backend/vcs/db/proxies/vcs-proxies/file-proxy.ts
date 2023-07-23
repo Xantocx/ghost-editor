@@ -10,7 +10,7 @@ import { ISessionFile } from "../../utilities"
 export class FileProxy extends DatabaseProxy implements ISessionFile {
 
     public readonly eol:   string
-    public          lines: LineProxy[]
+    public          lines: LineProxy[] = []
 
     public static async get(id: number): Promise<FileProxy> {
         return await ProxyCache.getFileProxy(id)
@@ -30,7 +30,7 @@ export class FileProxy extends DatabaseProxy implements ISessionFile {
         ProxyCache.registerFileProxy(proxy)
 
         const lines = await prismaClient.line.findMany({ where: { fileId: file.id }, orderBy: { order: "asc" } })
-        proxy.lines = await Promise.all(lines.map(line => LineProxy.getFor(line)))
+        for (const line of lines) { proxy.lines.push(await LineProxy.getFor(line)) }
 
         return proxy
     }
@@ -189,7 +189,9 @@ export class FileProxy extends DatabaseProxy implements ISessionFile {
             })
         }))
 
-        const lineData = await Promise.all(lines.map(async line => { return { line: await LineProxy.getFor(line), v0: await VersionProxy.getFor(line.versions[0]), v1: await VersionProxy.getFor(line.versions[1]) }}))
+        const lineData: { line: LineProxy, v0: VersionProxy, v1: VersionProxy }[] = []
+        for (const line of lines) { lineData.push({ line: await LineProxy.getFor(line), v0: await VersionProxy.getFor(line.versions[0]), v1: await VersionProxy.getFor(line.versions[1]) }) }
+
         const newLines = lineData.map(({ line, v0, v1 }) => line)
 
         if (previous) {

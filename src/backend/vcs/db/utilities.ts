@@ -225,6 +225,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     }
 
     public async getSessionBlockFrom(block: Block): Promise<BlockProxy> {
+        console.log("GETTING BLOCK PROXY 2")
         return await BlockProxy.getFor(block)
     }
 
@@ -243,6 +244,10 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     }
 
     public async deleteSessionBlock(block: BlockProxy): Promise<void> {
+
+        console.log("DELETING:")
+        console.log(block)
+        console.log("------------------------------------------------")
 
         const file     = block.file
         const fileData = await prismaClient.file.findUniqueOrThrow({ where: { id: file.id }, include: { lines: true } })
@@ -278,7 +283,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
 
             if (block.origin) {
                 const origin = block.origin!
-                const index  = origin.clones.findIndex(child => block.id === child.id)
+                const index  = origin.clones.findIndex(clone => block.id === clone.id)
                 if (index > -1) { origin.clones.splice(index, 1) }
             }
 
@@ -293,6 +298,10 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
         }
 
         await prismaClient.$transaction(prismaOperations)
+
+        console.log("DELETED -> PARENT:")
+        console.log(parent)
+        console.log("------------------------------------------------\n\n")
     }
 
     public async getFileData(fileId: VCSFileId): Promise<VCSFileData> {

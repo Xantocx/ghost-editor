@@ -30,9 +30,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public parent?: BlockProxy
     public origin?: BlockProxy
 
-    public children: BlockProxy[]
-    public clones:   BlockProxy[]
-    public tags:     TagProxy[]
+    public children: BlockProxy[] = []
+    public clones:   BlockProxy[] = []
+    public tags:     TagProxy[]   = []
 
     private _timestamp:  number
     public get timestamp(): number{ return this._timestamp }
@@ -82,9 +82,12 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         proxy.firstLine = await LineProxy.getFor(firstLineData)
         proxy.lastLine  = await LineProxy.getFor(lastLineData)
 
-        proxy.children = await Promise.all(childrenData.map(child => BlockProxy.getFor(child)))
-        proxy.clones   = await Promise.all(cloneData.map(clone => BlockProxy.getFor(clone)))
-        proxy.tags     = await Promise.all(tagData.map(tag => TagProxy.getFor(tag)))
+        if (childrenData.length > 0) { console.log("GETTING BLOCK PROXY 7") }
+        for (const child of childrenData) { proxy.children.push(await BlockProxy.getFor(child)) }
+        if (cloneData.length > 0) { console.log("GETTING BLOCK PROXY 8") }
+        for (const clone of cloneData)    { proxy.clones.push(  await BlockProxy.getFor(clone)) }
+        if (tagData.length > 0) { console.log("GETTING BLOCK PROXY 9") }
+        for (const tag of tagData)        { proxy.tags.push(    await TagProxy.getFor(tag)) }
 
         // NOTES: this is a unique call that is only relevant when a new block is created on already existing/loaded lines -> in this case, this will notify the lines about new blocks
         proxy.getLines().forEach(line => {
@@ -143,7 +146,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         lines.forEach(line => timestamps.set(line.id, this))
 
         for (const child of this.children) {
-            timestamps  = child.getResponsibilityTable({ clonesToConsider, collectedTimestamps: timestamps })
+            timestamps = child.getResponsibilityTable({ clonesToConsider, collectedTimestamps: timestamps })
         }
 
         return timestamps
@@ -281,6 +284,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             data:  { sourceBlockId: block.id }
         })
 
+        console.log("GETTING BLOCK PROXY 6")
         return { blockId: blockId, block: await BlockProxy.getFor(block) }
     }
 
@@ -302,6 +306,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
+        console.log("GETTING BLOCK PROXY 5")
         const clone = await BlockProxy.getFor(block)
         this.clones.push(clone)
         return clone
@@ -319,6 +324,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
+        console.log("GETTING BLOCK PROXY 4")
         const child = await BlockProxy.getFor(block)
         this.children.push(child)
         return child
@@ -439,6 +445,11 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async createChild(range: VCSBlockRange): Promise<BlockProxy | null> {
+
+        console.log("CREATING:")
+        console.log(this)
+        console.log("-------------------------------------\n")
+
         const linesInRange = this.getLinesInRange(range)
 
         const table = this.getResponsibilityTable()
@@ -472,6 +483,10 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         const { timeline, index } = this.getTimelineWithCurrentIndex()
 
         const blockId = VCSBlockId.createFrom(fileId, this.blockId)
+
+        const tagInfo: VCSTagInfo[] = [] 
+        for (const tag of this.tags) { tagInfo.push(await tag.asTagInfo(blockId)) }
+
         return new VCSBlockInfo(blockId,
                                 this.type,
                                 {
@@ -480,11 +495,13 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
                                 },
                                 timeline.length,
                                 index,
-                                await Promise.all(this.tags.map(tag => tag.asTagInfo(blockId))))
+                                tagInfo)
     }
 
     public async getChildrenInfo(fileId: VCSFileId): Promise<VCSBlockInfo[]> {
-        return await Promise.all(this.children.map(block => block.asBlockInfo(fileId)))
+        const info: VCSBlockInfo[] = []
+        for (const child of this.children) { info.push(await child.asBlockInfo(fileId)) }
+        return info
     }
 
     public async applyIndex(targetIndex: number): Promise<void> {
@@ -497,6 +514,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         let selectedVersion = timeline[targetIndex] // actually targeted version
 
         await this.applyTimestamp(selectedVersion.timestamp)
+
+        console.log(selectedVersion.timestamp)
+        console.log(this.timestamp)
     }
 
     public async applyTimestamp(timestamp: number): Promise<void> {
@@ -517,9 +537,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             const cloneTimestamp = TimestampProvider.getTimestamp()
 
             // this could be done with a createMany instead, but I need the side effect of createNewVersion to make sure the in-memory representation remains consistent
-            await Promise.all(headsToClone.map(head => {
-                return head.line.createVersion(this, cloneTimestamp, VersionType.CLONE, head.isActive, head.content, head)
-            }))
+            for (const head of headsToClone) {
+                await head.line.createVersion(this, cloneTimestamp, VersionType.CLONE, head.isActive, head.content, head)
+            }
         }
     }
 
