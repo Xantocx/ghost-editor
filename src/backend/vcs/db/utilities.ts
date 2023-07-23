@@ -245,7 +245,7 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
     public async deleteSessionBlock(block: BlockProxy): Promise<void> {
 
         const file     = block.file
-        const fileData = await prismaClient.file.findUniqueOrThrow({ where: { id: file.id } })
+        const fileData = await prismaClient.file.findUniqueOrThrow({ where: { id: file.id }, include: { lines: true } })
 
         const prismaOperations: PrismaPromise<any>[] = []
 
@@ -254,18 +254,16 @@ export class DBSession extends Session<FileProxy, LineProxy, VersionProxy, Block
                 where: { id: block.id },
                 data: {
                     file:              { disconnect: true },
-                    fileAfterDeletion: { connect: fileData },
-                    lines:             { set: [] },
+                    fileAfterDeletion: { connect:    { id: fileData.id } },
+                    lines:             { disconnect: fileData.lines.map(line => { return { id: line.id } })},
                     parent:            { disconnect: true },
                     origin:            { disconnect: true }
                 }
             }))
 
+            block.clones.map(clone => removeBlock(clone))
             const timestamps = block.children.map(child => removeBlock(child))
             const timestamp  = Math.max(...timestamps)
-
-            // I think this is unnecessary, but testing is needed
-            // block.clones.map(clone => removeBlock(clone))
 
             file.lines.forEach(line => {
                 const index = line.blocks.findIndex(lineBlock => block.id === lineBlock.id)

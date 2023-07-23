@@ -1,5 +1,7 @@
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from "openai";
 import { BlockProxy } from "./types";
+import { Block } from "@prisma/client";
+import { prismaClient } from "./client";
 
 const configuration = new Configuration({
     apiKey: process.env.OPENAI_API_KEY,
@@ -13,7 +15,7 @@ export default class CodeAI {
     public readonly root:  BlockProxy
     public readonly block: BlockProxy
 
-    private readonly versionNameHistory: ChatCompletionRequestMessage[] = []
+    private readonly versionNameHistory: ChatCompletionRequestMessage[]
 
     private readonly temperature:      number                   = 0
     private readonly maxTokens:        number                   = 256
@@ -22,14 +24,16 @@ export default class CodeAI {
     private readonly frequencyPenalty: number                   = 0
     private readonly presencePenalty:  number                   = 0
 
-    public static async create(block: BlockProxy): Promise<CodeAI> {
-        const root = await block.getFileRoot()
-        return new CodeAI(root, block)
+    public static async create(block: BlockProxy, blockData: Block): Promise<CodeAI> {
+        const root               = await block.getFileRoot()
+        const versionNameHistory = JSON.parse(blockData.aiVersionNameHistory)
+        return new CodeAI(root, block, versionNameHistory)
     }
 
-    private constructor(root: BlockProxy, block: BlockProxy) {
-        this.root  = root
-        this.block = block
+    private constructor(root: BlockProxy, block: BlockProxy, versionNameHistory: ChatCompletionRequestMessage[]) {
+        this.root               = root
+        this.block              = block
+        this.versionNameHistory = versionNameHistory
     }
 
     private async getCompleteCode(): Promise<string> {
@@ -69,6 +73,13 @@ export default class CodeAI {
             versionInfo.description = lines[2].replace('Description: ', '')
 
             this.versionNameHistory.push(requestMessage, response)
+
+            await prismaClient.block.update({
+                where: { id: this.block.id },
+                data:  {
+                    aiVersionNameHistory: JSON.stringify(this.versionNameHistory)
+                }
+            })
         } catch {
             console.warn("Failed to generate version info!")
         }

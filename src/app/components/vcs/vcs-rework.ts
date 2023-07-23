@@ -119,15 +119,17 @@ export class VCSChildBlockInfo extends VCSBlockInfo {
 
 export class VCSTagInfo extends VCSTagId {
 
+    public readonly tagBlockId:          VCSBlockId  // tag block refers to the block that is reserved to edit this tag specifically
     public readonly name:                string
     public readonly timestamp:           number
     public readonly text:                string
     public readonly description:         string
     public readonly automaticSuggestion: boolean
 
-    public constructor(tagId: VCSTagId, name: string, timestamp: number, text: string, description: string, automaticSuggestion: boolean) {
+    public constructor(tagId: VCSTagId, tagBlockId: VCSBlockId, name: string, timestamp: number, text: string, description: string, automaticSuggestion: boolean) {
         super(tagId.sessionId, tagId.filePath, tagId.blockId, tagId.tagId)
 
+        this.tagBlockId          = tagBlockId
         this.name                = name
         this.timestamp           = timestamp
         this.text                = text

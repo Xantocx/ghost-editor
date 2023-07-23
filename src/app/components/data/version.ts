@@ -1,6 +1,6 @@
 import { GhostSnapshot } from "../../../editor/ui/snapshot/snapshot"
 import { CodeProvider } from "../../../editor/ui/views/view"
-import { VCSBlockSession, VCSTagInfo } from "../vcs/vcs-rework"
+import { VCSBlockId, VCSBlockSession, VCSTagInfo } from "../vcs/vcs-rework"
 
 export class VCSVersion implements CodeProvider {
 
@@ -9,7 +9,8 @@ export class VCSVersion implements CodeProvider {
     
     private session?: VCSBlockSession
 
-    public get blockId(): string              { return this.tag.blockId }
+    public get sourceBlockId(): string        { return this.tag.blockId }
+    public get tagBlockId(): VCSBlockId       { return this.tag.tagBlockId }
     public get tagId(): string                { return this.tag.tagId }
     public get name(): string                 { return this.tag.name }
     public get text(): string                 { return this.tag.text }
@@ -24,7 +25,7 @@ export class VCSVersion implements CodeProvider {
     public async getSession(): Promise<VCSBlockSession> {
         if (!this.session) {
             const rootSession = this.snapshot.session
-            this.session = await rootSession.copyBlock(this.snapshot.vcsBlockId)
+            this.session      = await rootSession.getChild(this.tagBlockId)
             await this.session.applyTag(this.tag)
         }
         return this.session!

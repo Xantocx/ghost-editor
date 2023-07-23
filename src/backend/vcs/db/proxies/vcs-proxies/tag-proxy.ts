@@ -9,7 +9,8 @@ import { VCSBlockId, VCSTagId, VCSTagInfo } from "../../../../../app/components/
 export class TagProxy extends DatabaseProxy implements ISessionTag {
 
     public readonly tagId:       string
-    public readonly block:       BlockProxy
+    public readonly tagBlock:    BlockProxy
+    public readonly sourceBlock: BlockProxy
     public readonly name:        string
     public readonly timestamp:   number
     public readonly code:        string
@@ -29,22 +30,26 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
     }
 
     public static async loadFrom(tag: Tag): Promise<TagProxy> {
-        const block = await BlockProxy.get(tag.blockId)
-        return new TagProxy(tag.id, tag.tagId, block, tag.name, tag.timestamp, tag.code, tag.description)
+        const tagBlock    = await BlockProxy.get(tag.tagBlockId)
+        const sourceBlock = await BlockProxy.get(tag.sourceBlockId)
+
+        return new TagProxy(tag.id, tag.tagId, tagBlock, sourceBlock, tag.name, tag.timestamp, tag.code, tag.description)
     }
 
-    private constructor(id: number, tagId: string, block: BlockProxy, name: string, timestamp: number, code: string, description: string) {
+    private constructor(id: number, tagId: string, tagBlock: BlockProxy, sourceBlock: BlockProxy, name: string, timestamp: number, code: string, description: string) {
         super(id)
         this.tagId       = tagId
-        this.block       = block
+        this.tagBlock    = tagBlock
+        this.sourceBlock = sourceBlock
         this.name        = name
         this.timestamp   = timestamp
         this.code        = code
         this.description = description
     }
 
-    public async asTagInfo(blockId: VCSBlockId): Promise<VCSTagInfo> {
-        return new VCSTagInfo(VCSTagId.createFrom(blockId, this.tagId),
+    public async asTagInfo(sourceBlockId: VCSBlockId): Promise<VCSTagInfo> {
+        return new VCSTagInfo(VCSTagId.createFrom(sourceBlockId, this.tagId),
+                              VCSBlockId.createFrom(sourceBlockId, this.tagBlock.blockId),
                               this.name,
                               this.timestamp,
                               this.code,

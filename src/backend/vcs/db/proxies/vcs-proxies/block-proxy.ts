@@ -74,7 +74,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         const lastLineData  = await prismaClient.line.findFirst({ where: { fileId: file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "desc" } })!
         const childrenData  = await prismaClient.block.findMany({ where: { fileId: file.id, parentId: block.id } })
         const cloneData     = await prismaClient.block.findMany({ where: { fileId: file.id, originId: block.id } })
-        const tagData       = await prismaClient.tag.findMany({ where: { blockId: block.id } })
+        const tagData       = await prismaClient.tag.findMany({   where: { sourceBlockId: block.id } })
 
         proxy.parent = block.parentId ? await ProxyCache.getBlockProxy(block.parentId) : undefined
         proxy.origin = block.originId ? await ProxyCache.getBlockProxy(block.originId) : undefined
@@ -94,7 +94,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         })
 
         // has to be here as parent is required
-        proxy.ai = await CodeAI.create(proxy)
+        proxy.ai = await CodeAI.create(proxy, block)
 
         return proxy
     }
@@ -284,7 +284,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return { blockId: blockId, block: await BlockProxy.getFor(block) }
     }
 
-    // WARNING: Should technically also copy children, but in this usecase unnecessary
+    // WARNING: Should technically also copy children, but in this application unnecessary
     public async copy(): Promise<BlockProxy> {
         const lines = this.getLines()
 
@@ -643,16 +643,18 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async createTag(): Promise<TagProxy> {
-        const code = await this.getText()
-
+        const code                  = await this.getText()
         const { name, description } = await this.ai.generateVersionInfo(code)
+
+        const tagBlock = await this.copy()
 
         const tagData = await prismaClient.tag.create({
             data: {
-                tagId:     `${this.blockId}:tag-${randomUUID()}`,
-                blockId:   this.id,
+                tagId:         `${this.blockId}:tag-${randomUUID()}`,
+                tagBlockId:    tagBlock.id,
+                sourceBlockId: this.id,
                 name,
-                timestamp: this.timestamp,
+                timestamp:     this.timestamp,
                 code,
                 description
             }

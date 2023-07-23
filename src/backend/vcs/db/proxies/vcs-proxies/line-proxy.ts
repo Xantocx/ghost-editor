@@ -1,7 +1,7 @@
 import { prismaClient } from "../../client";
 import { DatabaseProxy } from "../database-proxy";
 import { VersionProxy, BlockProxy } from "../../types";
-import { Line, LineType, Prisma, PrismaPromise, Version, VersionType } from "@prisma/client"
+import { Line, LineType, VersionType } from "@prisma/client"
 import { FileProxy } from "./file-proxy";
 import { TimestampProvider } from "../../../core/metadata/timestamps";
 import { ProxyCache } from "../proxy-cache";

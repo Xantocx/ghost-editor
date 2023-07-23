@@ -133,11 +133,11 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         })
     }
 
-    public async createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo>> {
+    public async createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo | null>> {
         return await this.resources.createQuery(request, VCSOperation.CreateChild, async (session, { parentBlockId, range }) => {
             const block = await session.getBlock(parentBlockId)
             const child  = await block.createChild(range)
-            return await child.asBlockInfo(parentBlockId)
+            return child ? await child.asBlockInfo(parentBlockId) : null
         })
     }
 

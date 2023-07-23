@@ -1,11 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react'
 import IframeResizer from 'iframe-resizer-react'
 
-import { styled } from 'styled-components';
-
 import { Synchronizer } from "../../../../utils/synchronizer"
 import { CodeProvider } from "../preview";
-import { uuid } from "../../../../utils/uuid"
 import { throttle } from "../../../../utils/helpers"
 
 import "./react-p5js-preview.css"

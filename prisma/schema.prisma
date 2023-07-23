@@ -43,7 +43,9 @@ model Block {
   timestamp Int
 
   lines Line[] @relation("LinesInBlocks")
-  tags  Tag[]  @relation("TagsForBlock")
+  tags  Tag[]  @relation("TagsCreatedByBlock")
+
+  representedTag Tag? @relation("BlockForTag")
 
   parentId Int?
   parent   Block?  @relation("ChildrenInParent", fields: [parentId], references: [id], onDelete: Cascade)
@@ -54,6 +56,8 @@ model Block {
   clones   Block[] @relation("ClonedBlocksOfOrigin") // always clone blocks with new heads
 
   createdVersions Version[] @relation("VersionsFromSourceBlock")
+
+  aiVersionNameHistory String @default("[]")
 
   @@index([fileId])
 }
@@ -113,13 +117,16 @@ model Tag {
 
   tagId String @unique
 
-  blockId Int
-  block   Block @relation("TagsForBlock", fields: [blockId], references: [id], onDelete: Cascade)
+  sourceBlockId Int
+  sourceBlock   Block @relation("TagsCreatedByBlock", fields: [sourceBlockId], references: [id], onDelete: Cascade)
+
+  tagBlockId Int @unique
+  tagBlock   Block @relation("BlockForTag", fields: [tagBlockId], references: [id], onDelete: Cascade)
 
   name        String
   timestamp   Int
   code        String
   description String
 
-  @@index([blockId])
+  @@index([sourceBlockId])
 }
