@@ -8,11 +8,12 @@ import { VCSBlockId, VCSTagId, VCSTagInfo } from "../../../../../app/components/
 
 export class TagProxy extends DatabaseProxy implements ISessionTag {
 
-    public readonly tagId:     string
-    public readonly block:     BlockProxy
-    public readonly name:      string
-    public readonly timestamp: number
-    public readonly code:      string
+    public readonly tagId:       string
+    public readonly block:       BlockProxy
+    public readonly name:        string
+    public readonly timestamp:   number
+    public readonly code:        string
+    public readonly description: string
 
     public static async get(id: number): Promise<TagProxy> {
         return await ProxyCache.getTagProxy(id)
@@ -29,16 +30,17 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
 
     public static async loadFrom(tag: Tag): Promise<TagProxy> {
         const block = await BlockProxy.get(tag.blockId)
-        return new TagProxy(tag.id, tag.tagId, block, tag.name, tag.timestamp, tag.code)
+        return new TagProxy(tag.id, tag.tagId, block, tag.name, tag.timestamp, tag.code, tag.description)
     }
 
-    private constructor(id: number, tagId: string, block: BlockProxy, name: string, timestamp: number, code: string) {
+    private constructor(id: number, tagId: string, block: BlockProxy, name: string, timestamp: number, code: string, description: string) {
         super(id)
-        this.tagId     = tagId
-        this.block     = block
-        this.name      = name
-        this.timestamp = timestamp
-        this.code      = code
+        this.tagId       = tagId
+        this.block       = block
+        this.name        = name
+        this.timestamp   = timestamp
+        this.code        = code
+        this.description = description
     }
 
     public async asTagInfo(blockId: VCSBlockId): Promise<VCSTagInfo> {
@@ -46,6 +48,7 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
                               this.name,
                               this.timestamp,
                               this.code,
+                              this.description,
                               false)
     }
 }

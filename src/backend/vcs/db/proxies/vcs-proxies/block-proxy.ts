@@ -8,6 +8,7 @@ import { MultiLineChange } from "../../../../../app/components/data/change"
 import { ProxyCache } from "../proxy-cache"
 import { ISessionBlock } from "../../utilities"
 import { randomUUID } from "crypto"
+import CodeAI from "../../openai-client"
 
 
 enum BlockReference {
@@ -16,6 +17,8 @@ enum BlockReference {
 }
 
 export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy, BlockProxy, LineProxy, TagProxy> {
+
+    public ai: CodeAI
 
     public readonly blockId: string
     public readonly file:    FileProxy
@@ -46,13 +49,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
         this._timestamp = updatedBlock.timestamp
     }
-
-    /*
-    public setTimestampOnResponsibleChildFor(line: LineProxy, timestamp: number, clonesToConsider?: BlockProxy[]) {
-        const child = this.getChildResponsibleFor(line, clonesToConsider)
-        return child.setTimestamp(timestamp)
-    }
-    */
 
     public static async get(id: number): Promise<BlockProxy> {
         return await ProxyCache.getBlockProxy(id)
@@ -97,6 +93,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
+        // has to be here as parent is required
+        proxy.ai = await CodeAI.create(proxy)
+
         return proxy
     }
 
@@ -106,6 +105,19 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         this.file       = file
         this.type       = type
         this._timestamp = timestamp
+    }
+
+    public async getFileRoot(): Promise<BlockProxy> {
+        let root = await this.getRoot()
+        while (root.origin !== undefined) { root = await root.origin!.getRoot() }
+        return root
+    }
+
+    // for a cloned block, the clone is the root
+    public async getRoot(): Promise<BlockProxy> {
+        let root = this as BlockProxy
+        while (root.parent !== undefined) { root = root.parent }
+        return root
     }
 
     // MAGIC: Cache lines + version, all done.
@@ -631,13 +643,18 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public async createTag(): Promise<TagProxy> {
+        const code = await this.getText()
+
+        const { name, description } = await this.ai.generateVersionInfo(code)
+
         const tagData = await prismaClient.tag.create({
             data: {
                 tagId:     `${this.blockId}:tag-${randomUUID()}`,
                 blockId:   this.id,
-                name:      `Tag ${this.tags.length + 1}`,
+                name,
                 timestamp: this.timestamp,
-                code:      await this.getText()
+                code,
+                description
             }
         })
 

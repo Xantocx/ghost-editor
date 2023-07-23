@@ -13,6 +13,7 @@ export class VCSVersion implements CodeProvider {
     public get tagId(): string                { return this.tag.tagId }
     public get name(): string                 { return this.tag.name }
     public get text(): string                 { return this.tag.text }
+    public get description(): string          { return this.tag.description }
     public get automaticSuggestion(): boolean { return this.tag.automaticSuggestion }
 
     constructor(snapshot: GhostSnapshot, tag: VCSTagInfo) {

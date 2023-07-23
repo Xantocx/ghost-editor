@@ -116,9 +116,10 @@ model Tag {
   blockId Int
   block   Block @relation("TagsForBlock", fields: [blockId], references: [id], onDelete: Cascade)
 
-  name      String
-  timestamp Int
-  code      String
+  name        String
+  timestamp   Int
+  code        String
+  description String
 
   @@index([blockId])
 }

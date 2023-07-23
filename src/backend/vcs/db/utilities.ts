@@ -16,6 +16,9 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionBlock ex
     type:    BlockType
     parent?: SessionBlock
 
+    getFileRoot(): Promise<SessionBlock>
+    getRoot(): Promise<SessionBlock>
+
     asBlockInfo(fileId: VCSFileId): Promise<VCSBlockInfo>
     getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]>
 
@@ -168,9 +171,7 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
 
     public async getRootBlockFor(blockId: VCSBlockId): Promise<{ root: SessionBlock, block: SessionBlock }> {
         const block = await this.getBlock(blockId)
-
-        let root = block
-        while (root.parent !== undefined) { root = root.parent }
+        const root  = await block.getRoot()
 
         return { root, block }
     }

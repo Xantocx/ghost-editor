@@ -35,10 +35,6 @@ function getHtml(sketchId: number, code: string): string {
 
                 canvas {
                     display: block;
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform-origin: top left;
                 }
             </style>
         </head>
@@ -71,26 +67,36 @@ function getHtml(sketchId: number, code: string): string {
                 }
 
                 function scaleCanvases() {
-                    const maxWidth  = window.innerWidth  - ${2 * previewPadding}
-                    const maxHeight = window.innerHeight - ${2 * previewPadding}
 
                     const p5Canvas = document.getElementsByClassName("p5Canvas")
 
+                    let maxWidth  = 0
+                    let maxHeight = 0
+
                     if (p5Canvas.length > 0) {
                         for (let i = 0; i < p5Canvas.length; i++) {
-                            const canvas           = p5Canvas[i]
-                            const scaleFactor      = Math.min(maxWidth / canvas.width, maxHeight / canvas.height)
-                            canvas.style.transform = "scale(" + scaleFactor + ") translate(-50%, -50%)"
+                            const canvas = p5Canvas[i]
+                            maxWidth  = Math.max(maxWidth,  canvas.width)
+                            maxHeight = Math.max(maxHeight, canvas.height)
                         }
                     }
+
+                    sendMessage("resize", { maxWidth, maxHeight })
                 }
 
-                window.addEventListener("load",   () => scaleCanvases()) 
-                window.addEventListener("resize", () => scaleCanvases())
+                //window.addEventListener("load",   () => scaleCanvases()) 
+                //window.addEventListener("resize", () => scaleCanvases())
 
                 // setup config object of iFrameResizer
                 window.iFrameResizer = {
-                    onReady: () => { if (preparedMessage) { sendMessage(preparedMessage.type, preparedMessage.message) } }
+                    onReady: () => { 
+                        if (preparedMessage) { sendMessage(preparedMessage.type, preparedMessage.message) }
+                        scaleCanvases()
+                    },
+                    onMessage: message => {
+                        if (message === "resize") { scaleCanvases() }
+                        else                      { throw new Error('"' + message + '" is not an accepted message event!') }
+                    }
                 }
             </script>
 
@@ -181,7 +187,10 @@ interface P5JSPreviewProps {
 
 const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, errorMessageColor }) => {
 
-    const containerRef          = useRef<HTMLDivElement | null>(null)
+    const isMounted = useRef(true);
+
+    const previewContainerRef   = useRef<HTMLDivElement | null>(null)
+    const iframeRef             = useRef<HTMLIFrameElement & { sendMessage: (message: any) => void } | null>(null)
     const latestSketchId        = useRef<number>(0)
     const lastWorkingSketch     = useRef<{ sketchId: number, code: string } | undefined>(undefined)
     const runtimeRecoverySketch = useRef<{ sketchId: number, code: string } | undefined>(undefined)
@@ -225,13 +234,41 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
             const code = await codeProvider.getCode()
             updateSketchThrottled(code)
         })
+
+        const observer = new ResizeObserver(entries => {
+            if (isMounted.current && iframeRef.current) {
+                iframeRef.current!.sendMessage("resize")
+            }
+        })
+      
+        if (previewContainerRef.current) {
+            observer.observe(previewContainerRef.current);
+        }
     
         return () => {
+            isMounted.current = false
+            observer.disconnect()
             sync.dispose()
         };
     }, []);
 
     function onMessage({ iframe, message: { sketchId, type, message }}: { iframe: IframeResizer.IFrameComponent, message: { type: string, sketchId: number, message: any } }): void {
+
+        if (type === "resize") {
+            const previewContainer = previewContainerRef.current
+            if (previewContainer) {
+                const computedStyle = getComputedStyle(previewContainer)
+                const scaleFactor   = Math.min(parseFloat(computedStyle.width)  / message.maxWidth,
+                                               parseFloat(computedStyle.height) / message.maxHeight)
+
+                iframe.style.transformOrigin = "top left"
+                iframe.style.transform       = `scale(${scaleFactor}) translate(-50%, -50%)`
+            } else {
+                console.warn("Cannot access container size for iframe!")
+            }
+
+            return
+        }
 
         if (sketchId !== latestSketchId.current) { return }
 
@@ -257,14 +294,15 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
     }
 
     return (
-        <div className="container" ref={containerRef} style={{ padding: previewPadding }}>
+        <div className="container" style={{ padding: previewPadding }}>
 
-            <div style={{ position: 'relative', flex: 4 }}>
+            <div ref={previewContainerRef} style={{ position: 'relative', flex: 3, padding: 5, border: "1px solid black" }}>
 
                 {iframeSource && <IframeResizer
+                    forwardRef={iframeRef}
                     src={iframeSource}
                     checkOrigin={["file://"]}
-                    sizeHeight={false}
+                    sizeWidth={true}
                     onMessage={onMessage}
                 />}
 

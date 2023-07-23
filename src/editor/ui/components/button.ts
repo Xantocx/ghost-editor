@@ -200,6 +200,8 @@ export class P5JSPreviewButton<Container extends VersionViewContainer<VCSVersion
         super(container.container, { onClick: options?.onClick })
         this.version = version
 
+        this.button.title = version.description
+
         this.style.display         = "inline-flex"
         this.style.overflow        = "hidden"
         this.style.padding         = "0"
