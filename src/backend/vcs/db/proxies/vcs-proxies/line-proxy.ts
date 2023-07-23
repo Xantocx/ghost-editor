@@ -40,7 +40,6 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
 
         if (proxy.versions.length === 0) { throw new Error("LINE SHOULD NEVER HAVE 0 VERSIONS WHEN CREATING A PROXY FOR THE FIRST TIME!") }
 
-        console.log("GETTING BLOCK PROXY 3")
         const blockData = await prismaClient.block.findMany({ where: { fileId: file.id, lines: { some: { id: line.id } } } })
         for (const block of blockData) { proxy.blocks.push(await BlockProxy.getFor(block)) }
 

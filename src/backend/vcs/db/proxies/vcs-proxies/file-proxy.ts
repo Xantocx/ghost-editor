@@ -29,6 +29,10 @@ export class FileProxy extends DatabaseProxy implements ISessionFile {
         const proxy = new FileProxy(file.id, file.eol)
         ProxyCache.registerFileProxy(proxy)
 
+        // preloading all blogs to prevend duplication of state
+        const blockData = await prismaClient.block.findMany({ where: { fileId: file.id } })
+        for (const block of blockData) { await BlockProxy.getFor(block) }
+
         const lines = await prismaClient.line.findMany({ where: { fileId: file.id }, orderBy: { order: "asc" } })
         for (const line of lines) { proxy.lines.push(await LineProxy.getFor(line)) }
 

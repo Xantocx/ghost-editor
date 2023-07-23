@@ -21,8 +21,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public ai: CodeAI
 
     public readonly blockId: string
-    public readonly file:    FileProxy
     public readonly type:    BlockType
+
+    public file: FileProxy
 
     public firstLine: LineProxy
     public lastLine:  LineProxy
@@ -64,16 +65,17 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     }
 
     public static async loadFrom(block: Block): Promise<BlockProxy> {
-        const file  = await ProxyCache.getFileProxy(block.fileId)
-        const proxy = new BlockProxy(block.id, block.blockId, file, block.type, block.timestamp)
+        const proxy = new BlockProxy(block.id, block.blockId, block.type, block.timestamp)
 
         ProxyCache.registerBlockProxy(proxy)
 
+        proxy.file = await ProxyCache.getFileProxy(block.fileId)
+
         // TODO: Blocks without lines are not handled well like this...
-        const firstLineData = await prismaClient.line.findFirst({ where: { fileId: file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "asc" } })!
-        const lastLineData  = await prismaClient.line.findFirst({ where: { fileId: file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "desc" } })!
-        const childrenData  = await prismaClient.block.findMany({ where: { fileId: file.id, parentId: block.id } })
-        const cloneData     = await prismaClient.block.findMany({ where: { fileId: file.id, originId: block.id } })
+        const firstLineData = await prismaClient.line.findFirst({ where: { fileId: proxy.file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "asc" } })!
+        const lastLineData  = await prismaClient.line.findFirst({ where: { fileId: proxy.file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "desc" } })!
+        const childrenData  = await prismaClient.block.findMany({ where: { fileId: proxy.file.id, parentId: block.id } })
+        const cloneData     = await prismaClient.block.findMany({ where: { fileId: proxy.file.id, originId: block.id } })
         const tagData       = await prismaClient.tag.findMany({   where: { sourceBlockId: block.id } })
 
         proxy.parent = block.parentId ? await ProxyCache.getBlockProxy(block.parentId) : undefined
@@ -82,11 +84,8 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         proxy.firstLine = await LineProxy.getFor(firstLineData)
         proxy.lastLine  = await LineProxy.getFor(lastLineData)
 
-        if (childrenData.length > 0) { console.log("GETTING BLOCK PROXY 7") }
         for (const child of childrenData) { proxy.children.push(await BlockProxy.getFor(child)) }
-        if (cloneData.length > 0) { console.log("GETTING BLOCK PROXY 8") }
         for (const clone of cloneData)    { proxy.clones.push(  await BlockProxy.getFor(clone)) }
-        if (tagData.length > 0) { console.log("GETTING BLOCK PROXY 9") }
         for (const tag of tagData)        { proxy.tags.push(    await TagProxy.getFor(tag)) }
 
         // NOTES: this is a unique call that is only relevant when a new block is created on already existing/loaded lines -> in this case, this will notify the lines about new blocks
@@ -102,10 +101,9 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return proxy
     }
 
-    private constructor(id: number, blockId: string, file: FileProxy, type: BlockType, timestamp: number) {
+    private constructor(id: number, blockId: string, type: BlockType, timestamp: number) {
         super(id)
         this.blockId    = blockId
-        this.file       = file
         this.type       = type
         this._timestamp = timestamp
     }
@@ -284,7 +282,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             data:  { sourceBlockId: block.id }
         })
 
-        console.log("GETTING BLOCK PROXY 6")
         return { blockId: blockId, block: await BlockProxy.getFor(block) }
     }
 
@@ -306,7 +303,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
-        console.log("GETTING BLOCK PROXY 5")
         const clone = await BlockProxy.getFor(block)
         this.clones.push(clone)
         return clone
@@ -324,7 +320,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
             }
         })
 
-        console.log("GETTING BLOCK PROXY 4")
         const child = await BlockProxy.getFor(block)
         this.children.push(child)
         return child
@@ -446,10 +441,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
 
     public async createChild(range: VCSBlockRange): Promise<BlockProxy | null> {
 
-        console.log("CREATING:")
-        console.log(this)
-        console.log("-------------------------------------\n")
-
         const linesInRange = this.getLinesInRange(range)
 
         const table = this.getResponsibilityTable()
@@ -514,9 +505,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         let selectedVersion = timeline[targetIndex] // actually targeted version
 
         await this.applyTimestamp(selectedVersion.timestamp)
-
-        console.log(selectedVersion.timestamp)
-        console.log(this.timestamp)
     }
 
     public async applyTimestamp(timestamp: number): Promise<void> {
