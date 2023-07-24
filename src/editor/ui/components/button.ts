@@ -257,8 +257,8 @@ export class P5JSPreviewToggleButton<Container extends VersionViewContainer<VCSV
     }
 
     private _selected: boolean
-    private get selected(): boolean { return this._selected }
-    private set selected(selected: boolean) { 
+    public get selected(): boolean { return this._selected }
+    public set selected(selected: boolean) { 
         this._selected = selected
         this.style.backgroundColor = selected ? this.selectedColor : this.defaultColor
     }

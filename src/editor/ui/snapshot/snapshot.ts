@@ -162,7 +162,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         // value updating -> TODO: test throttle timer, but this is fucking genius, just saying.
         this.addSubscription(this.footer.onChange(throttle(async value => {
             const newText = await this.session.setChildBlockVersionIndex(this.vcsId, value)
-            this.editor.activeSnapshot = undefined
+            await this.editor.setActiveSnapshot(undefined)
             await this.editor.reload(newText)
         }, 100)))
 
@@ -189,30 +189,31 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         }
     }
 
-    public showVersionManager(): void {
-        this.sideView?.showView(this.sideViewIdentifier)
-        this.updateVersionManager()
+    public async showVersionManager(): Promise<void> {
+        await this.sideView?.showView(this.sideViewIdentifier)
+        await this.updateVersionManager()
     }
 
-    public hideVersionManager(): void {
-        this.editor.showDefaultSideView()
+    public async hideVersionManager(): Promise<void> {
+        await this.editor.showDefaultSideView()
     }
 
-    public updateVersionManager(): void {
-        this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
+    public async updateVersionManager(): Promise<void> {
+        await this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
     }
 
     public async createVersion(options?: { name?: string, description?: string, codeForAi?: string }): Promise<VCSVersion> {
         const version = await this.session.saveChildBlockVersion(this.vcsId, options)
-        this.editor.activeSnapshot = this
-        return this.addVersion(version)
+        await this.editor.setActiveSnapshot(this)
+        const v = await this.addVersion(version)
+        return v
     }
 
-    public addVersion(tag: VCSTagInfo): VCSVersion {
+    public async addVersion(tag: VCSTagInfo): Promise<VCSVersion> {
         const version = new VCSVersion(this, tag)
         this.versions.push(version)
 
-        if (this.editor.activeSnapshot === this) { this.editor.sideView?.updateCurrentView({ versions: this.versions }) }
+        if (this.editor.activeSnapshot === this) { await this.updateVersionManager() }
 
         return version
     }

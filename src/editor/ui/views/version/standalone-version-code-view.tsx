@@ -5,38 +5,45 @@ import { IconButton, IconButtonProps, TextButton, TextButtonProps } from "../../
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { GhostBlockSessionLoadingOptions, GhostEditor } from "../editor/editor";
 import LoadingView, { LoadingEventEmitter } from "../utils/loadingView";
-import { VersionViewContainer, VersionViewElement } from "./version-view";
+import { View } from "../view";
 
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, VersionCodeView<Container>>> extends VersionViewElement<VCSVersion, VersionCodeView<Container>, Container> {
+export class VersionCodeView extends View {
 
+    public readonly version: VCSVersion
     public readonly session: VCSBlockSession
 
-    private readonly listElement:      HTMLLIElement
+    private readonly container: HTMLDivElement
+
     private readonly menuContainer:    HTMLDivElement
     private readonly editorContainer:  HTMLDivElement
     private readonly editor:           GhostEditor
 
-    private readonly editorHeight = 350
     private readonly menuSpacing  = 40
 
-    public get style(): CSSStyleDeclaration { return this.listElement.style }
+    public get style(): CSSStyleDeclaration { return this.container.style }
 
     public get blockId(): VCSBlockId { return this.session.block }
 
-    public constructor(root: Container, version: VCSVersion, versionSession: VCSBlockSession, languageId?: string, synchronizer?: Synchronizer) {
-        super(root, version)
+    public static async create(root: HTMLElement, version: VCSVersion, languageId?: string, synchronizer?: Synchronizer): Promise<VersionCodeView> {
+        const session = await version.getSession()
+        return new VersionCodeView(root, version, session, languageId, synchronizer)
+    }
+
+    public constructor(root: HTMLElement, version: VCSVersion, versionSession: VCSBlockSession, languageId?: string, synchronizer?: Synchronizer) {
+        super(root)
+        this.version = version
         this.session = versionSession
 
-        this.listElement = document.createElement("li")
+        this.container = document.createElement("div")
         this.style.boxSizing = "border-box"
         this.style.width     = "100%"
-        this.style.height    = `${this.editorHeight}px`
-        this.style.padding   = "5px 5px"
-        this.style.margin    = "0 0"
-        this.root.appendChild(this.listElement)
+        this.style.height    = "100%"
+        this.style.padding   = "0"
+        this.style.margin    = "0"
+        this.root.appendChild(this.container)
         
         this.menuContainer   = document.createElement("div")
         this.editorContainer = document.createElement("div")
@@ -71,7 +78,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.menuContainer.style.margin      = "0"
         this.menuContainer.style.border      = "1px solid black"
         this.menuContainer.style.borderRight = "none"
-        this.listElement.appendChild(this.menuContainer)
+        this.container.appendChild(this.menuContainer)
 
         const loadingEventEmitter          = new LoadingEventEmitter()
         let   loadingPromise: Promise<any> = Promise.resolve()
@@ -145,42 +152,12 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.editorContainer.style.padding   = "0"
         this.editorContainer.style.margin    = "0"
         this.editorContainer.style.border    = "1px solid black"
-        this.listElement.appendChild(this.editorContainer)
+        this.container.appendChild(this.editorContainer)
     }
 
     public override remove(): void {
         this.editor.remove()
-        this.listElement.remove()
+        this.container.remove()
         super.remove()
-    }
-}
-
-export class VersionCodeViewList extends VersionViewContainer<VCSVersion, VersionCodeView<VersionCodeViewList>> {
-
-    private          languageId?:         string
-    private readonly editorSynchronizer?: Synchronizer
-
-    public constructor(root: HTMLElement, languageId?: string, synchronizer?: Synchronizer) {
-
-        root.style.overflow = "auto"
-
-        const list = document.createElement("ul")
-        list.style.listStyleType = "none"
-        list.style.width         = "100%"
-        list.style.padding       = "0 0"
-        list.style.margin        = "0 0"
-        root.appendChild(list)
-
-        super(list)
-
-        this.languageId         = languageId
-        this.editorSynchronizer = synchronizer
-    }
-
-    public setLanguageId(languageId: string): void { this.languageId = languageId }
-
-    protected override async createCustomView(version: VCSVersion): Promise<VersionCodeView<VersionCodeViewList>> {
-        const session = await version.getSession()
-        return new VersionCodeView(this as VersionCodeViewList, version, session, this.languageId, this.editorSynchronizer)
     }
 }

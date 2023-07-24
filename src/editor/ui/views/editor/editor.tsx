@@ -13,7 +13,7 @@ import { ChangeSet } from "../../../../app/components/data/change";
 import { VCSPreview } from "../previews/vcs-preview";
 //import { P5JSPreview } from "../previews/p5js-preview";
 import P5JSPreview from "../previews/p5js/react-p5js-preview";
-import { VersionManagerView } from "../version/version-manager";
+import { VersionManagerView } from "../version/single-view-version-manager";
 import { LoadFileEvent } from "../../../utils/events";
 import { ReferenceProvider } from "../../../utils/line-locator";
 import { extractEOLSymbol } from "../../../utils/helpers";
@@ -140,7 +140,7 @@ class GhostEditorSnapshotManager {
             const index = this.snapshots.indexOf(snapshot, 0)
             if (index > -1) { this.snapshots.splice(index, 1) }
 
-            if (this.editor.activeSnapshot === snapshot) { this.editor.activeSnapshot = undefined }
+            if (this.editor.activeSnapshot === snapshot) { await this.editor.setActiveSnapshot(undefined) }
             else                                         { this.interactionManager.readEditorState() }
         }
 
@@ -175,8 +175,8 @@ class GhostEditorInteractionManager extends SubscriptionManager {
     private selectedRange:     VCSBlockRange | undefined = undefined
     public  selectedSnapshots: GhostSnapshot[]           = []
 
-    private get activeSnapshot(): GhostSnapshot | undefined         { return this.editor.activeSnapshot }
-    private set activeSnapshot(snapshot: GhostSnapshot | undefined) { this.editor.activeSnapshot = snapshot }
+    private get activeSnapshot(): GhostSnapshot | undefined { return this.editor.activeSnapshot }
+    private async setActiveSnapshot(snapshot: GhostSnapshot | undefined): Promise<void> { await this.editor.setActiveSnapshot(snapshot) }
 
     private get snapshotManager(): GhostEditorSnapshotManager { return this.editor.snapshotManager }
 
@@ -283,9 +283,9 @@ class GhostEditorInteractionManager extends SubscriptionManager {
                 contextMenuGroupId: "z_ghost", // z for last spot in order
                 contextMenuOrder: 2,
             
-                run: function (core) {
+                run: async function (core) {
                     const lineNumber = core.getPosition()!.lineNumber
-                    editor.activeSnapshot = snapshotManager.getSnapshots(lineNumber)[0] // TODO: How to handle overlap? Even relevant?
+                    await editor.setActiveSnapshot(snapshotManager.getSnapshots(lineNumber)[0]) // TODO: How to handle overlap? Even relevant?
                 },
             }));
     
@@ -301,16 +301,16 @@ class GhostEditorInteractionManager extends SubscriptionManager {
                 contextMenuGroupId: "z_ghost", // z for last spot in order
                 contextMenuOrder: 2,
             
-                run: function (core) {
-                    editor.activeSnapshot = undefined
+                run: async function (core) {
+                    await editor.setActiveSnapshot(undefined)
                 },
             }));
         }
     }
 
-    public readEditorContent(event: MonacoChangeEvent): void {
+    public async readEditorContent(event: MonacoChangeEvent): Promise<void> {
         if (!this.disableVcsSync) {
-            this.editor.activeSnapshot = undefined
+            await this.editor.setActiveSnapshot(undefined)
             const changeSet = this.editor.createChangeSet(event)
             this.editor.applyChangeSet(changeSet)
         }
@@ -365,8 +365,8 @@ class GhostEditorInteractionManager extends SubscriptionManager {
         this.disableVcsSync = false
     }
 
-    public unloadFile(): void {
-        this.activeSnapshot    = undefined
+    public async unloadFile(): Promise<void> {
+        await this.setActiveSnapshot(undefined)
         this.selectedRange     = undefined
         this.selectedSnapshots = []
     }
@@ -500,13 +500,14 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     // snapshot management
     private _activeSnapshot:      GhostSnapshot | undefined = undefined
     public  get activeSnapshot(): GhostSnapshot | undefined { return this._activeSnapshot }
-    public  set activeSnapshot(snapshot: GhostSnapshot | undefined) {
+
+    public async setActiveSnapshot(snapshot: GhostSnapshot | undefined): Promise<void> {
         if (snapshot === this.activeSnapshot) {
-            this.activeSnapshot?.updateVersionManager()
+            await this.activeSnapshot?.updateVersionManager()
         } else {
-            this._activeSnapshot?.hideVersionManager()
+            await this._activeSnapshot?.hideVersionManager()
             this._activeSnapshot = snapshot
-            this._activeSnapshot?.showVersionManager()
+            await this._activeSnapshot?.showVersionManager()
         }
 
         this.interactionManager.readEditorState({ skipSelectionUpdate: true })
@@ -624,11 +625,11 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         }
     }
 
-    private setupSideView(): void {
+    private async setupSideView(): Promise<void> {
         if (this.sideViewEnabled) {
             this.sideView = new MetaView(this.sideViewContainer!)
 
-            const vcsPreview = this.sideView.addView("vcs", root => {
+            const vcsPreview = await this.sideView.addView("vcs", root => {
                 return new VCSPreview(root, this.editorModel)
             }, {
                 updateCallback: (view: VCSPreview, args: { editorModel: GhostEditorModel, vcsContent?: string }) => {
@@ -636,17 +637,17 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
                 }
             })
 
-            this.sideView.addReactView("p5js", root => {
+            await this.sideView.addReactView("p5js", root => {
                 const reactRoot = createRoot(root)
                 reactRoot.render(<P5JSPreview synchronizer={this.synchronizer!} codeProvider={this} hideErrorMessage={this.hideErrorMessage}/>)
             })
 
-            const versionManager = this.sideView.addView("versionManager", root => {
+            const versionManager = await this.sideView.addView("versionManager", root => {
                 return new VersionManagerView(root, { synchronizer: this.synchronizer })
             }, {
-                updateCallback: (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
+                updateCallback: async (view: VersionManagerView, args: { languageId?: string, versions?: VCSVersion[] }) => {
                     if (args.languageId) { view.setLanguageId(args.languageId) }
-                    if (args.versions)   { view.applyDiff(args.versions) }
+                    if (args.versions)   { await view.applyDiff(args.versions) }
                 },
                 hideCallback: (view: VersionManagerView) => {
                     view.removeVersions()
@@ -655,13 +656,13 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
             this.sideViewIdentifiers = this.sideView.identifiers
             this.defaultSideView     = this.sideViewIdentifiers.p5js
-            this.showDefaultSideView()
+            await this.showDefaultSideView()
         }
     }
 
-    public showDefaultSideView(): void {
+    public async showDefaultSideView(): Promise<void> {
         const sideView = this.sideView
-        if (this.sideViewEnabled && sideView && sideView.currentViewIdentifier !== this.defaultSideView) { sideView.showView(this.defaultSideView!) }
+        if (this.sideViewEnabled && sideView && sideView.currentViewIdentifier !== this.defaultSideView) { await sideView.showView(this.defaultSideView!) }
     }
 
     public createChangeSet(event: MonacoChangeEvent): ChangeSet {
@@ -686,9 +687,9 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     }
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
-    private unload(): void {
+    private async unload(): Promise<void> {
         this.snapshotManager.removeSnapshots()
-        this.interactionManager.unloadFile()
+        await this.interactionManager.unloadFile()
         this.core.setModel(null)
         this.editorModel?.close()
         this.editorModel = undefined
@@ -700,7 +701,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     }
 
     public async load(options: GhostLoadingOptions): Promise<void> {
-        this.unload()
+        await this.unload()
 
         const hostSession = await GhostEditor.getSession()
 

@@ -27,7 +27,7 @@ export class LoadingEventEmitter {
 
 interface LoadingViewProps<ViewProps> {
     loadData:             () => Promise<ViewProps>
-    ContentView:          React.ComponentType<ViewProps | undefined>
+    ContentView:          React.ComponentType<ViewProps>
     loadingEventEmitter?: LoadingEventEmitter
 }
 
