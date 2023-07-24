@@ -5,6 +5,7 @@ import { ChangeSet, LineChange, MultiLineChange } from "../app/components/data/c
 
 import { ResourceManager, ISessionFile, ISessionBlock, ISessionTag, Session, ISessionLine, ISessionVersion, DBSession } from "./vcs/db/utilities"
 import { FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy } from "./vcs/db/types"
+import CodeAI from "./vcs/db/openai-client"
 
 /*
 USAGE:
@@ -194,6 +195,12 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
             const block = await session.getBlock(blockId)
             await block.applyTimestamp(tag.timestamp)
             return await block.asBlockInfo(blockId)
+        })
+    }
+
+    public async getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
+        return await this.resources.createQuery(request, VCSOperation.GetErrorHint, async (session, { code, errorMessage }) => {
+            return await CodeAI.errorSuggestion(code, errorMessage)
         })
     }
 }

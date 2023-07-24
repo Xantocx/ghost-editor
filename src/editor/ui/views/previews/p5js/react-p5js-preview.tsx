@@ -3,9 +3,10 @@ import IframeResizer from 'iframe-resizer-react'
 
 import { Synchronizer } from "../../../../utils/synchronizer"
 import { CodeProvider } from "../preview";
-import { throttle } from "../../../../utils/helpers"
+import { sleep, throttle } from "../../../../utils/helpers"
 
 import "./react-p5js-preview.css"
+import LoadingView from '../../utils/loadingView';
 
 const p5jsScript          = new URL("./libs/p5js/p5.min.js", document.baseURI).href
 const iframeResizerScript = new URL("./libs/iframe-resizer/iframeResizer.contentWindow.min.js", document.baseURI).href
@@ -175,6 +176,15 @@ function getHtmlUrl(sketchId: number, code: string): string {
     return URL.createObjectURL(htmlBlob);
 }
 
+import ReactMarkdown from 'react-markdown';
+
+const ErrorHint: React.FC<{ errorHint: string | undefined | null, color: string }> = ({ errorHint, color }) => {
+    return (
+        <div style={{ paddingLeft: "2px" }}>
+            <ReactMarkdown>{errorHint ? errorHint : (errorHint === undefined ? "Loading..." : "No error hint available.")}</ReactMarkdown>
+        </div>
+    )
+}
 
 interface P5JSPreviewProps {
     synchronizer: Synchronizer,
@@ -195,6 +205,7 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
     const [iframeSource,      setIframeSource]      = useState<string | undefined>(undefined)
     const [sketch,            setSketch]            = useState<string | undefined>(undefined)
     const [errorMessage,      setErrorMessage]      = useState<string>("")
+    const [errorHint,         setErrorHint]         = useState<boolean>(false)
     const [color,             setColor]             = useState<string>("black")
 
     function renderSketch(sketchId: number, code: string) {
@@ -217,6 +228,7 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
         if (sketch === undefined) { return }
 
         setErrorMessage("")
+        setErrorHint(false)
         latestSketchId.current++
         renderSketch(latestSketchId.current, sketch)
     }
@@ -293,7 +305,7 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
     return (
         <div className="container" style={{ padding: previewPadding }}>
 
-            <div ref={previewContainerRef} style={{ position: 'relative', flex: 3, padding: 5, border: "1px solid black" }}>
+            <div ref={previewContainerRef} style={{ position: 'relative', flex: 1, padding: 5, border: "1px solid black" }}>
 
                 {iframeSource && <IframeResizer
                     forwardRef={iframeRef}
@@ -319,9 +331,20 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
 
             </div>
 
-            <div className='error-message' style={{ color, border: `1px solid ${color}` }}>
-                <h3 style={{ color, borderBottom: `1px solid ${color}`, padding: "5px", margin: "0" }}>Error Log:</h3>
-                <p style={{ color, padding: "5px", margin: "0" }}>{errorMessage ? errorMessage : "No errors"}</p>
+            <div className='error-message' style={{ flex: "0 0 auto", maxHeight: "50%", border: `1px solid ${color}` }}>
+                <div style={{ display: "flex", borderBottom: `1px solid ${color}`, padding: "5px", margin: "0" }}>
+                    <h3 style={{ flex: 9, margin: "4px", color }}>Error Log:</h3>
+                    {errorMessage && <button onClick={() => setErrorHint(true)} disabled={errorHint} style={{ flex: 1, color: "white", backgroundColor: errorHint ? "gray" : "green", borderRadius: "8px", border: "none" }}>Get Hint!</button>}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                    <pre style={{ flex: 1, padding: "5px", minHeight: "100%", margin: 0, color, overflow: "auto" }}>{errorMessage ? errorMessage : "No errors"}</pre>
+                    {errorHint && <div style={{ flex: 2, minHeight: "100%", padding: "5px", margin: 0, borderTop: `1px solid ${color}` }}>
+                        <LoadingView  ContentView={ErrorHint} loadData={async () => {
+                            const errorHint = await codeProvider.getErrorHint(sketch, errorMessage)
+                            return { errorHint, color }
+                        }}/>
+                    </div>}
+                </div>
             </div>
 
         </div>

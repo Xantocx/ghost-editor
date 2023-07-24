@@ -33,6 +33,8 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
     public static readonly saveCurrentBlockVersionChannel = "vcs-save-current-block-version"
     public static readonly applyTagChannel                = "vcs-apply-tag"
 
+    public static readonly getErrorHintChannel            = "vcs-get-error-hint"
+
     constructor(adapter: Adapter) {
         super(adapter)
         this.mapChannels()
@@ -122,6 +124,10 @@ export class ElectronVCSServer<Adapter extends VCSAdapter> extends AdaptableVCSS
 
         ipcMain.handle(ElectronVCSServer.applyTagChannel, async (event, request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>) => {
             return await this.applyTag(request)
+        })
+
+        ipcMain.handle(ElectronVCSServer.getErrorHintChannel, async (event, request: VCSSessionRequest<{ code: string, errorMessage: string }>) => {
+            return await this.getErrorHint(request)
         })
     }
 }

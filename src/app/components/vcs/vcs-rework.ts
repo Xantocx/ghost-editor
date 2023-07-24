@@ -285,7 +285,8 @@ export enum VCSOperation {
     UpdateBlock,
     SetBlockVersionIndex,
     SaveCurrentBlockVersion,
-    ApplyTag
+    ApplyTag,
+    GetErrorHint
 }
 
 export const VCSOperationTypes = new Map<VCSOperation, VCSRequestType>([
@@ -310,6 +311,7 @@ export const VCSOperationTypes = new Map<VCSOperation, VCSRequestType>([
     [VCSOperation.SetBlockVersionIndex,    VCSRequestType.ReadWrite],
     [VCSOperation.SaveCurrentBlockVersion, VCSRequestType.ReadWrite],
     [VCSOperation.ApplyTag,                VCSRequestType.ReadWrite],
+    [VCSOperation.GetErrorHint,            VCSRequestType.Silent]
 ])
 
 export interface IVCSRequest<RequestData> {
@@ -376,6 +378,9 @@ export interface VCSProvider {
     // tag interface
     saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>>
     applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>>
+
+    // ai interface
+    getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>>
 }
 
 export abstract class BasicVCSProvider implements VCSProvider {
@@ -454,6 +459,8 @@ export abstract class BasicVCSProvider implements VCSProvider {
     // tag interface
     public abstract saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>>
     public abstract applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>>
+
+    public abstract getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>>
 }
 
 // server-side interface on which end-points may be mapped
@@ -625,6 +632,11 @@ export class VCSUnwrappedClient extends SubscriptionManager {
         return await this.unwrapResponse(this.client.applyTag(request), VCSOperation.ApplyTag)
     }
 
+    public async getErrorHint(sessionId: VCSSessionId, code: string, errorMessage: string): Promise<string | null> {
+        const request = this.createSessionRequest(sessionId, { code, errorMessage })
+        return await this.unwrapResponse(this.client.getErrorHint(request), VCSOperation.GetErrorHint)
+    }
+
 
     public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
 
@@ -668,6 +680,10 @@ export class VCSSession {
 
     public async waitForCurrentRequests(): Promise<void> {
         await this.client.waitForCurrentRequests(this.session)
+    }
+
+    public async getErrorHint(code: string, errorMessage: string): Promise<string | null> {
+        return await this.client.getErrorHint(this.session, code, errorMessage)
     }
 
     public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
@@ -791,6 +807,10 @@ export class VCSBlockSession {
         return await this.client.applyTag(tagId, childBlockId)
     }
 
+    public async getErrorHint(code: string, errorMessage: string): Promise<string | null> {
+        return await this.session.getErrorHint(code, errorMessage)
+    }
+
     public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
         return this.client.onRequestSend(callback, filter)
     }
@@ -903,5 +923,9 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSServ
 
     public async applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
         return await this.adapter.applyTag(request)
+    }
+
+    public async getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
+        return await this.adapter.getErrorHint(request)
     }
 }

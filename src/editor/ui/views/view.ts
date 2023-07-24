@@ -32,6 +32,7 @@ export abstract class CodeView extends View {
 
 export interface CodeProvider {
     getCode(): Promise<string>
+    getErrorHint(code: string, errorMessage: string): Promise<string | null>
 }
 
 export abstract class CodeProviderView extends View {

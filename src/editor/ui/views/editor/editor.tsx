@@ -578,6 +578,10 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         }
     }
 
+    public async getErrorHint(code: string, errorMessage: string): Promise<string> {
+        return await this.getSession().getErrorHint(code, errorMessage)
+    }
+
     // edior and model options to extract config
     public getFontInfo():     monaco.editor.FontInfo                 { return this.core.getOption(MonacoEditorOption.fontInfo) }
     public getModelOptions(): monaco.editor.TextModelResolvedOptions { return this.getTextModel().getOptions() }

@@ -35,4 +35,9 @@ export class VCSVersion implements CodeProvider {
         const session = await this.getSession()
         return await session.getRootText()
     }
+
+    public async getErrorHint(code: string, errorMessage: string): Promise<string | null> {
+        const session = await this.getSession()
+        return await session.getErrorHint(code, errorMessage)
+    }
 }

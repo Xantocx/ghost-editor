@@ -26,9 +26,9 @@ export class LoadingEventEmitter {
 }
 
 interface LoadingViewProps<ViewProps> {
-    loadData:            () => Promise<ViewProps>
-    ContentView:         React.ComponentType<ViewProps | undefined>
-    loadingEventEmitter: LoadingEventEmitter
+    loadData:             () => Promise<ViewProps>
+    ContentView:          React.ComponentType<ViewProps | undefined>
+    loadingEventEmitter?: LoadingEventEmitter
 }
 
 function LoadingView<ViewProps>({ loadData, ContentView, loadingEventEmitter }: LoadingViewProps<ViewProps>): React.JSX.Element {
@@ -38,10 +38,12 @@ function LoadingView<ViewProps>({ loadData, ContentView, loadingEventEmitter }: 
     const [counter, setCounter] = useState(0);
 
     useEffect(() => {
-        const updateData = () => { setCounter(counter => counter + 1) }
-        loadingEventEmitter.onReload(updateData)
-        return () => { loadingEventEmitter.offReload(updateData) }
-    }, []);
+        if (loadingEventEmitter) {
+            const updateData = () => { setCounter(counter => counter + 1) }
+            loadingEventEmitter.onReload(updateData)
+            return () => { loadingEventEmitter.offReload(updateData) }
+        }
+    }, [loadingEventEmitter]);
 
     useEffect(() => {
         const startCounter = counter

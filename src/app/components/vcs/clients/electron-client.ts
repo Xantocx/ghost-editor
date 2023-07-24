@@ -91,5 +91,9 @@ export const ElectronVCSClient: VCSClient = {
 
     applyTag: async function (request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
         return await invoke(ElectronVCSServer.applyTagChannel, request)
+    },
+
+    getErrorHint: async function (request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
+        return await invoke(ElectronVCSServer.getErrorHintChannel, request)
     }
 }
