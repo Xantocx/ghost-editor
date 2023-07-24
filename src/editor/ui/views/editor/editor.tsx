@@ -826,6 +826,11 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         this.triggerSync()
     }
 
+    public async syncWithVCS(): Promise<void> {
+        const newCode = await this.getSession().getText()
+        await this.reload(newCode)
+    }
+
     public override remove(): void {
         this.snapshotManager.removeSnapshots()
         this.editorModel?.close()

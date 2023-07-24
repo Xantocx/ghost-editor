@@ -9,91 +9,95 @@ function invoke<Type>(channel: string, ...args: any): Promise<Type> {
 
 export const ElectronVCSClient: VCSClient = {
 
-    createSession: async function (request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>> {
-        return await invoke(ElectronVCSServer.createSessionChannel, request)
+    createSession: function (request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>> {
+        return invoke(ElectronVCSServer.createSessionChannel, request)
     },
 
-    closeSession: async function (request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await invoke(ElectronVCSServer.closeSessionChannel, request)
+    closeSession: function (request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return invoke(ElectronVCSServer.closeSessionChannel, request)
     },
 
-    waitForCurrentRequests: async function (request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await invoke(ElectronVCSServer.waitForCurrentRequestsChannel, request)
+    waitForCurrentRequests: function (request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return invoke(ElectronVCSServer.waitForCurrentRequestsChannel, request)
     },
 
-    loadFile: async function (request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
-        return await invoke(ElectronVCSServer.loadFileChannel, request)
+    loadFile: function (request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
+        return invoke(ElectronVCSServer.loadFileChannel, request)
     },
 
-    updateFilePath: async function (request: VCSSessionRequest<{ fileId: VCSFileId, filePath: string }>): Promise<VCSResponse<VCSFileId>> {
-        return await invoke(ElectronVCSServer.updateFilePathChannel, request)
+    updateFilePath: function (request: VCSSessionRequest<{ fileId: VCSFileId, filePath: string }>): Promise<VCSResponse<VCSFileId>> {
+        return invoke(ElectronVCSServer.updateFilePathChannel, request)
     },
 
-    unloadFile: async function (request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
-        return await invoke(ElectronVCSServer.unloadFileChannel, request)
+    unloadFile: function (request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
+        return invoke(ElectronVCSServer.unloadFileChannel, request)
     },
 
-    getText: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await invoke(ElectronVCSServer.getTextChannel, request)
+    getText: function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return invoke(ElectronVCSServer.getTextChannel, request)
     },
 
-    getRootText: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await invoke(ElectronVCSServer.getRootTextChannel, request)
+    getRootText: function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return invoke(ElectronVCSServer.getRootTextChannel, request)
     },
 
-    lineChanged: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await invoke(ElectronVCSServer.lineChangedChannel, request)
+    lineChanged: function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return invoke(ElectronVCSServer.lineChangedChannel, request)
     },
 
-    linesChanged: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await invoke(ElectronVCSServer.linesChangedChannel, request)
+    linesChanged: function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return invoke(ElectronVCSServer.linesChangedChannel, request)
     },
 
-    applyChange: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: AnyChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await invoke(ElectronVCSServer.applyChangeChannel, request)
+    applyChange: function (request: VCSSessionRequest<{ blockId: VCSBlockId, change: AnyChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return invoke(ElectronVCSServer.applyChangeChannel, request)
     },
 
-    applyChanges: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, changes: ChangeSet }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await invoke(ElectronVCSServer.applyChangesChannel, request)
+    applyChanges: function (request: VCSSessionRequest<{ blockId: VCSBlockId, changes: ChangeSet }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return invoke(ElectronVCSServer.applyChangesChannel, request)
     },
     
-    copyBlock: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
-        return await invoke(ElectronVCSServer.copyBlockChannel, request)
+    copyBlock: function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
+        return invoke(ElectronVCSServer.copyBlockChannel, request)
     },
 
-    createChild: async function (request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo>> {
-        return await invoke(ElectronVCSServer.createChildChannel, request)
+    createChild: function (request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo>> {
+        return invoke(ElectronVCSServer.createChildChannel, request)
     },
 
-    deleteBlock: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
-        return await invoke(ElectronVCSServer.deleteBlockChannel, request)
+    deleteBlock: function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
+        return invoke(ElectronVCSServer.deleteBlockChannel, request)
     },
 
-    getBlockInfo: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
-        return await invoke(ElectronVCSServer.getBlockInfoChannel, request)
+    getBlockInfo: function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        return invoke(ElectronVCSServer.getBlockInfoChannel, request)
     },
 
-    getChildrenInfo: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
-        return await invoke(ElectronVCSServer.getChildrenInfoChannel, request)
+    getChildrenInfo: function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
+        return invoke(ElectronVCSServer.getChildrenInfoChannel, request)
     },
 
-    updateBlock: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
-        return await invoke(ElectronVCSServer.updateBlockChannel, request)
+    updateBlock: function (request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
+        return invoke(ElectronVCSServer.updateBlockChannel, request)
     },
 
-    setBlockVersionIndex: async function (request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
-        return await invoke(ElectronVCSServer.setBlockVersionIndexChannel, request)
+    syncBlocks: function (request: VCSSessionRequest<{ source: VCSBlockId, target: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return invoke(ElectronVCSServer.syncBlocksChannel, request)
     },
 
-    saveCurrentBlockVersion: async function (request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>> {
-        return await invoke(ElectronVCSServer.saveCurrentBlockVersionChannel, request)
+    setBlockVersionIndex: function (request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+        return invoke(ElectronVCSServer.setBlockVersionIndexChannel, request)
     },
 
-    applyTag: async function (request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
-        return await invoke(ElectronVCSServer.applyTagChannel, request)
+    saveCurrentBlockVersion: function (request: VCSSessionRequest<{ blockId: VCSBlockId, name?: string, description?: string, codeForAi?: string }>): Promise<VCSResponse<VCSTagInfo>> {
+        return invoke(ElectronVCSServer.saveCurrentBlockVersionChannel, request)
     },
 
-    getErrorHint: async function (request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
-        return await invoke(ElectronVCSServer.getErrorHintChannel, request)
+    applyTag: function (request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        return invoke(ElectronVCSServer.applyTagChannel, request)
+    },
+
+    getErrorHint: function (request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
+        return invoke(ElectronVCSServer.getErrorHintChannel, request)
     }
 }

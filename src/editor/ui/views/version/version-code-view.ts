@@ -1,14 +1,14 @@
 import { VCSVersion } from "../../../../app/components/data/version";
-import { VCSBlockSession } from "../../../../app/components/vcs/vcs-rework";
+import { VCSBlockId, VCSBlockSession } from "../../../../app/components/vcs/vcs-rework";
 import { Synchronizer } from "../../../utils/synchronizer";
 import { Button, IconButton } from "../../components/button";
+import { GhostSnapshot } from "../../snapshot/snapshot";
 import { GhostBlockSessionLoadingOptions, GhostEditor } from "../editor/editor";
-import { P5JSPreview } from "../previews/p5js-preview";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
 
 export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, VersionCodeView<Container>>> extends VersionViewElement<VCSVersion, VersionCodeView<Container>, Container> {
 
-    public readonly languageId?: string
+    public readonly session: VCSBlockSession
 
     private readonly listElement:      HTMLLIElement
     private readonly menuContainer:    HTMLDivElement
@@ -20,9 +20,11 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
 
     public get style(): CSSStyleDeclaration { return this.listElement.style }
 
-    public constructor(root: Container, version: VCSVersion, session: VCSBlockSession, languageId?: string, synchronizer?: Synchronizer) {
+    public get blockId(): VCSBlockId { return this.session.block }
+
+    public constructor(root: Container, version: VCSVersion, versionSession: VCSBlockSession, languageId?: string, synchronizer?: Synchronizer) {
         super(root, version)
-        this.languageId = languageId
+        this.session = versionSession
 
         this.listElement = document.createElement("li")
         this.style.boxSizing = "border-box"
@@ -35,14 +37,14 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.menuContainer   = document.createElement("div")
         this.editorContainer = document.createElement("div")
 
-        this.setupMenu()
+        this.setupMenu(version.snapshot)
         this.setupEditor()
 
-        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, new GhostBlockSessionLoadingOptions(session), { enableSideView: true, mainViewFlex: 3, languageId: this.languageId, synchronizer })
+        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, new GhostBlockSessionLoadingOptions(versionSession), { enableSideView: true, mainViewFlex: 3, languageId, synchronizer })
     }
 
-    private setupMenu(): void {
-        
+    private setupMenu(snapshot: GhostSnapshot): void {
+
         const parent = this
         function createSeperator(): HTMLDivElement {
             const seperator = document.createElement("div")
@@ -67,12 +69,18 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.menuContainer.style.borderRight = "none"
         this.listElement.appendChild(this.menuContainer)
 
-        const copyButton = IconButton.copyButton(createSeperator(), async () => { 
-            console.log("COPY")
+        const copyToOriginButton = IconButton.copyButton(createSeperator(), async () => { 
+            await snapshot.session.syncBlocks(this.blockId, snapshot.vcsId)
+            await snapshot.editor.syncWithVCS()
+            snapshot.editor.activeSnapshot = undefined
         })
 
-        const addButton = Button.addButton(createSeperator(), async () => { 
-            console.log("ADDING")
+        const duplicateButton = Button.addButton(createSeperator(), async () => {
+            const codeForAi = await this.session.getText()
+            const version   = await snapshot.createVersion({ codeForAi })
+            const session   = await version.getSession()
+            session.syncWithBlock(this.blockId)
+            this.editor.triggerSync()
         })
     }
 

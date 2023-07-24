@@ -283,6 +283,7 @@ export enum VCSOperation {
     GetBlockInfo,
     GetChildrenInfo,
     UpdateBlock,
+    SyncBlocks,
     SetBlockVersionIndex,
     SaveCurrentBlockVersion,
     ApplyTag,
@@ -308,6 +309,7 @@ export const VCSOperationTypes = new Map<VCSOperation, VCSRequestType>([
     [VCSOperation.GetBlockInfo,            VCSRequestType.ReadOnly],
     [VCSOperation.GetChildrenInfo,         VCSRequestType.ReadOnly],
     [VCSOperation.UpdateBlock,             VCSRequestType.ReadWrite],
+    [VCSOperation.SyncBlocks,              VCSRequestType.ReadWrite],
     [VCSOperation.SetBlockVersionIndex,    VCSRequestType.ReadWrite],
     [VCSOperation.SaveCurrentBlockVersion, VCSRequestType.ReadWrite],
     [VCSOperation.ApplyTag,                VCSRequestType.ReadWrite],
@@ -373,10 +375,11 @@ export interface VCSProvider {
 
     // update snapshots
     updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>>
+    syncBlocks(request: VCSSessionRequest<{ source: VCSBlockId, target: VCSBlockId }>): Promise<VCSResponse<string>>
     setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>>
 
     // tag interface
-    saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>>
+    saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId, name?: string, description?: string, codeForAi?: string }>): Promise<VCSResponse<VCSTagInfo>>
     applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>>
 
     // ai interface
@@ -454,10 +457,11 @@ export abstract class BasicVCSProvider implements VCSProvider {
 
     // update snapshots
     public abstract updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>>
+    public abstract syncBlocks(request: VCSSessionRequest<{ source: VCSBlockId; target: VCSBlockId; }>): Promise<VCSResponse<string>>
     public abstract setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>>
 
     // tag interface
-    public abstract saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>>
+    public abstract saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId, name?: string, description?: string, codeForAi?: string }>): Promise<VCSResponse<VCSTagInfo>>
     public abstract applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>>
 
     public abstract getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>>
@@ -527,114 +531,119 @@ export class VCSUnwrappedClient extends SubscriptionManager {
         else             { return result.response }
     }
 
-    public async createSession(): Promise<VCSSessionId> {
+    public createSession(): Promise<VCSSessionId> {
         const request = { requestId: "session-creation", data: null }
-        return await this.unwrapResponse(this.client.createSession(request), VCSOperation.CreateSession)
+        return this.unwrapResponse(this.client.createSession(request), VCSOperation.CreateSession)
     }
 
-    public async closeSession(sessionId: VCSSessionId): Promise<void> {
+    public closeSession(sessionId: VCSSessionId): Promise<void> {
         const request = this.createSessionRequest(sessionId, null)
-        return await this.unwrapResponse(this.client.closeSession(request), VCSOperation.CloseSession)
+        return this.unwrapResponse(this.client.closeSession(request), VCSOperation.CloseSession)
     }
 
-    public async waitForCurrentRequests(sessionId: VCSSessionId): Promise<void> {
+    public waitForCurrentRequests(sessionId: VCSSessionId): Promise<void> {
         const request = this.createSessionRequest(sessionId, null)
-        return await this.unwrapResponse(this.client.waitForCurrentRequests(request), VCSOperation.WaitForCurrentRequests)
+        return this.unwrapResponse(this.client.waitForCurrentRequests(request), VCSOperation.WaitForCurrentRequests)
     }
 
-    public async loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
+    public loadFile(sessionId: VCSSessionId, options: VCSFileLoadingOptions): Promise<VCSRootBlockInfo> {
         const request = this.createSessionRequest(sessionId, { options })
-        return await this.unwrapResponse(this.client.loadFile(request), VCSOperation.LoadFile)
+        return this.unwrapResponse(this.client.loadFile(request), VCSOperation.LoadFile)
     }
 
-    public async updateFilePath(fileId: VCSFileId, filePath: string): Promise<VCSFileId> {
+    public updateFilePath(fileId: VCSFileId, filePath: string): Promise<VCSFileId> {
         const request = this.createSessionRequest(fileId, { fileId, filePath })
-        return await this.unwrapResponse(this.client.updateFilePath(request), VCSOperation.UpdateFilePath)
+        return this.unwrapResponse(this.client.updateFilePath(request), VCSOperation.UpdateFilePath)
     }
 
-    public async unloadFile(fileId: VCSFileId): Promise<void> {
+    public unloadFile(fileId: VCSFileId): Promise<void> {
         const request = this.createSessionRequest(fileId, { fileId })
-        return await this.unwrapResponse(this.client.unloadFile(request), VCSOperation.UnloadFile)
+        return this.unwrapResponse(this.client.unloadFile(request), VCSOperation.UnloadFile)
     }
 
-    public async getText(blockId: VCSBlockId): Promise<string> {
+    public getText(blockId: VCSBlockId): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getText(request), VCSOperation.GetText)
+        return this.unwrapResponse(this.client.getText(request), VCSOperation.GetText)
     }
 
-    public async getRootText(blockId: VCSBlockId): Promise<string> {
+    public getRootText(blockId: VCSBlockId): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getRootText(request), VCSOperation.GetRootText)
+        return this.unwrapResponse(this.client.getRootText(request), VCSOperation.GetRootText)
     }
 
-    public async lineChanged(blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
+    public lineChanged(blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, change })
-        return await this.unwrapResponse(this.client.lineChanged(request), VCSOperation.LineChanged)
+        return this.unwrapResponse(this.client.lineChanged(request), VCSOperation.LineChanged)
     }
 
-    public async linesChanged(blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
+    public linesChanged(blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, change })
-        return await this.unwrapResponse(this.client.linesChanged(request), VCSOperation.LinesChanged)
+        return this.unwrapResponse(this.client.linesChanged(request), VCSOperation.LinesChanged)
     }
 
-    public async applyChange(blockId: VCSBlockId, change: AnyChange): Promise<VCSBlockId[]> {
+    public applyChange(blockId: VCSBlockId, change: AnyChange): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, change })
-        return await this.unwrapResponse(this.client.applyChange(request), VCSOperation.ApplyChange)
+        return this.unwrapResponse(this.client.applyChange(request), VCSOperation.ApplyChange)
     }
 
-    public async applyChanges(blockId: VCSBlockId, changes: ChangeSet): Promise<VCSBlockId[]> {
+    public applyChanges(blockId: VCSBlockId, changes: ChangeSet): Promise<VCSBlockId[]> {
         const request = this.createSessionRequest(blockId, { blockId, changes })
-        return await this.unwrapResponse(this.client.applyChanges(request), VCSOperation.ApplyChanges)
+        return this.unwrapResponse(this.client.applyChanges(request), VCSOperation.ApplyChanges)
     }
 
-    public async copyBlock(blockId: VCSBlockId): Promise<VCSCopyBlockInfo> {
+    public copyBlock(blockId: VCSBlockId): Promise<VCSCopyBlockInfo> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.copyBlock(request), VCSOperation.CopyBlock)
+        return this.unwrapResponse(this.client.copyBlock(request), VCSOperation.CopyBlock)
     }
 
-    public async createChild(parentBlockId: VCSBlockId, range: VCSBlockRange): Promise<VCSChildBlockInfo | null> {
+    public createChild(parentBlockId: VCSBlockId, range: VCSBlockRange): Promise<VCSChildBlockInfo | null> {
         const request = this.createSessionRequest(parentBlockId, { parentBlockId, range })
-        return await this.unwrapResponse(this.client.createChild(request), VCSOperation.CreateChild)
+        return this.unwrapResponse(this.client.createChild(request), VCSOperation.CreateChild)
     }
 
-    public async deleteBlock(blockId: VCSBlockId): Promise<void> {
+    public deleteBlock(blockId: VCSBlockId): Promise<void> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.deleteBlock(request), VCSOperation.DeleteBlock)
+        return this.unwrapResponse(this.client.deleteBlock(request), VCSOperation.DeleteBlock)
     }
 
-    public async getBlockInfo(blockId: VCSBlockId): Promise<VCSBlockInfo> {
+    public getBlockInfo(blockId: VCSBlockId): Promise<VCSBlockInfo> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getBlockInfo(request), VCSOperation.GetBlockInfo)
+        return this.unwrapResponse(this.client.getBlockInfo(request), VCSOperation.GetBlockInfo)
     }
 
-    public async getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]> {
+    public getChildrenInfo(blockId: VCSBlockId): Promise<VCSBlockInfo[]> {
         const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.getChildrenInfo(request), VCSOperation.GetChildrenInfo)
+        return this.unwrapResponse(this.client.getChildrenInfo(request), VCSOperation.GetChildrenInfo)
     }
 
-    public async updateBlock(blockId: VCSBlockId, update: VCSBlockUpdate): Promise<void> {
+    public updateBlock(blockId: VCSBlockId, update: VCSBlockUpdate): Promise<void> {
         const request = this.createSessionRequest(blockId, { blockId, update })
-        return await this.unwrapResponse(this.client.updateBlock(request), VCSOperation.UpdateBlock)
+        return this.unwrapResponse(this.client.updateBlock(request), VCSOperation.UpdateBlock)
     }
 
-    public async setBlockVersionIndex(blockId: VCSBlockId, versionIndex: number): Promise<string> {
+    public syncBlocks(source: VCSBlockId, target: VCSBlockId): Promise<string> {
+        const request = this.createSessionRequest(target, { source, target })
+        return this.unwrapResponse(this.client.syncBlocks(request), VCSOperation.SyncBlocks)
+    }
+
+    public setBlockVersionIndex(blockId: VCSBlockId, versionIndex: number): Promise<string> {
         const request = this.createSessionRequest(blockId, { blockId, versionIndex })
-        return await this.unwrapResponse(this.client.setBlockVersionIndex(request), VCSOperation.SetBlockVersionIndex)
+        return this.unwrapResponse(this.client.setBlockVersionIndex(request), VCSOperation.SetBlockVersionIndex)
     }
 
-    public async saveCurrentBlockVersion(blockId: VCSBlockId): Promise<VCSTagInfo> {
-        const request = this.createSessionRequest(blockId, { blockId })
-        return await this.unwrapResponse(this.client.saveCurrentBlockVersion(request), VCSOperation.SaveCurrentBlockVersion)
+    public saveCurrentBlockVersion(blockId: VCSBlockId, options?: { name?: string, description?: string, codeForAi?: string }): Promise<VCSTagInfo> {
+        const request = this.createSessionRequest(blockId, { blockId, name: options?.name, description: options?.name, codeForAi: options?.codeForAi })
+        return this.unwrapResponse(this.client.saveCurrentBlockVersion(request), VCSOperation.SaveCurrentBlockVersion)
     }
 
-    public async applyTag(tagId: VCSTagId, blockId: VCSBlockId): Promise<VCSBlockInfo> {
+    public applyTag(tagId: VCSTagId, blockId: VCSBlockId): Promise<VCSBlockInfo> {
         const request = this.createSessionRequest(blockId, { tagId, blockId })
-        return await this.unwrapResponse(this.client.applyTag(request), VCSOperation.ApplyTag)
+        return this.unwrapResponse(this.client.applyTag(request), VCSOperation.ApplyTag)
     }
 
-    public async getErrorHint(sessionId: VCSSessionId, code: string, errorMessage: string): Promise<string | null> {
+    public getErrorHint(sessionId: VCSSessionId, code: string, errorMessage: string): Promise<string | null> {
         const request = this.createSessionRequest(sessionId, { code, errorMessage })
-        return await this.unwrapResponse(this.client.getErrorHint(request), VCSOperation.GetErrorHint)
+        return this.unwrapResponse(this.client.getErrorHint(request), VCSOperation.GetErrorHint)
     }
 
 
@@ -678,12 +687,16 @@ export class VCSSession {
         return VCSBlockSession.createFileSession(this, blockInfo)
     }
 
-    public async waitForCurrentRequests(): Promise<void> {
-        await this.client.waitForCurrentRequests(this.session)
+    public waitForCurrentRequests(): Promise<void> {
+        return this.client.waitForCurrentRequests(this.session)
     }
 
-    public async getErrorHint(code: string, errorMessage: string): Promise<string | null> {
-        return await this.client.getErrorHint(this.session, code, errorMessage)
+    public syncBlocks(source: VCSBlockId, target: VCSBlockId): Promise<string> {
+        return this.client.syncBlocks(source, target)
+    }
+
+    public getErrorHint(code: string, errorMessage: string): Promise<string | null> {
+        return this.client.getErrorHint(this.session, code, errorMessage)
     }
 
     public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
@@ -691,8 +704,8 @@ export class VCSSession {
     }
 
     // WARNING: This will also close all active block sessions belonging to this session! Any further operation on them will fail!
-    public async close(): Promise<void> {
-        await this.client.closeSession(this.session)
+    public close(): Promise<void> {
+        return this.client.closeSession(this.session)
     }
 }
 
@@ -729,28 +742,28 @@ export class VCSBlockSession {
         return fileId
     }
 
-    public async getText(): Promise<string> {
-        return await this.client.getText(this.block)
+    public getText(): Promise<string> {
+        return this.client.getText(this.block)
     }
 
-    public async getRootText(): Promise<string> {
-        return await this.client.getRootText(this.block)
+    public getRootText(): Promise<string> {
+        return this.client.getRootText(this.block)
     }
 
-    public async lineChanged(change: LineChange): Promise<VCSBlockId[]> {
-        return await this.client.lineChanged(this.block, change)
+    public lineChanged(change: LineChange): Promise<VCSBlockId[]> {
+        return this.client.lineChanged(this.block, change)
     }
 
-    public async linesChanged(change: MultiLineChange): Promise<VCSBlockId[]> {
-        return await this.client.linesChanged(this.block, change)
+    public linesChanged(change: MultiLineChange): Promise<VCSBlockId[]> {
+        return this.client.linesChanged(this.block, change)
     }
 
-    public async applyChange(change: AnyChange): Promise<VCSBlockId[]> {
-        return await this.client.applyChange(this.block, change)
+    public applyChange(change: AnyChange): Promise<VCSBlockId[]> {
+        return this.client.applyChange(this.block, change)
     }
 
-    public async applyChanges(changes: ChangeSet): Promise<VCSBlockId[]> {
-        return await this.client.applyChanges(this.block, changes)
+    public applyChanges(changes: ChangeSet): Promise<VCSBlockId[]> {
+        return this.client.applyChanges(this.block, changes)
     }
 
     public async copyBlock(blockId: VCSBlockId): Promise<VCSBlockSession> {
@@ -758,12 +771,12 @@ export class VCSBlockSession {
         return new VCSBlockSession(this.session, copyBlock, false)
     }
 
-    public async copy(): Promise<VCSBlockSession> {
-        return await this.copyBlock(this.block)
+    public copy(): Promise<VCSBlockSession> {
+        return this.copyBlock(this.block)
     }
 
-    public async createChild(range: VCSBlockRange): Promise<VCSChildBlockInfo | null> {
-        return await this.client.createChild(this.block, range)
+    public createChild(range: VCSBlockRange): Promise<VCSChildBlockInfo | null> {
+        return this.client.createChild(this.block, range)
     }
 
     public async getChild(childBlockId: VCSBlockId): Promise<VCSBlockSession> {
@@ -771,44 +784,68 @@ export class VCSBlockSession {
         return new VCSBlockSession(this.session, child, false)
     }
 
-    public async deleteChild(childBlockId: VCSBlockId): Promise<void> {
-        await this.client.deleteBlock(childBlockId)
+    public deleteChild(childBlockId: VCSBlockId): Promise<void> {
+        return this.client.deleteBlock(childBlockId)
     }
 
-    public async getBlockInfo(): Promise<VCSBlockInfo> {
-        return await this.client.getBlockInfo(this.block)
+    public getBlockInfo(): Promise<VCSBlockInfo> {
+        return this.client.getBlockInfo(this.block)
     }
 
-    public async getChildInfo(childBlockId: VCSBlockId): Promise<VCSBlockInfo> {
-        return await this.client.getBlockInfo(childBlockId)
+    public getChildInfo(childBlockId: VCSBlockId): Promise<VCSBlockInfo> {
+        return this.client.getBlockInfo(childBlockId)
     }
 
-    public async getChildrenInfo(): Promise<VCSBlockInfo[]> {
-        return await this.client.getChildrenInfo(this.block)
+    public getChildrenInfo(): Promise<VCSBlockInfo[]> {
+        return this.client.getChildrenInfo(this.block)
     }
 
-    public async updateChildBlock(childBlockId: VCSBlockId, update: VCSBlockUpdate): Promise<void> {
-        await this.client.updateBlock(childBlockId, update)
+    public updateBlock(update: VCSBlockUpdate): Promise<void> {
+        return this.client.updateBlock(this.block, update)
     }
 
-    public async setChildBlockVersionIndex(childBlockId: VCSBlockId, versionIndex: number): Promise<string> {
-        return await this.client.setBlockVersionIndex(childBlockId, versionIndex)
+    public updateChildBlock(childBlockId: VCSBlockId, update: VCSBlockUpdate): Promise<void> {
+        return this.client.updateBlock(childBlockId, update)
     }
 
-    public async saveChildBlockVersion(childBlockId: VCSBlockId): Promise<VCSTagInfo> {
-        return await this.client.saveCurrentBlockVersion(childBlockId)
+    public syncBlocks(source: VCSBlockId, target: VCSBlockId): Promise<string> {
+        return this.session.syncBlocks(source, target)
     }
 
-    public async applyTag(tagId: VCSTagId): Promise<VCSBlockInfo> {
-        return await this.client.applyTag(tagId, this.block)
+    public syncWithBlock(source: VCSBlockId): Promise<string> {
+        return this.syncBlocks(source, this.block)
     }
 
-    public async applyTagToChild(tagId: VCSTagId, childBlockId: VCSBlockId): Promise<VCSBlockInfo> {
-        return await this.client.applyTag(tagId, childBlockId)
+    public syncFromBlock(target: VCSBlockId): Promise<string> {
+        return this.syncBlocks(this.block, target)
     }
 
-    public async getErrorHint(code: string, errorMessage: string): Promise<string | null> {
-        return await this.session.getErrorHint(code, errorMessage)
+    public setVersionIndex(versionIndex: number): Promise<string> {
+        return this.client.setBlockVersionIndex(this.block, versionIndex)
+    }
+
+    public setChildBlockVersionIndex(childBlockId: VCSBlockId, versionIndex: number): Promise<string> {
+        return this.client.setBlockVersionIndex(childBlockId, versionIndex)
+    }
+
+    public saveBlockVersion(options?: { name?: string, description?: string, codeForAi?: string }): Promise<VCSTagInfo> {
+        return this.client.saveCurrentBlockVersion(this.block, options)
+    }
+
+    public saveChildBlockVersion(childBlockId: VCSBlockId, options?: { name?: string, description?: string, codeForAi?: string }): Promise<VCSTagInfo> {
+        return this.client.saveCurrentBlockVersion(childBlockId, options)
+    }
+
+    public applyTag(tagId: VCSTagId): Promise<VCSBlockInfo> {
+        return this.client.applyTag(tagId, this.block)
+    }
+
+    public applyTagToChild(tagId: VCSTagId, childBlockId: VCSBlockId): Promise<VCSBlockInfo> {
+        return this.client.applyTag(tagId, childBlockId)
+    }
+
+    public getErrorHint(code: string, errorMessage: string): Promise<string | null> {
+        return this.session.getErrorHint(code, errorMessage)
     }
 
     public onRequestSend(callback: () => void, filter?: { requestTypes?: { include?: VCSRequestType[], exclude?: VCSRequestType[] }, operations?: { include?: VCSOperation[], exclude?: VCSOperation[] } }): Disposable {
@@ -849,83 +886,87 @@ export class AdaptableVCSServer<Adapter extends VCSAdapter> extends BasicVCSServ
         this.adapter = adapter
     }
 
-    public async createSession(request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>> {
-        return await this.adapter.createSession(request)
+    public createSession(request: VCSSessionCreationRequest): Promise<VCSResponse<VCSSessionId>> {
+        return this.adapter.createSession(request)
     }
 
-    public async closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await this.adapter.closeSession(request)
+    public closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return this.adapter.closeSession(request)
     }
 
-    public async waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await this.adapter.waitForCurrentRequests(request)
+    public waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return this.adapter.waitForCurrentRequests(request)
     }
 
-    public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
-        return await this.adapter.loadFile(request)
+    public loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
+        return this.adapter.loadFile(request)
     }
 
-    public async updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId; filePath: string; }>): Promise<VCSResponse<VCSFileId>> {
-        return await this.adapter.updateFilePath(request)
+    public updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId; filePath: string; }>): Promise<VCSResponse<VCSFileId>> {
+        return this.adapter.updateFilePath(request)
     }
 
-    public async unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
-        return await this.adapter.unloadFile(request)
+    public unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
+        return this.adapter.unloadFile(request)
     }
 
-    public async getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await this.adapter.getText(request)
+    public getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return this.adapter.getText(request)
     }
 
-    public async getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await this.adapter.getRootText(request)
+    public getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return this.adapter.getRootText(request)
     }
 
-    public async lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.adapter.lineChanged(request)
+    public lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return this.adapter.lineChanged(request)
     }
 
-    public async linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.adapter.linesChanged(request)
+    public linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return this.adapter.linesChanged(request)
     }
 
-    public async copyBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
-        return await this.adapter.copyBlock(request)
+    public copyBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
+        return this.adapter.copyBlock(request)
     }
 
-    public async createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo | null>> {
-        return await this.adapter.createChild(request)
+    public createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo | null>> {
+        return this.adapter.createChild(request)
     }
 
-    public async deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
-        return await this.adapter.deleteBlock(request)
+    public deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
+        return this.adapter.deleteBlock(request)
     }
 
-    public async getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
-        return await this.adapter.getBlockInfo(request)
+    public getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        return this.adapter.getBlockInfo(request)
     }
 
-    public async getChildrenInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
-        return await this.adapter.getChildrenInfo(request)
+    public getChildrenInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
+        return this.adapter.getChildrenInfo(request)
     }
 
-    public async updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
-        return await this.adapter.updateBlock(request)
+    public updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
+        return this.adapter.updateBlock(request)
     }
 
-    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
-        return await this.adapter.setBlockVersionIndex(request)
+    public syncBlocks(request: VCSSessionRequest<{ source: VCSBlockId; target: VCSBlockId; }>): Promise<VCSResponse<string>> {
+        return this.adapter.syncBlocks(request)
     }
 
-    public async saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>> {
-        return await this.adapter.saveCurrentBlockVersion(request)
+    public setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+        return this.adapter.setBlockVersionIndex(request)
     }
 
-    public async applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
-        return await this.adapter.applyTag(request)
+    public saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId, name?: string, description?: string, codeForAi?: string }>): Promise<VCSResponse<VCSTagInfo>> {
+        return this.adapter.saveCurrentBlockVersion(request)
     }
 
-    public async getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
-        return await this.adapter.getErrorHint(request)
+    public applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        return this.adapter.applyTag(request)
+    }
+
+    public getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
+        return this.adapter.getErrorHint(request)
     }
 }

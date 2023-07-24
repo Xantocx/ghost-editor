@@ -652,9 +652,18 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return Array.from(affectedBlocks).map(id => VCSBlockId.createFrom(fileId, id))
     }
 
-    public async createTag(): Promise<TagProxy> {
-        const code                  = await this.getText()
-        const { name, description } = await this.ai.generateVersionInfo(code)
+    public async createTag(options?: { name?: string, description?: string, codeForAi?: string }): Promise<TagProxy> {
+        const code = await this.getText()
+
+        let name        = options?.name
+        let description = options?.description
+        let codeForAi   = options?.codeForAi ? options.codeForAi : code
+
+        if (name === undefined || description === undefined) {
+            const { name: generatedName, description: generatedDescription } = await this.ai.generateVersionInfo(codeForAi)
+            if (name        === undefined) { name        = generatedName }
+            if (description === undefined) { description = generatedDescription }
+        }
 
         const tagBlock = await this.copy()
 

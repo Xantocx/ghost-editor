@@ -11,10 +11,11 @@ export interface ISessionFile {
 }
 
 export interface ISessionBlock<SessionFile extends ISessionFile, SessionBlock extends ISessionBlock<SessionFile, SessionBlock, SessionLine, SessionTag>, SessionLine extends ISessionLine, SessionTag extends ISessionTag> {
-    blockId: string
-    file:    SessionFile
-    type:    BlockType
-    parent?: SessionBlock
+    blockId:   string
+    file:      SessionFile
+    type:      BlockType
+    timestamp: number
+    parent?:   SessionBlock
 
     getFileRoot(): Promise<SessionBlock>
     getRoot(): Promise<SessionBlock>
@@ -34,7 +35,7 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionBlock ex
     copy(): Promise<SessionBlock>
     createChild(range: VCSBlockRange): Promise<SessionBlock | null>
 
-    createTag(): Promise<SessionTag>
+    createTag(options?: { name?: string, description?: string, codeForAi?: string }): Promise<SessionTag>
 }
 
 export interface ISessionLine {
@@ -176,12 +177,12 @@ export abstract class Session<SessionFile extends ISessionFile, SessionLine exte
         return { root, block }
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => QueryResult | Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         const requestType = VCSOperationTypes.get(queryType)!
         return this.queries.createQuery(request, requestType, query)
     }
 
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: this) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: this, data: RequestData) => QueryResult | Promise<QueryResult>, onChainInterrupt: (session: this) => void | Promise<void>): Promise<VCSResponse<QueryResult>> {
         const requestType = VCSOperationTypes.get(queryType)!
         return this.queries.createQueryChain(chainId, request, requestType, query, onChainInterrupt)
     }
@@ -397,7 +398,7 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
     public readonly type:      VCSRequestType
 
     private readonly manager: Manager
-    private readonly query:   (session: QuerySession, data: QueryData) => Promise<QueryResult>
+    private readonly query:   (session: QuerySession, data: QueryData) => QueryResult | Promise<QueryResult>
 
     private readonly promise: Promise<VCSResponse<QueryResult>>
     private          resolve: (value: VCSResponse<QueryResult> | PromiseLike<VCSResponse<QueryResult>>) => void
@@ -407,7 +408,7 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
     public get requestId():   string       { return this.request.requestId }
     public get data():        QueryData    { return this.request.data }
 
-    public constructor(manager: Manager, request: VCSSessionRequest<QueryData>, type: VCSRequestType, query: (session: QuerySession, data: QueryData) => Promise<QueryResult>) {
+    public constructor(manager: Manager, request: VCSSessionRequest<QueryData>, type: VCSRequestType, query: (session: QuerySession, data: QueryData) => QueryResult | Promise<QueryResult>) {
         this.manager = manager
         this.request = request
         this.type    = type
@@ -423,21 +424,18 @@ class Query<QueryData, QueryResult, SessionFile extends ISessionFile, SessionLin
         return this.promise
     }
 
-    public execute(): void {
-
+    public async execute(): Promise<void> {
         this.manager.queryRunning(this)
-
         const requestId = this.requestId
-        this.query(this.session, this.data)
-            .then(response => {
-                this.manager.queryFinished(this)
-                this.resolve({ requestId, response })
-            })
-            .catch((error: Error) => {
-                throw error // handle errors in the backend for debugging
-                this.manager.queryFinished(this)
-                this.resolve({ requestId, error: error.message })
-            })
+        try {
+            const response = await this.query(this.session, this.data)
+            this.manager.queryFinished(this)
+            this.resolve({ requestId, response })
+        } catch (error) {
+            throw error // handle errors in the backend for debugging
+            this.manager.queryFinished(this)
+            this.resolve({ requestId, error: error.message })
+        }
     }
 }
 
@@ -454,8 +452,8 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
 
     private readonly finishedRequestIds: string[] = []
 
-    private currentQueryChain?:     string                                   = undefined
-    private breakingChainCallback?: (session: QuerySession) => Promise<void> = undefined
+    private currentQueryChain?:     string                                          = undefined
+    private breakingChainCallback?: (session: QuerySession) => void | Promise<void> = undefined
 
     public constructor(session: QuerySession) {
         this.session = session
@@ -499,7 +497,7 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
         }
     }
 
-    public createNewQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    private createNewQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => QueryResult | Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         const newQuery = new Query(this, request, queryType, query)
 
         this.setWaiting(newQuery, request.previousRequestId)
@@ -508,7 +506,7 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
         return newQuery.getPromise()
     }
 
-    private startQueryChain(chainId: string, onChainInterrupt: (session: QuerySession) => Promise<void>): void {
+    private startQueryChain(chainId: string, onChainInterrupt: (session: QuerySession) => void | Promise<void>): void {
         this.currentQueryChain     = chainId
         this.breakingChainCallback = onChainInterrupt
     }
@@ -521,13 +519,13 @@ class QueryManager<SessionFile extends ISessionFile, SessionLine extends ISessio
         }
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => QueryResult | Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         if (queryType === VCSRequestType.ReadWrite) { await this.breakQueryChain() }
         return this.createNewQuery(request, queryType, query)
     }
 
     // WARNING: Right now, query chains are only interrupted by new chains of unchained readwrite queries, assuming that we can always read inbetween a chain!!!
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSRequestType, query: (session: QuerySession, data: RequestData) => QueryResult | Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => void | Promise<void>): Promise<VCSResponse<QueryResult>> {
         if (this.currentQueryChain !== chainId) {
             // console.log("Start Chain: " + chainId)
             await this.breakQueryChain()
@@ -577,7 +575,7 @@ export class ResourceManager<SessionFile extends ISessionFile, SessionLine exten
         return Array.from(this.sessions.values())
     }
 
-    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
+    public async createQuery<RequestData, QueryResult>(request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: QuerySession, data: RequestData) => QueryResult | Promise<QueryResult>): Promise<VCSResponse<QueryResult>> {
         let session: QuerySession
 
         try {
@@ -592,7 +590,7 @@ export class ResourceManager<SessionFile extends ISessionFile, SessionLine exten
         return session.createQuery(request, queryType, query)
     }
 
-    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: QuerySession, data: RequestData) => Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => Promise<void>): Promise<VCSResponse<QueryResult>> {
+    public async createQueryChain<RequestData, QueryResult>(chainId: string, request: VCSSessionRequest<RequestData>, queryType: VCSOperation, query: (session: QuerySession, data: RequestData) => QueryResult | Promise<QueryResult>, onChainInterrupt: (session: QuerySession) => void | Promise<void>): Promise<VCSResponse<QueryResult>> {
         let session: QuerySession
 
         try {

@@ -52,70 +52,70 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         return { requestId: request.requestId, response: sessionId }
     }
 
-    public async closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, VCSOperation.CloseSession, async (session) => {
+    public closeSession(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return this.resources.createQuery(request, VCSOperation.CloseSession, (session) => {
             session.close()
         })
     }
 
-    public async waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, VCSOperation.WaitForCurrentRequests, async () => {})
+    public waitForCurrentRequests(request: VCSSessionRequest<void>): Promise<VCSResponse<void>> {
+        return this.resources.createQuery(request, VCSOperation.WaitForCurrentRequests, () => {})
     }
 
-    public async loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
-        return await this.resources.createQuery(request, VCSOperation.LoadFile, async (session, { options }) => {
-            return await session.loadFile(options)
+    public loadFile(request: VCSSessionRequest<{ options: VCSFileLoadingOptions }>): Promise<VCSResponse<VCSRootBlockInfo>> {
+        return this.resources.createQuery(request, VCSOperation.LoadFile, (session, { options }) => {
+            return session.loadFile(options)
         })
     }
 
-    public async updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId; filePath: string; }>): Promise<VCSResponse<VCSFileId>> {
-        return await this.resources.createQuery(request, VCSOperation.UpdateFilePath, async (session, { fileId, filePath }) => {
-            return await session.updateFilePath(fileId, filePath)
+    public updateFilePath(request: VCSSessionRequest<{ fileId: VCSFileId; filePath: string; }>): Promise<VCSResponse<VCSFileId>> {
+        return this.resources.createQuery(request, VCSOperation.UpdateFilePath, (session, { fileId, filePath }) => {
+            return session.updateFilePath(fileId, filePath)
         })
     }
 
-    public async getFileData(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<VCSFileData>> {
+    public getFileData(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<VCSFileData>> {
         // TODO: fix VCSOperation eventually
-        return await this.resources.createQuery(request, VCSOperation.GetBlockInfo, async (session, { fileId }) => {
-            return await session.getFileData(fileId)
+        return this.resources.createQuery(request, VCSOperation.GetBlockInfo, (session, { fileId }) => {
+            return session.getFileData(fileId)
         })
     }
 
-    public async unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, VCSOperation.UnloadFile, async (session, { fileId }) => {
-            session.unloadFile(fileId)
+    public unloadFile(request: VCSSessionRequest<{ fileId: VCSFileId }>): Promise<VCSResponse<void>> {
+        return this.resources.createQuery(request, VCSOperation.UnloadFile, (session, { fileId }) => {
+            return session.unloadFile(fileId)
         })
     }
 
-    public async getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, VCSOperation.GetText, async (session, { blockId }) => {
+    public getText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return this.resources.createQuery(request, VCSOperation.GetText, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
-            return await block.getText()
+            return block.getText()
         })
     }
 
-    public async getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
-        return await this.resources.createQuery(request, VCSOperation.GetRootText, async (session, { blockId }) => {
+    public getRootText(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<string>> {
+        return this.resources.createQuery(request, VCSOperation.GetRootText, async (session, { blockId }) => {
             const root  = session.getFileRootBlockFor(blockId)
             const block = await session.getBlock(blockId)
-            return await root.getText([block])
+            return root.getText([block])
         })
     }
 
-    public async lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.resources.createQuery(request, VCSOperation.LineChanged, async (session, { blockId, change }) => {
-            return await this.updateLine(session, blockId, change)
+    public lineChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: LineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return this.resources.createQuery(request, VCSOperation.LineChanged, (session, { blockId, change }) => {
+            return this.updateLine(session, blockId, change)
         })
     }
 
-    public async linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.resources.createQuery(request, VCSOperation.LinesChanged, async (session, { blockId, change }) => {
-            return await this.updateLines(session, blockId, change)
+    public linesChanged(request: VCSSessionRequest<{ blockId: VCSBlockId, change: MultiLineChange }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return this.resources.createQuery(request, VCSOperation.LinesChanged, (session, { blockId, change }) => {
+            return this.updateLines(session, blockId, change)
         })
     }
 
-    public override async applyChanges(request: VCSSessionRequest<{ blockId: VCSBlockId; changes: ChangeSet; }>): Promise<VCSResponse<VCSBlockId[]>> {
-        return await this.resources.createQuery(request, VCSOperation.ApplyChanges, async (session, { blockId, changes }) => {
+    public applyChanges(request: VCSSessionRequest<{ blockId: VCSBlockId; changes: ChangeSet; }>): Promise<VCSResponse<VCSBlockId[]>> {
+        return this.resources.createQuery(request, VCSOperation.ApplyChanges, async (session, { blockId, changes }) => {
             const blockIds = []
             for (const change of changes) {
                 if      (change instanceof LineChange)      { blockIds.push(await this.updateLine(session, blockId, change)) }
@@ -126,81 +126,92 @@ export abstract class VCSServer<SessionFile extends ISessionFile, SessionLine ex
         })
     }
 
-    public async copyBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
-        return await this.resources.createQuery(request, VCSOperation.CopyBlock, async (session, { blockId }) => {
+    public copyBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSCopyBlockInfo>> {
+        return this.resources.createQuery(request, VCSOperation.CopyBlock, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
             const copy  = await block.copy()
-            return await copy.asBlockInfo(blockId)
+            return copy.asBlockInfo(blockId)
         })
     }
 
-    public async createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo | null>> {
-        return await this.resources.createQuery(request, VCSOperation.CreateChild, async (session, { parentBlockId, range }) => {
+    public createChild(request: VCSSessionRequest<{ parentBlockId: VCSBlockId, range: VCSBlockRange }>): Promise<VCSResponse<VCSChildBlockInfo | null>> {
+        return this.resources.createQuery(request, VCSOperation.CreateChild, async (session, { parentBlockId, range }) => {
             const block = await session.getBlock(parentBlockId)
-            const child  = await block.createChild(range)
-            return child ? await child.asBlockInfo(parentBlockId) : null
+            const child = await block.createChild(range)
+            return child ? child.asBlockInfo(parentBlockId) : null
         })
     }
 
-    public async deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
-        return await this.resources.createQuery(request, VCSOperation.DeleteBlock, async (session, { blockId }) => {
-            await session.delete(blockId)
+    public deleteBlock(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<void>> {
+        return this.resources.createQuery(request, VCSOperation.DeleteBlock, (session, { blockId }) => {
+            return session.delete(blockId)
         })
     }
 
-    public async getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
-        return await this.resources.createQuery(request, VCSOperation.GetBlockInfo, async (session, { blockId }) => {
+    public getBlockInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+        return this.resources.createQuery(request, VCSOperation.GetBlockInfo, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
-            return await block.asBlockInfo(blockId)
+            return block.asBlockInfo(blockId)
         })
     }
 
-    public async getChildrenInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
-        return await this.resources.createQuery(request, VCSOperation.GetChildrenInfo, async (session, { blockId }) => {
+    public getChildrenInfo(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo[]>> {
+        return this.resources.createQuery(request, VCSOperation.GetChildrenInfo, async (session, { blockId }) => {
             const block = await session.getBlock(blockId)
-            return await block.getChildrenInfo(blockId)
+            return block.getChildrenInfo(blockId)
         })
     }
 
-    public async updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
+    public updateBlock(request: VCSSessionRequest<{ blockId: VCSBlockId, update: VCSBlockUpdate }>): Promise<VCSResponse<void>> {
         throw new Error("Currently, blocks cannot be updated because its unused and I cannot be bothered to actually implement that nightmare.")
     }
 
-    public async setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
+    public async syncBlocks(request: VCSSessionRequest<{ source: VCSBlockId; target: VCSBlockId; }>): Promise<VCSResponse<string>> {
+        return this.resources.createQuery(request, VCSOperation.SyncBlocks, async (session, { source, target }) => {
+            if (session.id !== source.sessionId || session.id !== target.sessionId) { throw new Error("Requested source and target do not match requested session id!") }
+
+            const sourceBlock = await session.getBlock(source)
+            const targetBlock = await session.getBlock(target)
+            await targetBlock.applyTimestamp(sourceBlock.timestamp)
+            return targetBlock.getText()
+        })
+    }
+
+    public setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
-        return await this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, VCSOperation.SetBlockVersionIndex, async (session, { blockId, versionIndex }) => {
+        return this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, VCSOperation.SetBlockVersionIndex, async (session, { blockId, versionIndex }) => {
             const { root, block } = await session.getRootBlockFor(blockId)
             await block.applyIndex(versionIndex)
             await this.updatePreview(session, blockId)
-            return await root.getText()
+            return root.getText()
         }, async (session) => {
             // console.log("Chain Broke")
             const block = await session.getBlock(blockId)
-            await block.cloneOutdatedHeads()
+            return block.cloneOutdatedHeads()
         })
     }
 
-    public async saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId }>): Promise<VCSResponse<VCSTagInfo>> {
-        return await this.resources.createQuery(request, VCSOperation.SaveCurrentBlockVersion, async (session, { blockId }) => {
+    public saveCurrentBlockVersion(request: VCSSessionRequest<{ blockId: VCSBlockId, name?: string, description?: string, codeForAi?: string }>): Promise<VCSResponse<VCSTagInfo>> {
+        return this.resources.createQuery(request, VCSOperation.SaveCurrentBlockVersion, async (session, { blockId, name, description, codeForAi }) => {
             const block = await session.getBlock(blockId)
-            const tag   = await block.createTag()
-            return await tag.asTagInfo(blockId)
+            const tag   = await block.createTag({ name, description, codeForAi })
+            return tag.asTagInfo(blockId)
         })
     }
 
-    public async applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
+    public applyTag(request: VCSSessionRequest<{ tagId: VCSTagId, blockId: VCSBlockId }>): Promise<VCSResponse<VCSBlockInfo>> {
         // TODO: Should the frontend or backend evaluate that blocks and tags fit together? Or do we assume I can apply any tag to any block?
-        return await this.resources.createQuery(request, VCSOperation.ApplyTag, async (session, { tagId, blockId }) => {
+        return this.resources.createQuery(request, VCSOperation.ApplyTag, async (session, { tagId, blockId }) => {
             const tag   = await session.getTag(tagId)
             const block = await session.getBlock(blockId)
             await block.applyTimestamp(tag.timestamp)
-            return await block.asBlockInfo(blockId)
+            return block.asBlockInfo(blockId)
         })
     }
 
-    public async getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
-        return await this.resources.createQuery(request, VCSOperation.GetErrorHint, async (session, { code, errorMessage }) => {
-            return await CodeAI.errorSuggestion(code, errorMessage)
+    public getErrorHint(request: VCSSessionRequest<{ code: string, errorMessage: string }>): Promise<VCSResponse<string | null>> {
+        return this.resources.createQuery(request, VCSOperation.GetErrorHint, (session, { code, errorMessage }) => {
+            return CodeAI.errorSuggestion(code, errorMessage)
         })
     }
 }

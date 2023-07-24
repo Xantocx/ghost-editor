@@ -74,10 +74,8 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
 
     protected override setupContent(container: HTMLElement): void {
         
-        const onButtonClick = async () => {
-            const version = await this.editor.getSession().saveChildBlockVersion(this.snapshot.vcsId)
-            this.snapshot.addVersion(version)
-            this.editor.activeSnapshot = this.snapshot
+        const onButtonClick = () => {
+            this.buttonCallbacks.forEach(callback => callback())
         }
 
         const onSliderChange = (value: number) => {
@@ -105,6 +103,20 @@ export class GhostSnapshotFooter extends InlineEditorBanner {
 
     public updateSlider(): void {
         GhostSnapshotFooter.loadingEventEmitter.reload()
+    }
+
+    private readonly buttonCallbacks: {(): void}[] = []
+    public onClick(callback: () => void): Disposable {
+
+        this.buttonCallbacks.push(callback)
+
+        const parent = this
+        return this.addSubscription({
+            dispose() {
+                const index = parent.buttonCallbacks.indexOf(callback)
+                if (index > -1) { parent.buttonCallbacks.splice(index, 1) }
+            },
+        })
     }
 
     private readonly sliderCallbacks: {(value: number): void}[] = []

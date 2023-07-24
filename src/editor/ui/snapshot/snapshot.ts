@@ -155,6 +155,10 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
 
         this.footer = new GhostSnapshotFooter(this, this.locator, this.viewZonesOnly)
 
+        this.addSubscription(this.footer.onClick(async () => {
+            await this.createVersion()
+        }))
+
         // value updating -> TODO: test throttle timer, but this is fucking genius, just saying.
         this.addSubscription(this.footer.onChange(throttle(async value => {
             const newText = await this.session.setChildBlockVersionIndex(this.vcsId, value)
@@ -198,8 +202,19 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         this.sideView?.update(this.sideViewIdentifier, { versions: this.versions })
     }
 
-    public addVersion(tag: VCSTagInfo): void {
-        this.versions.push(new VCSVersion(this, tag))
+    public async createVersion(options?: { name?: string, description?: string, codeForAi?: string }): Promise<VCSVersion> {
+        const version = await this.session.saveChildBlockVersion(this.vcsId, options)
+        this.editor.activeSnapshot = this
+        return this.addVersion(version)
+    }
+
+    public addVersion(tag: VCSTagInfo): VCSVersion {
+        const version = new VCSVersion(this, tag)
+        this.versions.push(version)
+
+        if (this.editor.activeSnapshot === this) { this.editor.sideView?.updateCurrentView({ versions: this.versions }) }
+
+        return version
     }
 
     /*

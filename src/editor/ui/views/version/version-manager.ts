@@ -36,6 +36,8 @@ export class VersionManagerView extends View implements IVersionViewContainer<VC
         this.codeStyle.boxSizing = "border-box"
         this.codeStyle.flex      = "0"
         this.codeStyle.width     = "calc(100% - 10px)"
+        this.codeStyle.padding   = "0"
+        this.codeStyle.margin    = "0"
         this.root.appendChild(this.codeContainer)
 
         // add version code view
