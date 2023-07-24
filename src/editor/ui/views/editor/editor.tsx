@@ -649,8 +649,8 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
                     if (args.languageId) { view.setLanguageId(args.languageId) }
                     if (args.versions)   { await view.applyDiff(args.versions) }
                 },
-                hideCallback: (view: VersionManagerView) => {
-                    view.removeVersions()
+                hideCallback: async (view: VersionManagerView) => {
+                    await view.removeVersions()
                 }
             })
 
@@ -688,6 +688,11 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
     // dangerous method, disconnects the editor from VCS, make sure this never is called indepenedently of a load
     private async unload(): Promise<void> {
+        const sideView = this.sideView
+        if (this.sideViewEnabled && sideView && this.sideViewIdentifiers) {
+            await sideView.update(this.sideViewIdentifiers.versionManager, { versions: [] })
+        }
+
         this.snapshotManager.removeSnapshots()
         await this.interactionManager.unloadFile()
         this.core.setModel(null)
@@ -822,7 +827,11 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
         await this.reload(newCode)
     }
 
-    public override remove(): void {
+    // TODO: The sub editors do not get cleaned up properly and are stuck somewhere in memory
+    // Manual cleaning is requires
+    public async remove(): Promise<void> {
+        await this.unload()
+        this.synchronizer?.deregister(this)
         this.snapshotManager.removeSnapshots()
         this.editorModel?.close()
         super.remove()

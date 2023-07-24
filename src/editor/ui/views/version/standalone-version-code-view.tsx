@@ -155,8 +155,8 @@ export class VersionCodeView extends View {
         this.container.appendChild(this.editorContainer)
     }
 
-    public override remove(): void {
-        this.editor.remove()
+    public async remove(): Promise<void> {
+        await this.editor.remove()
         this.container.remove()
         super.remove()
     }

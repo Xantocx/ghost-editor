@@ -48,7 +48,7 @@ export class VersionManagerView extends View implements IVersionViewContainer<VC
         this.codeSynchronizer = options?.synchronizer
         
         this.preview = new VersionGridView(this.previewContainer, async (version, selected) => {
-            this.code?.remove()
+            await this.code?.remove()
             this.code = selected ? await VersionCodeView.create(this.codeContainer, version, this.languageId, this.codeSynchronizer) : undefined
             
             this.previewStyle.maxHeight = selected ? "calc(25% - 10px)" : ""
@@ -97,8 +97,8 @@ export class VersionManagerView extends View implements IVersionViewContainer<VC
         //await this.code.addVersion(viewVersion)
     }
 
-    private removeCodePreview(): void {
-        this.code?.remove()
+    private async removeCodePreview(): Promise<void> {
+        await this.code?.remove()
         this.code = undefined
         this.previewStyle.maxHeight = ""
         this.codeStyle.flex         = "0"
@@ -108,29 +108,31 @@ export class VersionManagerView extends View implements IVersionViewContainer<VC
         this.codeStyle.marginBottom = "0"
     }
 
-    private removenFromCodePreview(version: VCSVersion): void {
+    private async removenFromCodePreview(version: VCSVersion): Promise<void> {
         if (this.code && version === this.code.version) {
-            this.removeCodePreview()
+            await this.removeCodePreview()
         }
     }
 
     public async applyDiff(versions: VCSVersion[]): Promise<void> {
         const removedVersions = await this.preview.applyDiff(versions)
-        removedVersions.forEach(version => this.removenFromCodePreview(version))
+        if (removedVersions.includes(this.code?.version)) {
+            await this.removeCodePreview()
+        }
     }
 
-    public removeVersion(version: VCSVersion): void {
+    public async removeVersion(version: VCSVersion): Promise<void> {
         this.preview.removeVersion(version)
-        this.removenFromCodePreview(version)
+        await this.removenFromCodePreview(version)
     }
 
-    public removeVersions(): void {
+    public async removeVersions(): Promise<void> {
         this.preview.removeVersions()
-        this.removeCodePreview()
+        await this.removeCodePreview()
     }
 
-    public override remove(): void {
-        this.removeVersions()
+    public async remove(): Promise<void> {
+        await this.removeVersions()
         this.previewContainer.remove()
         this.codeContainer.remove()
         super.remove()
