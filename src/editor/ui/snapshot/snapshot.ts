@@ -158,6 +158,7 @@ export class GhostSnapshot extends SubscriptionManager implements RangeProvider 
         // value updating -> TODO: test throttle timer, but this is fucking genius, just saying.
         this.addSubscription(this.footer.onChange(throttle(async value => {
             const newText = await this.session.setChildBlockVersionIndex(this.vcsId, value)
+            this.editor.activeSnapshot = undefined
             await this.editor.reload(newText)
         }, 100)))
 

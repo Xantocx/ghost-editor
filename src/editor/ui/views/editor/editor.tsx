@@ -310,10 +310,7 @@ class GhostEditorInteractionManager extends SubscriptionManager {
 
     public readEditorContent(event: MonacoChangeEvent): void {
         if (!this.disableVcsSync) {
-
-            const sideView = this.editor.sideView
-            if (sideView && sideView.currentViewIdentifier !== this.editor.defaultSideView) { this.editor.showDefaultSideView() }
-            
+            this.editor.activeSnapshot = undefined
             const changeSet = this.editor.createChangeSet(event)
             this.editor.applyChangeSet(changeSet)
         }
@@ -673,7 +670,8 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     }
 
     public showDefaultSideView(): void {
-        if (this.sideViewEnabled) { this.sideView!.showView(this.defaultSideView!) }
+        const sideView = this.sideView
+        if (this.sideViewEnabled && sideView && sideView.currentViewIdentifier !== this.defaultSideView) { sideView.showView(this.defaultSideView!) }
     }
 
     public createChangeSet(event: MonacoChangeEvent): ChangeSet {

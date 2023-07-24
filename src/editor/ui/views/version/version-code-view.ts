@@ -42,6 +42,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
     }
 
     private setupMenu(): void {
+        
         const parent = this
         function createSeperator(): HTMLDivElement {
             const seperator = document.createElement("div")

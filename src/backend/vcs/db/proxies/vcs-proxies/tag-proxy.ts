@@ -12,9 +12,20 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
     public readonly tagBlock:    BlockProxy
     public readonly sourceBlock: BlockProxy
     public readonly name:        string
-    public readonly timestamp:   number
     public readonly code:        string
     public readonly description: string
+
+    private _timestamp: number
+    public get timestamp(): number{ return this._timestamp }
+
+    public async setTimestamp(newTimestamp: number): Promise<void> {
+        const updatedTag = await prismaClient.tag.update({
+            where: { id: this.id },
+            data:  { timestamp: newTimestamp }
+        })
+
+        this._timestamp = updatedTag.timestamp
+    }
 
     public static async get(id: number): Promise<TagProxy> {
         return await ProxyCache.getTagProxy(id)
@@ -42,7 +53,7 @@ export class TagProxy extends DatabaseProxy implements ISessionTag {
         this.tagBlock    = tagBlock
         this.sourceBlock = sourceBlock
         this.name        = name
-        this.timestamp   = timestamp
+        this._timestamp  = timestamp
         this.code        = code
         this.description = description
     }

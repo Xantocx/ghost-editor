@@ -86,12 +86,12 @@ export class LineProxy extends DatabaseProxy implements ISessionLine {
 
         const blockData = await prismaClient.$transaction(updates)
 
-        blockData.forEach((blockData, index) => {
+        await Promise.all(blockData.map(async (blockData, index) => {
             const block = blocks[index]
             if (blockData.timestamp !== block.timestamp) {
-                block.setTimestampManually(blockData.timestamp)
+                await block.setTimestampManually(blockData.timestamp)
             }
-        })
+        }))
 
         const newBlocks = blocks.filter(block => this.blocks.every(currentBlock => block.id !== currentBlock.id))
         this.blocks = this.blocks.concat(newBlocks)

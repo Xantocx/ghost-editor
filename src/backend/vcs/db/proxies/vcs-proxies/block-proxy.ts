@@ -35,11 +35,14 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
     public clones:   BlockProxy[] = []
     public tags:     TagProxy[]   = []
 
+    public representedTag?: TagProxy
+
     private _timestamp:  number
     public get timestamp(): number{ return this._timestamp }
 
-    public setTimestampManually(newTimestamp: number) {
+    public async setTimestampManually(newTimestamp: number): Promise<void> {
         this._timestamp = newTimestamp
+        await this.representedTag?.setTimestamp(this.timestamp)
     }
 
     public async setTimestamp(newTimestamp: number): Promise<void> {
@@ -49,6 +52,7 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         })
 
         this._timestamp = updatedBlock.timestamp
+        await this.representedTag?.setTimestamp(this.timestamp)
     }
 
     public static async get(id: number): Promise<BlockProxy> {
@@ -72,11 +76,12 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         proxy.file = await ProxyCache.getFileProxy(block.fileId)
 
         // TODO: Blocks without lines are not handled well like this...
-        const firstLineData = await prismaClient.line.findFirst({ where: { fileId: proxy.file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "asc" } })!
-        const lastLineData  = await prismaClient.line.findFirst({ where: { fileId: proxy.file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "desc" } })!
-        const childrenData  = await prismaClient.block.findMany({ where: { fileId: proxy.file.id, parentId: block.id } })
-        const cloneData     = await prismaClient.block.findMany({ where: { fileId: proxy.file.id, originId: block.id } })
-        const tagData       = await prismaClient.tag.findMany({   where: { sourceBlockId: block.id } })
+        const firstLineData  = await prismaClient.line.findFirst({ where: { fileId: proxy.file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "asc" } })!
+        const lastLineData   = await prismaClient.line.findFirst({ where: { fileId: proxy.file.id, blocks: { some: { id: block.id } } }, orderBy: { order: "desc" } })!
+        const childrenData   = await prismaClient.block.findMany({ where: { fileId: proxy.file.id, parentId: block.id } })
+        const cloneData      = await prismaClient.block.findMany({ where: { fileId: proxy.file.id, originId: block.id } })
+        const tagData        = await prismaClient.tag.findMany({   where: { sourceBlockId: block.id } })
+        const representedTag = await prismaClient.tag.findUnique({ where: { tagBlockId: block.id } })
 
         proxy.parent = block.parentId ? await ProxyCache.getBlockProxy(block.parentId) : undefined
         proxy.origin = block.originId ? await ProxyCache.getBlockProxy(block.originId) : undefined
@@ -87,6 +92,8 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         for (const child of childrenData) { proxy.children.push(await BlockProxy.getFor(child)) }
         for (const clone of cloneData)    { proxy.clones.push(  await BlockProxy.getFor(clone)) }
         for (const tag of tagData)        { proxy.tags.push(    await TagProxy.getFor(tag)) }
+
+        proxy.representedTag = representedTag ? await TagProxy.getFor(representedTag) : undefined
 
         // NOTES: this is a unique call that is only relevant when a new block is created on already existing/loaded lines -> in this case, this will notify the lines about new blocks
         proxy.getLines().forEach(line => {
@@ -121,11 +128,6 @@ export class BlockProxy extends DatabaseProxy implements ISessionBlock<FileProxy
         return root
     }
 
-    // MAGIC: Cache lines + version, all done.
-    // !!!!!! TODO: !!!!!!
-    // THIS SHOULD BE USED TO CALCULATE HEADS?
-    // root block is edited, but versions are only represented through considering children -> heads for this block should always consider children
-    // should get a mapping from line to timestamp applicable through the corresponding children -> then map to versions in one opperation
     private getResponsibilityTable(accumulation?: { clonesToConsider?: BlockProxy[], collectedTimestamps?: Map<number, BlockProxy> }): Map<number, BlockProxy> {
         const clonesToConsider    = accumulation?.clonesToConsider
         const collectedTimestamps = accumulation?.collectedTimestamps
