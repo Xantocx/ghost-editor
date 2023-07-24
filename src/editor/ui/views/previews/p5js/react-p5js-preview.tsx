@@ -180,19 +180,20 @@ import ReactMarkdown from 'react-markdown';
 
 const ErrorHint: React.FC<{ errorHint: string | undefined | null, color: string }> = ({ errorHint, color }) => {
     return (
-        <div style={{ paddingLeft: "3px" }}>
+        <div style={{ paddingLeft: "3px", overflow: "auto" }}>
             <ReactMarkdown>{errorHint ? errorHint : (errorHint === undefined ? "Loading..." : "No error hint available.")}</ReactMarkdown>
         </div>
     )
 }
 
 interface P5JSPreviewProps {
-    synchronizer: Synchronizer,
-    codeProvider: CodeProvider,
+    synchronizer:       Synchronizer,
+    codeProvider:       CodeProvider,
+    hideErrorMessage?:  boolean,
     errorMessageColor?: string
 }
 
-const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, errorMessageColor }) => {
+const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, hideErrorMessage, errorMessageColor }) => {
 
     const isMounted = useRef(true);
 
@@ -326,12 +327,12 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
                     alignItems: 'center',
                     justifyContent: 'center'
                 }}>
-                    <i className="fa-solid fa-circle-exclamation" style={{ fontSize: "120px" }}></i>
+                    <i className="fa-solid fa-circle-exclamation" style={{ fontSize: hideErrorMessage ? "90px" : "120px" }}></i>
                 </div>}
 
             </div>
 
-            <div className='error-message' style={{ flex: "0 0 auto", maxHeight: "50%", border: `1px solid ${color}` }}>
+            {!hideErrorMessage && <div className='error-message' style={{ flex: "0 0 auto", maxHeight: "50%", border: `1px solid ${color}` }}>
                 <div style={{ display: "flex", borderBottom: `1px solid ${color}`, padding: "5px", margin: "0" }}>
                     <h3 style={{ flex: 9, marginTop: "4px", marginBottom: "4px", color }}>Error Log:</h3>
                     {errorMessage && <button onClick={() => setErrorHint(true)} disabled={errorHint} style={{ flex: 1, color: "white", backgroundColor: errorHint ? "gray" : "green", borderRadius: "8px", border: "none" }}>Get Hint!</button>}
@@ -345,7 +346,7 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, e
                         }}/>
                     </div>}
                 </div>
-            </div>
+            </div>}
 
         </div>
     )

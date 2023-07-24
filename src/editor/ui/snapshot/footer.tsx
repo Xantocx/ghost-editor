@@ -8,7 +8,7 @@ import './footer.css'
 import LoadingView, { LoadingEventEmitter } from "../views/utils/loadingView"
 import { createRoot } from "react-dom/client"
 
-import TextButton, { TextButtonProps } from "../components/react-button"
+import { TextButton, TextButtonProps } from "../components/react-button"
 import Slider, { SliderProps } from "../components/slider"
 import { VCSBlockSession } from "../../../app/components/vcs/vcs-rework";
 

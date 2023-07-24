@@ -31,4 +31,36 @@ export const TextButton: React.FC<TextButtonProps> = ({ text, onClick, style }) 
     );
 };
 
-export default TextButton;
+
+export interface IconButtonProps {
+    icon:     string
+    style:    CSSProperties;
+    onClick?: (button: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
+}
+
+export const IconButton: React.FC<IconButtonProps> = ({ icon, onClick, style }) => {
+
+    const defaultStyle: CSSProperties = {
+        display: "inline-block",
+        border: "none",
+        borderRadius: "8px",
+        textAlign: "center",
+        textDecoration: "none",
+        fontSize: '14px',
+        cursor: "pointer",
+        ...style // this will override default styles with the ones provided
+    };
+
+    const handleClick = useCallback(
+        (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+            if (onClick) { onClick(event); }
+        },
+        [onClick]
+    );
+
+    return (
+        <button onClick={handleClick} style={defaultStyle}>
+            <i className={icon}/>
+        </button>
+    );
+};

@@ -462,6 +462,7 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
     public readonly enableFileManagement: boolean
     public readonly sideViewEnabled:      boolean
+    public readonly hideErrorMessage:     boolean
     public readonly mainViewFlex:         number
     public          languageId?:          string
 
@@ -513,15 +514,16 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
 
     public get selectedSnapshots(): GhostSnapshot[] { return this.interactionManager.selectedSnapshots }
 
-    public static createEditorFromSession(root: HTMLElement, loadingOptions: GhostBlockSessionLoadingOptions, options?: { enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
+    public static createEditorFromSession(root: HTMLElement, loadingOptions: GhostBlockSessionLoadingOptions, options?: { enableSideView?: boolean, hideErrorMessage: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }): GhostEditor {
         return new GhostEditor(root, loadingOptions, options)
     }
 
-    public constructor(root: HTMLElement, loadOptions: GhostLoadingOptions, options?: { enableFileManagement?: boolean, enableSideView?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
+    public constructor(root: HTMLElement, loadOptions: GhostLoadingOptions, options?: { enableFileManagement?: boolean, enableSideView?: boolean, hideErrorMessage?: boolean, mainViewFlex?: number, languageId?: string, synchronizer?: Synchronizer }) {
         super(root, options?.synchronizer)
 
         this.enableFileManagement = options?.enableFileManagement ? options.enableFileManagement : false
         this.sideViewEnabled      = options?.enableSideView       ? options.enableSideView       : false
+        this.hideErrorMessage     = options?.hideErrorMessage     ? options.hideErrorMessage     : false
         this.mainViewFlex         = options?.mainViewFlex         ? options.mainViewFlex         : 1
         this.languageId           = options?.languageId
 
@@ -634,22 +636,10 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
                 }
             })
 
-            /*const p5jsPreview = */this.sideView.addReactView("p5js", root => {
+            this.sideView.addReactView("p5js", root => {
                 const reactRoot = createRoot(root)
-                reactRoot.render(<P5JSPreview synchronizer={this.synchronizer!} codeProvider={this}></P5JSPreview>)
-
-                //return new P5JSPreview(root, { provider: this, padding: 5, synchronizer: this.synchronizer })
-            }, /*{
-                showCallback(view: P5JSPreview) {
-                    view.forceRender()
-                },
-                updateCallback: (view: P5JSPreview, provider: CodeProvider) => {
-                    view.update(provider)
-                },
-                hideCallback(view: P5JSPreview) {
-                    view.hideIFrame()
-                },
-            }*/)
+                reactRoot.render(<P5JSPreview synchronizer={this.synchronizer!} codeProvider={this} hideErrorMessage={this.hideErrorMessage}/>)
+            })
 
             const versionManager = this.sideView.addView("versionManager", root => {
                 return new VersionManagerView(root, { synchronizer: this.synchronizer })

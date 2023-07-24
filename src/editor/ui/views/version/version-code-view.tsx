@@ -1,10 +1,14 @@
 import { VCSVersion } from "../../../../app/components/data/version";
 import { VCSBlockId, VCSBlockSession } from "../../../../app/components/vcs/vcs-rework";
 import { Synchronizer } from "../../../utils/synchronizer";
-import { Button, IconButton } from "../../components/button";
+import { IconButton, IconButtonProps, TextButton, TextButtonProps } from "../../components/react-button";
 import { GhostSnapshot } from "../../snapshot/snapshot";
 import { GhostBlockSessionLoadingOptions, GhostEditor } from "../editor/editor";
+import LoadingView, { LoadingEventEmitter } from "../utils/loadingView";
 import { VersionViewContainer, VersionViewElement } from "./version-view";
+
+import React from "react";
+import { createRoot } from "react-dom/client";
 
 export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, VersionCodeView<Container>>> extends VersionViewElement<VCSVersion, VersionCodeView<Container>, Container> {
 
@@ -40,7 +44,7 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.setupMenu(version.snapshot)
         this.setupEditor()
 
-        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, new GhostBlockSessionLoadingOptions(versionSession), { enableSideView: true, mainViewFlex: 3, languageId, synchronizer })
+        this.editor = GhostEditor.createEditorFromSession(this.editorContainer, new GhostBlockSessionLoadingOptions(versionSession), { enableSideView: true, hideErrorMessage: true, mainViewFlex: 3, languageId, synchronizer })
     }
 
     private setupMenu(snapshot: GhostSnapshot): void {
@@ -69,19 +73,68 @@ export class VersionCodeView<Container extends VersionViewContainer<VCSVersion, 
         this.menuContainer.style.borderRight = "none"
         this.listElement.appendChild(this.menuContainer)
 
-        const copyToOriginButton = IconButton.copyButton(createSeperator(), async () => { 
-            await snapshot.session.syncBlocks(this.blockId, snapshot.vcsId)
-            await snapshot.editor.syncWithVCS()
-            snapshot.editor.activeSnapshot = undefined
-        })
+        const loadingEventEmitter          = new LoadingEventEmitter()
+        let   loadingPromise: Promise<any> = Promise.resolve()
 
-        const duplicateButton = Button.addButton(createSeperator(), async () => {
-            const codeForAi = await this.session.getText()
-            const version   = await snapshot.createVersion({ codeForAi })
-            const session   = await version.getSession()
-            session.syncWithBlock(this.blockId)
-            this.editor.triggerSync()
-        })
+        async function withLoadingAnimation(execute: () => Promise<void>): Promise<void> {
+            let resolvePromise: () => void
+            loadingPromise = new Promise<void>((resolve, reject) => { resolvePromise = resolve })
+            loadingEventEmitter.reload()
+            await execute()
+            resolvePromise()
+        }
+
+        const copyToOriginButtonRoot       = createRoot(createSeperator())
+        const duplicateButtonRoot          = createRoot(createSeperator())
+
+        copyToOriginButtonRoot.render(<LoadingView ContentView={IconButton} loadingEventEmitter={loadingEventEmitter} loadData={async () => {
+            await loadingPromise
+
+            const props: IconButtonProps = {
+                icon: "fas fa-arrow-right-to-bracket",
+                style: {
+                    backgroundColor: "orange",
+                    color:           "white",
+                    transform:       "scaleX(-1)",
+                    padding:         "5px 7.09px",
+                    margin:          "5px"
+                },
+                onClick: async () => {
+                    withLoadingAnimation(async () => {
+                        await snapshot.session.syncBlocks(this.blockId, snapshot.vcsId)
+                        await snapshot.editor.syncWithVCS()
+                        snapshot.editor.activeSnapshot = undefined
+                    })
+                },
+            }
+
+            return props
+        }}/>)
+        
+        duplicateButtonRoot.render(<LoadingView ContentView={TextButton} loadingEventEmitter={loadingEventEmitter} loadData={async () => {
+            await loadingPromise
+
+            const props: TextButtonProps = {
+                text: "+",
+                style: {
+                    backgroundColor: "green",
+                    color:           "white",
+                    padding:         "5px 10px",
+                    margin:          "5px"
+                },
+                onClick: async () => {
+                    withLoadingAnimation(async () => {
+                        const codeForAi = await this.session.getText()
+                        const version   = await snapshot.createVersion({ codeForAi })
+                        const session   = await version.getSession()
+                        session.syncWithBlock(this.blockId)
+                        this.editor.triggerSync()
+                    })
+                },
+            }
+
+            return props
+        }}/>)
     }
 
     private setupEditor(): void {
