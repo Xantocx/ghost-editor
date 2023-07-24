@@ -310,6 +310,10 @@ class GhostEditorInteractionManager extends SubscriptionManager {
 
     public readEditorContent(event: MonacoChangeEvent): void {
         if (!this.disableVcsSync) {
+
+            const sideView = this.editor.sideView
+            if (sideView && sideView.currentViewIdentifier !== this.editor.defaultSideView) { this.editor.showDefaultSideView() }
+            
             const changeSet = this.editor.createChangeSet(event)
             this.editor.applyChangeSet(changeSet)
         }
@@ -475,9 +479,9 @@ export class GhostEditor extends View implements ReferenceProvider, CodeProvider
     public readonly interactionManager: GhostEditorInteractionManager
 
     // side view containing previews, versioning views, etc.
-    public  sideView?:            MetaView
-    public  sideViewIdentifiers?: Record<string, ViewIdentifier>
-    private defaultSideView?:     ViewIdentifier
+    public sideView?:            MetaView
+    public sideViewIdentifiers?: Record<string, ViewIdentifier>
+    public defaultSideView?:     ViewIdentifier
 
     // data model
     public     editorModel?: GhostEditorModel

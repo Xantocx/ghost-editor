@@ -98,6 +98,7 @@ export default class CodeAI {
         const versionInfo = { name: `Tag ${this.block.tags.length + 1}`, description: "No description available." }
         
         try {
+            // NOTE: This is not always the same format, so sometimes, I might end up with no title or description... AI and stuff... ugh.
             const response = chatCompletion.data.choices[0].message
 
             const lines = response.content.split("\n")
