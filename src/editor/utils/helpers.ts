@@ -1,4 +1,4 @@
-import { MonacoModel } from "./types";
+import { MonacoModel } from "../data-types/convenience/monaco";
 
 export function extractEOLSymbol(textModel: MonacoModel) {
     const EOL = textModel.getEndOfLineSequence()
@@ -9,29 +9,30 @@ export function extractEOLSymbol(textModel: MonacoModel) {
     }
 }
 
-export function throttle<Func extends (...args: Parameters<Func>) => ReturnType<Func>>(func: Func, debounceTime: number): (...args: Parameters<Func>) => ReturnType<Func> | undefined {
+export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+export function throttle<Params extends Array<any>, ReturnValue, Func extends (...args: Params) => ReturnValue>(func: Func, debounceTime: number): (...args: Parameters<Func>) => ReturnValue | undefined {
 
     let allowExecution = true
     let lastArgs: Parameters<Func> | null = null
-    let timeout: ReturnType<typeof setTimeout> | null = null
 
     function timeoutHandler(): void {
         if (lastArgs) {
             func(...(lastArgs as Parameters<Func>))
             lastArgs = null
-            timeout  = setTimeout(timeoutHandler, debounceTime)
+            setTimeout(timeoutHandler, debounceTime)
         } else {
             allowExecution = true
         }
     }
 
-    return (...args: Parameters<Func>): ReturnType<Func> | undefined => {
-        let result: ReturnType<Func> | undefined = undefined
+    return (...args: Parameters<Func>): ReturnValue | undefined => {
+        let result: ReturnValue | undefined = undefined
 
         if (allowExecution) {
             allowExecution = false
             result = func(...args)
-            timeout = setTimeout(timeoutHandler, debounceTime)
+            setTimeout(timeoutHandler, debounceTime)
         } else {
             lastArgs = args
         }
@@ -39,5 +40,3 @@ export function throttle<Func extends (...args: Parameters<Func>) => ReturnType<
         return result
     }
 }
-
-export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));

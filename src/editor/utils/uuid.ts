@@ -1,6 +1,6 @@
 const generatedIds = new Set();
 
-export function uuid(length: number) {
+export default function uuid(length: number) {
     let result = '';
     const characters = 'abcdefghijklmnopqrstuvwxyz';
     const charactersLength = characters.length;

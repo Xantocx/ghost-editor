@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -27,11 +27,12 @@ model File {
   deletedBlocks Block[] @relation("DeletedBlocksInFile")
 }
 
-enum BlockType {
-  ROOT
-  INLINE
-  CLONE
-}
+// Only supported in Postgres
+//enum BlockType {
+//  ROOT
+//  INLINE
+//  CLONE
+//}
 
 model Block {
   id Int @id @default(autoincrement())
@@ -44,7 +45,7 @@ model Block {
   fileIdAfterDeletion Int?
   fileAfterDeletion   File? @relation("DeletedBlocksInFile", fields: [fileIdAfterDeletion], references: [id], onDelete: Cascade)
 
-  type      BlockType
+  type      String // BlockType
   timestamp Int
 
   lines Line[] @relation("LinesInBlocks")
@@ -67,10 +68,11 @@ model Block {
   @@index([fileId])
 }
 
-enum LineType {
-  ORIGINAL
-  INSERTED
-}
+// Only supported in Postgres
+//enum LineType {
+//  ORIGINAL
+//  INSERTED
+//}
 
 model Line {
   id Int @id @default(autoincrement())
@@ -79,7 +81,7 @@ model Line {
   file   File @relation("LinesInFile", fields: [fileId], references: [id], onDelete: Cascade)
 
   order Float
-  type  LineType
+  type  String // LineType
 
   versions Version[] @relation("VersionsInLine")
   blocks   Block[]   @relation("LinesInBlocks")
@@ -87,14 +89,15 @@ model Line {
   @@index([order(sort: Asc), fileId])
 }
 
-enum VersionType {
-  IMPORTED
-  PRE_INSERTION
-  INSERTION
-  CLONE
-  CHANGE
-  DELETION
-}
+// Only supported in Postgres
+//enum VersionType {
+//  IMPORTED
+//  PRE_INSERTION
+//  INSERTION
+//  CLONE
+//  CHANGE
+//  DELETION
+//}
 
 model Version {
   id Int @id @default(autoincrement())
@@ -102,7 +105,7 @@ model Version {
   lineId Int
   line   Line @relation("VersionsInLine", fields: [lineId], references: [id], onDelete: Cascade)
 
-  type      VersionType
+  type      String // VersionType
   timestamp Int
   isActive  Boolean
   content   String

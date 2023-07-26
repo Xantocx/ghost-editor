@@ -1,5 +1,5 @@
-import { VCSBlockRange } from "../../app/components/vcs/vcs-rework"
-import { IRange } from "../utils/types"
+import { VCSBlockRange } from "../../vcs/provider"
+import { IRange } from "../data-types/convenience/monaco"
 import { Range } from "monaco-editor"
 
 export interface ReferenceProvider {
@@ -10,7 +10,7 @@ export interface RangeProvider {
     range: VCSBlockRange
 }
 
-export class LineLocator {
+export default class LineLocator {
 
     public referenceProvider: ReferenceProvider
     public rangeProvider: RangeProvider

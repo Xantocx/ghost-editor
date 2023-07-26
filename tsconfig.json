@@ -1,20 +1,21 @@
 {
-	"compilerOptions": {
-		"sourceMap": true,
-		"module": "commonjs",
-		"moduleResolution": "node",
-		"target": "es5",
-		"outDir": "./dist/electron",
-		"lib": ["dom", "es5", "es6", "es2015.collection", "es2015.promise"],
-		"types": [],
-		"baseUrl": "./node_modules",
-		"jsx": "react",
-		"typeRoots": ["node_modules/@types"],
-		"downlevelIteration": true,
-		"esModuleInterop": true,
-		//"emitDecoratorMetadata": true,
-      	//"experimentalDecorators": true
-	},
-	"include": ["**/*"],
-	"exclude": ["node_modules", "**/*.spec.ts", "src/editor/**/*", "src/app/preload.ts"],
+    "compilerOptions": {
+        "target": "ES6",
+        "allowJs": true,
+        "module": "commonjs",
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "noImplicitAny": true,
+        "sourceMap": true,
+        "baseUrl": ".",
+        "outDir": "dist",
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "downlevelIteration": true,
+        "jsx": "react",
+        "paths": {
+            "*": ["node_modules/*"]
+        }
+    },
+    "include": ["src/**/*"]
 }

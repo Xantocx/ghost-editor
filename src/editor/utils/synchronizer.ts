@@ -1,4 +1,4 @@
-import { Disposable } from "./types"
+import Disposable from "../../utils/data-types/server-safe/disposable"
 
 export abstract class Synchronizable {
 
@@ -30,7 +30,7 @@ export class Sync extends Synchronizable {
     }
 }
 
-export class Synchronizer {
+export default class Synchronizer {
 
     private readonly objects: Synchronizable[] = []
 
@@ -44,10 +44,9 @@ export class Synchronizer {
         const sync = new Sync(syncCallback)
         this.register(sync)
 
-        const parent = this
         return {
-            dispose() {
-                parent.deregister(sync)
+            dispose: () => {
+                this.deregister(sync)
             },
         }
     }
