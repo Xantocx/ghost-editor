@@ -9,8 +9,10 @@ This project is the attempt on an editor for creative coding based on Microsoft'
 
 This project is built using Electron and NodeJS and uses Electron Forge for its build process. As such, it supports hot-reloading for the frontend (Electron renderer), and can easily be built for different platforms. Prisma is used as an ORM for SQLite for the database, which is deployed and migrated locally during the first execution of the program. Setup requires the following steps:
 
-1. Clone the repository to your system and open it in Visual Studio Code (the latter is a recommendation, but it helps if you want to work with Prisma, as there are helpful plugins).
-2. Create a `.env` file at the project root following this template:
+1. Install NodeJS and `npm`.
+2. Clone the repository to your system and open it in Visual Studio Code (the latter is a recommendation, but it helps if you want to work with Prisma, as there are helpful plugins).
+3. Run `npm install` in the repository.
+4. Create a `.env` file at the project root following this template:
 
 ```
 DATABASE_FILENAME="database_filename.db"
@@ -21,8 +23,8 @@ DATABASE_URL="file:database_filename.db"
 OPENAI_API_KEY="your_openai_api_key"
 ```
 
-3. Run `npm start` to start the development server. This will launch a instance of the editor in development mode, with hot-reload for the frontend.
-4. Run `npm run make` to build an installer/executable for your platform. Note: This is only tested on Windows so far!
+5. Run `npm start` to start the development server. This will launch a instance of the editor in development mode, with hot-reload for the frontend.
+6. Run `npm run make` to build an installer/executable for your platform. Note: This is only tested on Windows so far!
 
 
 ## Notes
