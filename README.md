@@ -16,7 +16,8 @@ This project is built using Electron and NodeJS and uses Electron Forge for its 
 DATABASE_FILENAME="database_filename.db"
 DATABASE_URL="file:database_filename.db"
 
-# NOTE: Currently, some functionality will just break when no or a invalid key is provided. This is a known bug and should be fixed in the future.
+# NOTE: Currently, some functionality will just break when no or a invalid key is provided.
+# This is a known bug and should be fixed in the future.
 OPENAI_API_KEY="your_openai_api_key"
 ```
 
