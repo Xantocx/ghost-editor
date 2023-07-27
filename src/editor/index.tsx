@@ -696,6 +696,8 @@ export default class GhostEditor extends View implements ReferenceProvider, Code
             await sideView.update(this.sideViewIdentifiers.versionManager, { versions: [] })
         }
 
+        await this.sideView?.hideViews()
+
         this.snapshotManager.removeSnapshots()
         await this.interactionManager.unloadFile()
         this.core.setModel(null)

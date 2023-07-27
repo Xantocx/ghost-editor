@@ -78,8 +78,8 @@ function getHtml(sketchId: number, code: string): string {
                     if (p5Canvas.length > 0) {
                         for (let i = 0; i < p5Canvas.length; i++) {
                             const canvas = p5Canvas[i]
-                            maxWidth  = Math.max(maxWidth,  canvas.width)
-                            maxHeight = Math.max(maxHeight, canvas.height)
+                            maxWidth  = Math.max(maxWidth,  parseFloat(canvas.style.width))
+                            maxHeight = Math.max(maxHeight, parseFloat(canvas.style.height))
                         }
                     }
 
