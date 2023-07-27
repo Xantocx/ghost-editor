@@ -27,6 +27,17 @@ OPENAI_API_KEY="your_openai_api_key"
 6. Run `npm run make` to build an installer/executable for your platform. Note: This is only tested on Windows so far!
 
 
+## Usage
+
+This editor is based on Microsoft's Monaco Editor and provides a real-time preview for P5JS. You can just use the library functions of P5JS, and thre preview will pick it up. From there, it is a pretty straigh-forward editing experience.
+
+The party trick of this editor can be invoked by highlighting any segment of code, and then using a right-click to open the context menu. There, you can use add a Ghost Snapshot. This snapshot then allows you to scrub through every version you ever created for this code block.
+
+The green plus button on the snapshot menu will save the current version in the version menu. You can open this menu by clicking into the code block, and then using the right-click context menu again. Clicking on a version in this menu will open a secondary version editor.
+
+Finally, you can use the shortcuts listed in the context menu to access these features more efficiently.
+
+
 ## Notes
 
 - Manually downgraded css-loader@5.2.7 for webpack to make the . See https://github.com/microsoft/monaco-editor/issues/2930.

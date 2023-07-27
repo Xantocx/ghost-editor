@@ -223,6 +223,7 @@ class GhostEditorInteractionManager extends SubscriptionManager {
             label: "Create Snapshot",
             keybindings: [
                 monaco.KeyMod.Alt | monaco.KeyCode.KeyY,
+                monaco.KeyMod.Alt | monaco.KeyCode.KeyZ
             ],
             precondition: this.canCreateSnapshotId, // maybe add condition for selection
             keybindingContext: "editorTextFocus",
