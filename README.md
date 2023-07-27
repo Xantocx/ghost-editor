@@ -40,6 +40,7 @@ OPENAI_API_KEY="your_openai_api_key"
 This is my recommended to do list for future work on this:
 
 - Rebuild UI to be React-only, instead of the current patch-work system.
+- Easy way to add new previews for different languages (right now, the process is very manual).
 - Graceful error handling that won't immediately crash or break things, especially for the OpenAI component, and general backend errors.
 - Handle files in a way that is more transparent to the user, so that they can rename files without losing progress, delete files without leaving data in the database, etc.
 - Use tRPC to communicate between front- and backend to allow for easy migration to server-client architecture instead of Electron.
