@@ -51,4 +51,4 @@ This is my recommended to do list for future work on this:
 - Version comparison using OpenAI's GPT.
 - Optimize backend to write to cache, and update database asynchronously (reading works already).
 
-  This is just a list that was up in my head immediately. More is definetly requires.
+This is just a list that was up in my head immediately. More is definetly requires.
