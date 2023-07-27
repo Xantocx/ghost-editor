@@ -48,6 +48,7 @@ This is my recommended to do list for future work on this:
 - Remove in-editor UI and migrate to VS Code plugin (this will require several of the other fixes described above).
 - Re-iterate build system to fix Prisma integration, which is a nightmare right now.
 - Merge changes into meaningful chunks for easier change navigation.
+- Add visual clues for blocks that disappear at a certain time in their timeline, because they had no exising lines at that time.
 - Automatic version extraction from block histories.
 - Version comparison using OpenAI's GPT.
 - Optimize backend to write to cache, and update database asynchronously (reading works already).

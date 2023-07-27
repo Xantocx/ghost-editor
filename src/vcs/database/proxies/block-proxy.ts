@@ -226,6 +226,12 @@ export default class BlockProxy extends DatabaseProxy implements ISessionBlock<F
             }
         }
 
+        // NOTE: This is a fix to prevent crashes when a block contains no original lines and at some point in the timeline, all lines would be hidden.
+        // To prevent that, this function removes leading pre-insertion versions from the timeline.
+        while (timeline.length > 0 && timeline[0].type === VersionType.PRE_INSERTION) {
+            timeline.splice(0, 1)
+        }
+
         return timeline
     }
 

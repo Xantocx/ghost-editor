@@ -101,10 +101,15 @@ export default class CodeAI {
         try {
             // NOTE: This is not always the same format, so sometimes, I might end up with no title or description... AI and stuff... ugh.
             const response = chatCompletion.data.choices[0].message
+            const lines    = response.content.split("\n")
 
-            const lines = response.content.split("\n")
-            versionInfo.name        = lines[0].replace('Name:', '').replace(new RegExp('"', "g"), '').trim()
-            versionInfo.description = lines[2].replace('Description: ', '')
+            versionInfo.name = lines[0].replace('Name:', '').replace(new RegExp('"', "g"), '').trim()
+
+            // this is meant to fail to take the default description instead of taking a faulty one
+            let descriptionIndex = 1
+            let description      = ""
+            while (description.length < 10) { description = lines[descriptionIndex++].replace('Description: ', '').trim() }
+            versionInfo.description = description
 
             this.versionNameHistory.push(requestMessage, response)
 
