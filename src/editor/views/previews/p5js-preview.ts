@@ -143,9 +143,13 @@ export default class P5JSPreview extends CodeProviderPreview {
                         loop()
                     }
 
-                    function pauseP5(ms) {
+                    function pauseP5() {
+                        noLoop()
+                    }
+    
+                    function pauseP5In(ms) {
                         pauseTimeoutId = setTimeout(() => {
-                            noLoop()
+                            pauseP5()
                         }, ms)
                     }
 
@@ -186,9 +190,9 @@ export default class P5JSPreview extends CodeProviderPreview {
                                     }
                                 }
 
-                                window.addEventListener("mousedown", (event) => { playP5() })
-                                window.addEventListener("mouseup", (event) => { pauseP5(3000) })
-                                pauseP5(3000)
+                                window.addEventListener("mousedown", () => playP5())
+                                window.addEventListener("mouseup",   () => pauseP5In(3000))
+                                pauseP5In(3000)
                             } else {
                                 window.setup = undefined
                                 window.draw  = undefined

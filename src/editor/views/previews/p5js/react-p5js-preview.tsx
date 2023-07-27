@@ -114,9 +114,13 @@ function getHtml(sketchId: number, code: string): string {
                     loop()
                 }
 
-                function pauseP5(ms) {
+                function pauseP5() {
+                    noLoop()
+                }
+
+                function pauseP5In(ms) {
                     pauseTimeoutId = setTimeout(() => {
-                        noLoop()
+                        pauseP5()
                     }, ms)
                 }
 
@@ -155,9 +159,12 @@ function getHtml(sketchId: number, code: string): string {
                                 }
                             }
 
+                            /*
+                            // The React Preview (aka main preview) always runs through
                             window.addEventListener("mousedown", (event) => { playP5() })
-                            window.addEventListener("mouseup", (event) => { pauseP5(3000) })
-                            pauseP5(3000)
+                            window.addEventListener("mouseup", (event) => { pauseP5In(3000) })
+                            pauseP5In(3000)
+                            */
                         } else {
                             window.setup = undefined
                             window.draw  = undefined
