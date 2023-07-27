@@ -277,7 +277,6 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, h
     function onMessage({ iframe, message: { sketchId, type, message }}: { iframe: IFrameComponent, message: { type: string, sketchId: number, message: any } }): void {
 
         if (type === "resize") {
-            console.log(message)
             iframe.style.width  = `${message.maxWidth}px`
             iframe.style.height = `${message.maxHeight}px`
 
