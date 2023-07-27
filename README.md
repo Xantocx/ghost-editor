@@ -33,3 +33,23 @@ OPENAI_API_KEY="your_openai_api_key"
 - The build setup with Electron Forge is based on the webpack-typescript template, but was heavily altered to allow for both, a working development and production build including the database functionality. So keep that in mind when exploring the project. Not all of that might be the overall best solution, but it works. Hints for some choices can be found throughout the code.
 - The `docker-compose.yaml` file is currently not needed anymore. It was used for a server-based database approach, and might make a comeback in the future.
 - This README is by no means complete and only provides an inital baseline. It will be expanded in the future.
+
+
+## Things to Fix:
+
+This is my recommended to do list for future work on this:
+
+- Rebuild UI to be React-only, instead of the current patch-work system.
+- Easy way to add new previews for different languages (right now, the process is very manual).
+- Graceful error handling that won't immediately crash or break things, especially for the OpenAI component, and general backend errors.
+- Handle files in a way that is more transparent to the user, so that they can rename files without losing progress, delete files without leaving data in the database, etc.
+- Use tRPC to communicate between front- and backend to allow for easy migration to server-client architecture instead of Electron.
+- Find a way to securely deliver API keys to the built application.
+- Remove in-editor UI and migrate to VS Code plugin (this will require several of the other fixes described above).
+- Re-iterate build system to fix Prisma integration, which is a nightmare right now.
+- Merge changes into meaningful chunks for easier change navigation.
+- Automatic version extraction from block histories.
+- Version comparison using OpenAI's GPT.
+- Optimize backend to write to cache, and update database asynchronously (reading works already).
+
+This is just a list that was up in my head immediately. More is definetly requires.
