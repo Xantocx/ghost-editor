@@ -207,7 +207,7 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, h
     const isMounted = useRef(true);
 
     const previewContainerRef   = useRef<HTMLDivElement | null>(null)
-    const iframeRef             = useRef<IFramePage | null>(null)
+    const iframeRef             = useRef<HTMLIFrameElement & IFramePage | null>(null)
     const latestSketchId        = useRef<number>(0)
     const lastWorkingSketch     = useRef<{ sketchId: number, code: string } | undefined>(undefined)
     const runtimeRecoverySketch = useRef<{ sketchId: number, code: string } | undefined>(undefined)
@@ -277,19 +277,24 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, h
     function onMessage({ iframe, message: { sketchId, type, message }}: { iframe: IFrameComponent, message: { type: string, sketchId: number, message: any } }): void {
 
         if (type === "resize") {
+            console.log(message)
+            iframe.style.width  = `${message.maxWidth}px`
+            iframe.style.height = `${message.maxHeight}px`
+
             const previewContainer = previewContainerRef.current
             if (previewContainer) {
                 const computedStyle = getComputedStyle(previewContainer)
                 const scaleFactor   = Math.min(parseFloat(computedStyle.width)  / message.maxWidth,
                                                parseFloat(computedStyle.height) / message.maxHeight)
 
-                iframe.style.transformOrigin = "top left"
-                iframe.style.transform       = `scale(${scaleFactor}) translate(-50%, -50%)`
+                iframe.style.transform = `scale(${scaleFactor}) translate(-50%, -50%)`
             } else {
                 console.warn("Cannot access container size for iframe!")
             }
 
             return
+        } else {
+            iframe.style.transform = "translate(-50%, -50%)"
         }
 
         if (sketchId !== latestSketchId.current) { return }
