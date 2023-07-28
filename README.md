@@ -58,10 +58,11 @@ This is my recommended to do list for future work on this:
 - Find a way to securely deliver API keys to the built application.
 - Remove in-editor UI and migrate to VS Code plugin (this will require several of the other fixes described above).
 - Re-iterate build system to fix Prisma integration, which is a nightmare right now.
-- Merge changes into meaningful chunks for easier change navigation.
+- Merge changes into meaningful chunks for easier change navigation (e.g., sequential single line edits, multi-line operations as one operation).
 - Add visual clues for blocks that disappear at a certain time in their timeline, because they had no exising lines at that time.
 - Automatic version extraction from block histories.
 - Version comparison using OpenAI's GPT.
 - Optimize backend to write to cache, and update database asynchronously (reading works already).
+- Blocks stick to semantics (e.g., brackets of functions, etc.)
 
 This is just a list that was up in my head immediately. More is definetly requires.
