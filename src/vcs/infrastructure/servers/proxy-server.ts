@@ -4,9 +4,7 @@ import { VCSResponse, BasicVCSServer, VCSBlockId, VCSBlockInfo, VCSBlockRange, V
 import { ChangeSet, LineChange, MultiLineChange } from "../../data-types/change"
 
 import Session, { ISessionFile, ISessionBlock, ISessionTag, ISessionLine, ISessionVersion } from "../../database/session"
-import DBSession from "../../database/infrastructure/sessions/database-session"
 import ResourceManager from "../../database/resource-manager"
-import { FileProxy, LineProxy, VersionProxy, BlockProxy, TagProxy } from "../../database/proxy-types"
 import CodeAI from "../../utils/ai/openai-client"
 
 /*
@@ -176,6 +174,7 @@ export default abstract class VCSServer<SessionFile extends ISessionFile, Sessio
             const sourceBlock = await session.getBlock(source)
             const targetBlock = await session.getBlock(target)
             await targetBlock.applyTimestamp(sourceBlock.timestamp)
+            await targetBlock.cloneOutdatedHeads()
             return targetBlock.getText()
         })
     }
