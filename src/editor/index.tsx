@@ -697,8 +697,6 @@ export default class GhostEditor extends View implements ReferenceProvider, Code
             await sideView.update(this.sideViewIdentifiers.versionManager, { versions: [] })
         }
 
-        await this.sideView?.hideViews()
-
         this.snapshotManager.removeSnapshots()
         await this.interactionManager.unloadFile()
         this.core.setModel(null)
@@ -792,6 +790,7 @@ export default class GhostEditor extends View implements ReferenceProvider, Code
         const snapshots = await session.getChildrenInfo()
 
         this.createEditorModel(textModel, session, content)
+        await this.showDefaultSideView()
 
         // NOTE: Creating snapshots will create view zones. This cannot happen immediately, and should only be done after the editor finished rendering the first frame. Waiting for this event will allow me to do so.
         const setupDisposable = this.core.onDidContentSizeChange(() => {
@@ -836,6 +835,7 @@ export default class GhostEditor extends View implements ReferenceProvider, Code
     // Manual cleaning is requires
     public async remove(): Promise<void> {
         await this.unload()
+        await this.sideView?.hideViews()
         this.synchronizer?.deregister(this)
         this.snapshotManager.removeSnapshots()
         this.editorModel?.close()
