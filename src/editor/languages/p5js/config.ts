@@ -1,7 +1,6 @@
 import * as monaco from "monaco-editor"
 
-export function setupP5JS(): void {
-
+function setupColorPicker(): void {
     // not sure what's up with "hue" and "saturation", but they didn't work as expected so far...
     // "new p5.Color" requires extra argument
     const keywords = ["color", "fill", "red", "green", "blue", "alpha", "brightness", "lightness", "new Color", "background", "stroke"]
@@ -102,4 +101,26 @@ export function setupP5JS(): void {
             return colorLocations
         },
     });
+}
+
+// Thanks for this: https://stackoverflow.com/questions/63310682/how-to-load-npm-module-type-definition-in-monaco-using-webpack-and-react-create/63349650#63349650
+// Monaco Demo:     https://microsoft.github.io/monaco-editor/playground.html?source=v0.40.0#example-extending-language-services-configure-javascript-defaults
+function setupAutocomplete(): void {
+
+    // This call may scream ERROR, but this is a webpack function that exists and works.
+    // But I have no idea to make that clear to VS Code...
+
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const typeDefinitions = require.context('!!raw-loader!@types/p5', true, /\.d.ts$/);
+
+    typeDefinitions.keys().forEach((relativePath: string) => {
+        const content = typeDefinitions(relativePath).default
+        monaco.languages.typescript.javascriptDefaults.addExtraLib(content, 'ts:' + relativePath.substring(2));
+    });
+}
+
+export function setupP5JS(): void {
+    setupColorPicker()
+    setupAutocomplete()
 }

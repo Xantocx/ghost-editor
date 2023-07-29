@@ -6,6 +6,11 @@ import { rules } from './webpack.rules';
 import CopyPlugin from 'copy-webpack-plugin';
 import path from 'path';
 
+rules.push({
+    test: /\.d\.ts$/,
+    use: 'raw-loader',
+})
+
 export const mainConfig: Configuration = {
     /**
      * This is the main entry point for your application, it's the first file
