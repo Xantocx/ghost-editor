@@ -113,7 +113,7 @@ export default class VersionCodeView extends View {
                         await snapshot.session.syncBlocks(this.blockId, snapshot.vcsId)
                         await snapshot.editor.syncWithVCS()
                         await snapshot.editor.setActiveSnapshot(undefined)
-                        snapshot.footer.updateSlider()
+                        await snapshot.update()
                     })
                 },
             }

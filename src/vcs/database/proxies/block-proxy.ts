@@ -228,6 +228,7 @@ export default class BlockProxy extends DatabaseProxy implements ISessionBlock<F
 
         // NOTE: This is a fix to prevent crashes when a block contains no original lines and at some point in the timeline, all lines would be hidden.
         // To prevent that, this function removes leading pre-insertion versions from the timeline.
+        // WARNING: If there is no code at a certain state before the initial versions, this will still fail!
         while (timeline.length > 0 && timeline[0].type === VersionType.PRE_INSERTION) {
             timeline.splice(0, 1)
         }
@@ -250,20 +251,6 @@ export default class BlockProxy extends DatabaseProxy implements ISessionBlock<F
         const activeHeads = this.getActiveHeads(clonesToConsider)
         const content     = activeHeads.map(head => head.content)
         return content.join(this.file.eol)
-
-        /*
-        // filtering for active lines here is important!!!
-        const lines       = this.getLines()
-        const eol         = this.file.eol
-
-        const versions    = await this.getVersionsForText({ clonesToConsider })
-        const content     = lines.map(line => {
-            const version = versions.get(line.id)!
-            return version.isActive ? version.content : undefined
-        }).filter(content => content !== undefined)
-
-        return content.join(eol)
-        */
     }
 
     public static async createRootBlock(file: FileProxy, filePath: string): Promise<{ blockId: string, block: BlockProxy }> {
@@ -515,7 +502,8 @@ export default class BlockProxy extends DatabaseProxy implements ISessionBlock<F
         await this.setTimestamp(timestamp)
     }
 
-    public async cloneOutdatedHeads(): Promise<void> {
+    // WARNING: This could maybe be improved by actually applying this to all blocks, instead of just the applied block
+    public async cloneOutdatedHeads(): Promise<number> {
         const heads        = this.getHeads()
         const headsToClone = heads.filter(head => {
             const latestVersion = head.line.getLatestVersion()
@@ -532,7 +520,12 @@ export default class BlockProxy extends DatabaseProxy implements ISessionBlock<F
             for (const head of headsToClone) {
                 await head.line.createVersion(this, cloneTimestamp, VersionType.CLONE, head.isActive, head.content, head)
             }
+
+            return cloneTimestamp
         }
+
+        if (heads.length > 0) { return heads.sort((headA, headB) => headB.timestamp - headA.timestamp)[0].timestamp }
+        else                  { throw new Error("A block should always have at least one head!") }
     }
 
     public async updateLine(lineNumber: number, content: string): Promise<LineProxy> {

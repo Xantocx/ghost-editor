@@ -30,7 +30,7 @@ export interface ISessionBlock<SessionFile extends ISessionFile, SessionBlock ex
 
     applyIndex(index: number): Promise<void>
     applyTimestamp(timestamp: number): Promise<void>
-    cloneOutdatedHeads(): Promise<void>
+    cloneOutdatedHeads(): Promise<number>
 
     copy(): Promise<SessionBlock>
     createChild(range: VCSBlockRange): Promise<SessionBlock | null>
