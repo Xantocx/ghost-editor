@@ -8,8 +8,15 @@ const configuration = new Configuration({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-const OPENAI = new OpenAIApi(configuration);
-const MODEL  = "gpt-3.5-turbo"
+let   OPENAI: OpenAIApi | undefined = undefined;
+const MODEL                         = "gpt-3.5-turbo"
+
+try {
+    OPENAI = new OpenAIApi(configuration)
+} catch {
+    log.warn("Failed to load OpenAI API.")
+}
+
 
 export default class CodeAI {
 
@@ -27,21 +34,21 @@ export default class CodeAI {
             { role: "user",   content: `The following code results in this error message: "${errorMessage}". How could I fix that?\n${code}` }
         ]
 
-        const chatCompletion = await OPENAI.createChatCompletion({
-            model:             MODEL,
-            messages:          messages,
-            temperature:       this.temperature,
-            max_tokens:        this.maxTokens,
-            stop:              this.stop,
-            top_p:             this.topP,
-            frequency_penalty: this.frequencyPenalty,
-            presence_penalty:  this.presencePenalty
-        });
-
         try {
+            const chatCompletion = await OPENAI.createChatCompletion({
+                model:             MODEL,
+                messages:          messages,
+                temperature:       this.temperature,
+                max_tokens:        this.maxTokens,
+                stop:              this.stop,
+                top_p:             this.topP,
+                frequency_penalty: this.frequencyPenalty,
+                presence_penalty:  this.presencePenalty
+            });
+
             return chatCompletion.data.choices[0].message.content
         } catch {
-            log.warn("Failed to generate error suggestion!")
+            if (OPENAI !== undefined) { log.warn("Failed to generate error suggestion!") }
             return null
         }
     }
@@ -85,20 +92,21 @@ export default class CodeAI {
             content: `Provide a name and description that allows to quickly grasp the unique impact of this code segment. Avoid textual references to previous code snippets.\n${versionCode}`
         }
 
-        const chatCompletion = await OPENAI.createChatCompletion({
-            model:             MODEL,
-            messages:          [systemMessage].concat(this.versionNameHistory, requestMessage),
-            temperature:       this.temperature,
-            max_tokens:        this.maxTokens,
-            stop:              this.stop,
-            top_p:             this.topP,
-            frequency_penalty: this.frequencyPenalty,
-            presence_penalty:  this.presencePenalty
-        });
 
         const versionInfo = { name: `Tag ${this.block.tags.length + 1}`, description: "No description available." }
         
         try {
+            const chatCompletion = await OPENAI.createChatCompletion({
+                model:             MODEL,
+                messages:          [systemMessage].concat(this.versionNameHistory, requestMessage),
+                temperature:       this.temperature,
+                max_tokens:        this.maxTokens,
+                stop:              this.stop,
+                top_p:             this.topP,
+                frequency_penalty: this.frequencyPenalty,
+                presence_penalty:  this.presencePenalty
+            });
+
             // NOTE: This is not always the same format, so sometimes, I might end up with no title or description... AI and stuff... ugh.
             const response = chatCompletion.data.choices[0].message
             const lines    = response.content.split("\n")
@@ -120,7 +128,9 @@ export default class CodeAI {
                 }
             })
         } catch {
-            log.warn("Failed to generate version info!")
+            if (OPENAI !== undefined) {
+                log.warn("Failed to generate version info!")
+            }
         }
 
         return versionInfo

@@ -365,7 +365,7 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, h
                     {errorHint && <div style={{ flex: 2, minHeight: "100%", padding: "5px", margin: 0, borderTop: `1px solid ${color}` }}>
                         <LoadingView  ContentView={ErrorHint} loadData={async () => {
                             const errorHint = await codeProvider.getErrorHint(sketch, errorMessage)
-                            return { errorHint }
+                            return { errorHint: errorHint ? errorHint : "Failed to generate error hint!" }
                         }}/>
                     </div>}
                 </div>
