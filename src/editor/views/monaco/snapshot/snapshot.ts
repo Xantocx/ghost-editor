@@ -24,9 +24,9 @@ export default class GhostSnapshot extends SubscriptionManager implements RangeP
     public readonly viewZonesOnly: boolean
     public readonly toggleMode:    boolean
 
-    private header: GhostSnapshotHeader
-    private highlight: GhostSnapshotHighlight
-    private footer: GhostSnapshotFooter
+    public header: GhostSnapshotHeader
+    public highlight: GhostSnapshotHighlight
+    public footer: GhostSnapshotFooter
 
     private readonly sideViewIdentifier = "versionManager"
 

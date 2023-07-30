@@ -30,7 +30,6 @@ import { extractEOLSymbol } from "./utils/helpers";
 import { LoadFileEvent } from "./data-types/events";
 
 import React from "react";
-import { createRoot } from "react-dom/client"
 
 class GhostEditorSnapshotManager {
 
@@ -837,8 +836,6 @@ export default class GhostEditor extends View implements ReferenceProvider, Code
         await this.unload()
         await this.sideView?.hideViews()
         this.synchronizer?.deregister(this)
-        this.snapshotManager.removeSnapshots()
-        this.editorModel?.close()
         super.remove()
     }
 }

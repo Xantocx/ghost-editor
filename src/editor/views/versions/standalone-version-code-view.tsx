@@ -8,7 +8,7 @@ import LoadingView, { LoadingEventEmitter } from "../react/loadingView";
 import View from "../view";
 
 import React from "react";
-import { createRoot } from "react-dom/client";
+import { Root, createRoot } from "react-dom/client";
 
 export default class VersionCodeView extends View {
 
@@ -20,6 +20,9 @@ export default class VersionCodeView extends View {
     private readonly menuContainer:    HTMLDivElement
     private readonly editorContainer:  HTMLDivElement
     private readonly editor:           GhostEditor
+
+    private copyToOriginButtonRoot?: Root
+    private duplicateButtonRoot?:    Root
 
     private readonly menuSpacing  = 40
 
@@ -90,10 +93,10 @@ export default class VersionCodeView extends View {
             resolvePromise()
         }
 
-        const copyToOriginButtonRoot       = createRoot(createSeperator())
-        const duplicateButtonRoot          = createRoot(createSeperator())
+        this.copyToOriginButtonRoot = createRoot(createSeperator())
+        this.duplicateButtonRoot    = createRoot(createSeperator())
 
-        copyToOriginButtonRoot.render(<LoadingView ContentView={IconButton} loadingEventEmitter={loadingEventEmitter} loadData={async () => {
+        this.copyToOriginButtonRoot.render(<LoadingView ContentView={IconButton} loadingEventEmitter={loadingEventEmitter} loadData={async () => {
             await loadingPromise
 
             const props: IconButtonProps = {
@@ -110,6 +113,7 @@ export default class VersionCodeView extends View {
                         await snapshot.session.syncBlocks(this.blockId, snapshot.vcsId)
                         await snapshot.editor.syncWithVCS()
                         await snapshot.editor.setActiveSnapshot(undefined)
+                        snapshot.footer.updateSlider()
                     })
                 },
             }
@@ -117,7 +121,7 @@ export default class VersionCodeView extends View {
             return props
         }}/>)
         
-        duplicateButtonRoot.render(<LoadingView ContentView={TextButton} loadingEventEmitter={loadingEventEmitter} loadData={async () => {
+        this.duplicateButtonRoot.render(<LoadingView ContentView={TextButton} loadingEventEmitter={loadingEventEmitter} loadData={async () => {
             await loadingPromise
 
             const props: TextButtonProps = {
@@ -155,6 +159,12 @@ export default class VersionCodeView extends View {
     }
 
     public async remove(): Promise<void> {
+        this.copyToOriginButtonRoot.unmount()
+        this.duplicateButtonRoot.unmount()
+
+        this.copyToOriginButtonRoot = undefined
+        this.duplicateButtonRoot    = undefined
+
         await this.editor.remove()
         this.container.remove()
         super.remove()

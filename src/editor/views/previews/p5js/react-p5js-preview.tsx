@@ -207,16 +207,16 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, h
     const isMounted = useRef(true);
 
     const previewContainerRef   = useRef<HTMLDivElement | null>(null)
-    const iframeRef             = useRef<HTMLIFrameElement & IFramePage | null>(null)
+    const iframeRef             = useRef<IFramePage | null>(null)
     const latestSketchId        = useRef<number>(0)
     const lastWorkingSketch     = useRef<{ sketchId: number, code: string } | undefined>(undefined)
     const runtimeRecoverySketch = useRef<{ sketchId: number, code: string } | undefined>(undefined)
 
-    const [iframeSource,      setIframeSource]      = useState<string | undefined>(undefined)
-    const [sketch,            setSketch]            = useState<string | undefined>(undefined)
-    const [errorMessage,      setErrorMessage]      = useState<string>("")
-    const [errorHint,         setErrorHint]         = useState<boolean>(false)
-    const [color,             setColor]             = useState<string>("black")
+    const [iframeSource, setIframeSource] = useState<string | undefined>(undefined)
+    const [sketch,       setSketch]       = useState<string | undefined>(undefined)
+    const [errorMessage, setErrorMessage] = useState<string>("")
+    const [errorHint,    setErrorHint]    = useState<boolean>(false)
+    const [color,        setColor]        = useState<string>("black")
 
     function renderSketch(sketchId: number, code: string) {
         const oldIframeSource = iframeSource
@@ -250,13 +250,20 @@ const P5JSPreview: React.FC<P5JSPreviewProps> = ({ synchronizer, codeProvider, h
 
     useEffect(() => {
         const sync = synchronizer.registerSync(async () => {
-            const code = await codeProvider.getCode()
-            updateSketchThrottled(code)
+            if (isMounted.current) {
+                const code = await codeProvider.getCode()
+                updateSketchThrottled(code)
+            }
         })
 
         const observer = new ResizeObserver(() => {
             if (isMounted.current && iframeRef.current) {
-                iframeRef.current.sendMessage("resize")
+                try {
+                    iframeRef.current.sendMessage("resize")
+                } catch {
+                    // due to timing issues, this sometimes triggers after or before an iframe is ready to recieve sendMessage
+                    console.warn("iFrame not (yet) setup.")
+                }
             }
         })
       

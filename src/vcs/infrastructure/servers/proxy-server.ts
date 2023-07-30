@@ -28,6 +28,7 @@ export default abstract class VCSServer<SessionFile extends ISessionFile, Sessio
 
     private async updateLine(session: QuerySession, blockId: VCSBlockId, change: LineChange): Promise<VCSBlockId[]> {
         const block = await session.getBlock(blockId)
+        await block.cloneOutdatedHeads()
         const line  = await block.updateLine(change.lineNumber, change.lineText)
         
         await this.updatePreview(session, blockId)
@@ -38,6 +39,7 @@ export default abstract class VCSServer<SessionFile extends ISessionFile, Sessio
 
     private async updateLines(session: QuerySession, blockId: VCSBlockId, change: MultiLineChange): Promise<VCSBlockId[]> {
         const block          = await session.getBlock(blockId)
+        await block.cloneOutdatedHeads()
         const affectedBlocks = await block.updateLines(blockId, change)
 
         this.updatePreview(session, blockId)
@@ -174,13 +176,21 @@ export default abstract class VCSServer<SessionFile extends ISessionFile, Sessio
             const sourceBlock = await session.getBlock(source)
             const targetBlock = await session.getBlock(target)
             await targetBlock.applyTimestamp(sourceBlock.timestamp)
-            await targetBlock.cloneOutdatedHeads()
+            //await targetBlock.cloneOutdatedHeads()
             return targetBlock.getText()
         })
     }
 
     public setBlockVersionIndex(request: VCSSessionRequest<{ blockId: VCSBlockId, versionIndex: number }>): Promise<VCSResponse<string>> {
         const blockId = request.data.blockId
+        return this.resources.createQuery(request, VCSOperation.SetBlockVersionIndex, async (session, { blockId, versionIndex }) => {
+            const { root, block } = await session.getRootBlockFor(blockId)
+            await block.applyIndex(versionIndex)
+            await this.updatePreview(session, blockId)
+            return root.getText()
+        })
+
+
         return this.resources.createQueryChain(`set-block-version-index-${blockId.sessionId}-${blockId.filePath}-${blockId.blockId}`, request, VCSOperation.SetBlockVersionIndex, async (session, { blockId, versionIndex }) => {
             const { root, block } = await session.getRootBlockFor(blockId)
             await block.applyIndex(versionIndex)

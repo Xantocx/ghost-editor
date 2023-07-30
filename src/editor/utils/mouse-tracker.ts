@@ -24,10 +24,6 @@ export abstract class MouseTracker extends SubscriptionManager {
 
         return this.addSubscription(subscription)
     }
-
-    public override remove(): void {
-        super.remove()
-    }
 }
 
 export class DomMouseTracker extends MouseTracker {
@@ -42,11 +38,11 @@ export class DomMouseTracker extends MouseTracker {
     }
 
     private setupMouseTracking(): void {
-        this.domNode.addEventListener("mouseenter", (event) => {
+        this.domNode.addEventListener("mouseenter", () => {
             this.mouseChanged(true)
         });
 
-        this.domNode.addEventListener("mouseleave", (event) => {
+        this.domNode.addEventListener("mouseleave", () => {
             this.mouseChanged(false)
         });
     }

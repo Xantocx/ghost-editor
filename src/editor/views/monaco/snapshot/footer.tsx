@@ -6,7 +6,7 @@ import React from "react"
 import './footer.css'
 
 import LoadingView, { LoadingEventEmitter } from "../../react/loadingView"
-import { createRoot } from "react-dom/client"
+import { Root, createRoot } from "react-dom/client"
 
 import { TextButton, TextButtonProps } from "../../basics/react-button"
 import Slider, { SliderProps } from "../../basics/slider"
@@ -47,6 +47,8 @@ export default class GhostSnapshotFooter extends InlineEditorBanner {
     private get versionCount(): number { return this.snapshot.snapshot.versionCount }
     private get versionIndex(): number { return this.snapshot.snapshot.versionIndex }
 
+    private loadingViewRoot?: Root
+
     private cachedLineNumber: number
     protected override get lineNumber(): number {
         if (!this.mouseOn || !this.cachedLineNumber) { this.cachedLineNumber = this.snapshot.endLine + 1 }
@@ -82,8 +84,8 @@ export default class GhostSnapshotFooter extends InlineEditorBanner {
             this.sliderCallbacks.forEach(callback => callback(value))
         }
 
-        const root = createRoot(container)
-        root.render(<LoadingView loadData={async () => {
+        this.loadingViewRoot = createRoot(container)
+        this.loadingViewRoot.render(<LoadingView loadData={async () => {
             await this.session.waitForCurrentRequests();
             return {
                 buttonProps: {
@@ -129,5 +131,11 @@ export default class GhostSnapshotFooter extends InlineEditorBanner {
                 if (index > -1) { this.sliderCallbacks.splice(index, 1) }
             },
         })
+    }
+
+    public override remove(): void {
+        this.loadingViewRoot?.unmount()
+        this.loadingViewRoot = undefined
+        super.remove()
     }
 }
